@@ -1,0 +1,6 @@
+SUBSYSTEM=="usb", ATTRS{idVendor}=="289d", ATTRS{idProduct}=="0010", GROUP="users", MODE:="0666", SYMLINK+="usb/seekthermal/pir206.$attr{busnum}.$attr{devpath}.$attr{devnum}"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="289d", ATTRS{idProduct}=="0011", GROUP="users", MODE:="0666", SYMLINK+="usb/seekthermal/pir324.$attr{busnum}.$attr{devpath}.$attr{devnum}"
+ACTION=="add", ATTRS{idVendor}=="289d", ATTR{power/autosuspend}="-1", ATTR{power/control}="on", ATTR{power/level}="on"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="adc-keys", SYMLINK+="input/event-keys", MODE="0660", GROUP="input"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="drv260x:haptics", SYMLINK+="input/event-haptics", MODE="0660", GROUP="input"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="fts_ts", SYMLINK+="input/event-touchscreen", MODE="0660", GROUP="input"
