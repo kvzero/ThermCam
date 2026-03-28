@@ -124,7 +124,7 @@ void InputManager::processKeyEvents() {
     struct input_event ev;
     while (::read(m_keyFd, &ev, sizeof(ev)) == sizeof(ev)) {
         if (ev.type == EV_KEY) {
-            // High-level decision making is handled by UIController
+            // High-level decision making is handled by InteractionArbiter
             emit EventBus::instance().rawKeySignal(ev.value != 0);
         }
     }

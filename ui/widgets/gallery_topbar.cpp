@@ -133,7 +133,7 @@ void GalleryTopBar::finalizeGesture(int) {
         else emit backRequested();
     }
     else if (m_hoverTrash) {
-        /* Intent: Delay execution by 100ms to bypass UIController's synthetic Tap Collision */
+        /* Intent: Delay execution by 100ms to bypass InteractionArbiter's synthetic Tap Collision */
         QTimer::singleShot(100, this, &GalleryTopBar::deleteRequested);
     }
     else if (m_hoverRightCancel) {

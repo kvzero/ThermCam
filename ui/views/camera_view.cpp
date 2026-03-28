@@ -127,15 +127,15 @@ void CameraView::onGestureFinished(const QPoint& /*start*/, int dx, int /*dy*/, 
 
 void CameraView::onLongPressDetected(const QPoint& start) {
     // PRD: Long press on blank area -> Palette Wheel
-    // Logic: If hit test didn't find a widget (handled by UIController),
-    // UIController calls this.
+    // Logic: If hit test didn't find a widget (handled by InteractionArbiter),
+    // InteractionArbiter calls this.
     qInfo() << "[CameraView] Show Palette Wheel at" << start;
     // App::instance()->showPaletteWheel(start);
 }
 /* --- Widget Discovery --- */
 
 QWidget* CameraView::capsuleWidget() {
-    // Needed for UIController to identify the "Capsule" button
+    // Needed for InteractionArbiter to identify the "Capsule" button
     // Assumes HudContainer exposes its internal buttons
     return m_hudContainer ? m_hudContainer->capsuleButton() : nullptr;
 }

@@ -6,7 +6,7 @@
 #include "core/types.h"
 #include "hardware/hardware_manager.h"
 #include "ui/app.h"
-#include "ui/ui_controller.h"
+#include "ui/interaction_arbiter.h"
 
 extern "C" {
 #include <libavutil/log.h>
@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
     /* User Interface */
     App w;
     w.showFullScreen();
-    UIController::instance().init(&w);
+    InteractionArbiter::instance().init(&w);
 
     return a.exec();
 }

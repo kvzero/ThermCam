@@ -1,4 +1,4 @@
-#include "ui_controller.h"
+#include "interaction_arbiter.h"
 #include "ui/app.h"
 #include "ui/gesture_recognizer.h"
 #include "ui/views/base_view.h"
@@ -12,43 +12,43 @@
 #include <QMetaObject>
 #include <QDebug>
 
-const char* UIController::PROP_ALLOW_SLIDE_TRIGGER = "allowSlideTrigger";
-const char* UIController::PROP_IS_INTERACTABLE     = "isInteractable";
+const char* InteractionArbiter::PROP_ALLOW_SLIDE_TRIGGER = "allowSlideTrigger";
+const char* InteractionArbiter::PROP_IS_INTERACTABLE     = "isInteractable";
 
-UIController& UIController::instance() {
-    static UIController inst;
+InteractionArbiter& InteractionArbiter::instance() {
+    static InteractionArbiter inst;
     return inst;
 }
 
-UIController::UIController(QObject *parent) : QObject(parent) {
+InteractionArbiter::InteractionArbiter(QObject *parent) : QObject(parent) {
     GestureRecognizer::Config config;
     m_recognizer = new GestureRecognizer(config, this);
 
     m_shutdownTimer = new QTimer(this);
     m_shutdownTimer->setSingleShot(true);
-    connect(m_shutdownTimer, &QTimer::timeout, this, &UIController::onKeyLongPressTimeout);
+    connect(m_shutdownTimer, &QTimer::timeout, this, &InteractionArbiter::onKeyLongPressTimeout);
 
-    connect(m_recognizer, &GestureRecognizer::touchesStarted,   this, &UIController::onTouchesStarted);
-    connect(m_recognizer, &GestureRecognizer::touchesReleased,  this, &UIController::onTouchesReleased);
-    connect(m_recognizer, &GestureRecognizer::tapDetected,       this, &UIController::onTapDetected);
-    connect(m_recognizer, &GestureRecognizer::doubleTapDetected,this, &UIController::onDoubleTapDetected);
-    connect(m_recognizer, &GestureRecognizer::longPressDetected, this, &UIController::onLongPressDetected);
-    connect(m_recognizer, &GestureRecognizer::swipeUpdate,       this, &UIController::onSwipeUpdate);
-    connect(m_recognizer, &GestureRecognizer::pinchUpdate,       this, &UIController::onPinchUpdate);
+    connect(m_recognizer, &GestureRecognizer::touchesStarted,   this, &InteractionArbiter::onTouchesStarted);
+    connect(m_recognizer, &GestureRecognizer::touchesReleased,  this, &InteractionArbiter::onTouchesReleased);
+    connect(m_recognizer, &GestureRecognizer::tapDetected,       this, &InteractionArbiter::onTapDetected);
+    connect(m_recognizer, &GestureRecognizer::doubleTapDetected,this, &InteractionArbiter::onDoubleTapDetected);
+    connect(m_recognizer, &GestureRecognizer::longPressDetected, this, &InteractionArbiter::onLongPressDetected);
+    connect(m_recognizer, &GestureRecognizer::swipeUpdate,       this, &InteractionArbiter::onSwipeUpdate);
+    connect(m_recognizer, &GestureRecognizer::pinchUpdate,       this, &InteractionArbiter::onPinchUpdate);
 }
 
-void UIController::init(App* app) {
+void InteractionArbiter::init(App* app) {
     m_app = app;
     auto& bus = EventBus::instance();
-    connect(&bus, &EventBus::rawKeySignal,   this, &UIController::handleRawKey);
-    connect(&bus, &EventBus::rawTouchSignal, this, &UIController::handleRawTouch);
+    connect(&bus, &EventBus::rawKeySignal,   this, &InteractionArbiter::handleRawKey);
+    connect(&bus, &EventBus::rawTouchSignal, this, &InteractionArbiter::handleRawTouch);
 }
 
 // ===================================================================
 // HARDWARE EVENT HANDLERS
 // ===================================================================
 
-void UIController::handleRawKey(bool pressed) {
+void InteractionArbiter::handleRawKey(bool pressed) {
     if (!m_app) return;
 
     if (pressed) {
@@ -66,7 +66,7 @@ void UIController::handleRawKey(bool pressed) {
     }
 }
 
-void UIController::onKeyLongPressTimeout() {
+void InteractionArbiter::onKeyLongPressTimeout() {
     if (!m_app) return;
 
     m_app->showConfirmDialog("CONFIRM POWER OFF?", []() {
@@ -77,7 +77,7 @@ void UIController::onKeyLongPressTimeout() {
     });
 }
 
-void UIController::handleRawTouch(const QList<RawTouchPoint>& points) {
+void InteractionArbiter::handleRawTouch(const QList<RawTouchPoint>& points) {
     const bool isTouching = !points.isEmpty();
     const bool isInitialContact = (isTouching && !m_wasTouching);
 
@@ -126,7 +126,7 @@ void UIController::handleRawTouch(const QList<RawTouchPoint>& points) {
 // GESTURE SESSION ARBITRATION
 // ===================================================================
 
-void UIController::onTouchesStarted() {
+void InteractionArbiter::onTouchesStarted() {
     if (m_app && m_app->activeView()) {
         m_app->activeView()->onGestureStarted();
     }
@@ -136,7 +136,7 @@ void UIController::onTouchesStarted() {
     clearHoverState();
 }
 
-void UIController::onSwipeUpdate(const QPoint& start, int dx, int dy) {
+void InteractionArbiter::onSwipeUpdate(const QPoint& start, int dx, int dy) {
     if (!m_app) return;
     const QPoint currentPos = start + QPoint(dx, dy);
 
@@ -205,7 +205,7 @@ void UIController::onSwipeUpdate(const QPoint& start, int dx, int dy) {
     }
 }
 
-void UIController::onTouchesReleased(const QPoint& start, int dx, int dy, float vx, float vy) {
+void InteractionArbiter::onTouchesReleased(const QPoint& start, int dx, int dy, float vx, float vy) {
     if (!m_app) return;
     const QPoint finalPos = start + QPoint(dx, dy);
     clearHoverState();
@@ -235,7 +235,7 @@ void UIController::onTouchesReleased(const QPoint& start, int dx, int dy, float 
 // SEMANTIC GESTURE HANDLERS
 // ===================================================================
 
-void UIController::onTapDetected(const QPoint& start, int dx, int dy) {
+void InteractionArbiter::onTapDetected(const QPoint& start, int dx, int dy) {
     const QPoint tapPos = start + QPoint(dx, dy);
 
     // Modal overlays handle their own release events (e.g., for dismissing).
@@ -252,7 +252,7 @@ void UIController::onTapDetected(const QPoint& start, int dx, int dy) {
     }
 }
 
-void UIController::onDoubleTapDetected(const QPoint& start, int dx, int dy) {
+void InteractionArbiter::onDoubleTapDetected(const QPoint& start, int dx, int dy) {
     const QPoint pos = start + QPoint(dx, dy);
 
     if (isViewInteractionAllowed(pos)) {
@@ -262,7 +262,7 @@ void UIController::onDoubleTapDetected(const QPoint& start, int dx, int dy) {
     }
 }
 
-void UIController::onLongPressDetected(const QPoint& start) {
+void InteractionArbiter::onLongPressDetected(const QPoint& start) {
     if (isViewInteractionAllowed(start)) {
         if (m_app && m_app->activeView()) {
             m_app->activeView()->onLongPressDetected(start);
@@ -270,7 +270,7 @@ void UIController::onLongPressDetected(const QPoint& start) {
     }
 }
 
-void UIController::onPinchUpdate(const QPoint& center, float factor) {
+void InteractionArbiter::onPinchUpdate(const QPoint& center, float factor) {
     if (isViewInteractionAllowed(center)) {
         if (m_app && m_app->activeView()) {
             m_app->activeView()->onPinchUpdate(center, factor);
@@ -282,7 +282,7 @@ void UIController::onPinchUpdate(const QPoint& center, float factor) {
 // UTILITIES
 // ===================================================================
 
-QWidget* UIController::findTargetWidget(const QPoint& globalPos) {
+QWidget* InteractionArbiter::findTargetWidget(const QPoint& globalPos) {
     if (!m_app) return nullptr;
 
     QWidget* target = m_app->findWidgetAt(globalPos);
@@ -301,7 +301,7 @@ QWidget* UIController::findTargetWidget(const QPoint& globalPos) {
     return nullptr;
 }
 
-void UIController::injectMouseEvent(QWidget* target, QEvent::Type type, const QPoint& globalPos) {
+void InteractionArbiter::injectMouseEvent(QWidget* target, QEvent::Type type, const QPoint& globalPos) {
     if (!target) return;
 
     QPoint localPos = target->mapFromGlobal(globalPos);
@@ -309,7 +309,7 @@ void UIController::injectMouseEvent(QWidget* target, QEvent::Type type, const QP
     QApplication::sendEvent(target, &mouseEvent);
 }
 
-void UIController::updateHoverState(const QPoint& globalPos) {
+void InteractionArbiter::updateHoverState(const QPoint& globalPos) {
     QWidget* target = findTargetWidget(globalPos);
 
     if (target != m_currentHoveredWidget) {
@@ -325,7 +325,7 @@ void UIController::updateHoverState(const QPoint& globalPos) {
     }
 }
 
-void UIController::clearHoverState() {
+void InteractionArbiter::clearHoverState() {
     if (m_currentHoveredWidget) {
         QEvent leave(QEvent::Leave);
         QApplication::sendEvent(m_currentHoveredWidget, &leave);
@@ -333,7 +333,7 @@ void UIController::clearHoverState() {
     }
 }
 
-QWidget* UIController::findTopModalWidget() {
+QWidget* InteractionArbiter::findTopModalWidget() {
     if (!m_app) return nullptr;
 
     const QObjectList& children = m_app->children();
@@ -346,7 +346,7 @@ QWidget* UIController::findTopModalWidget() {
     return nullptr;
 }
 
-bool UIController::isViewInteractionAllowed(const QPoint& globalPos) {
+bool InteractionArbiter::isViewInteractionAllowed(const QPoint& globalPos) {
     // 1. Z-Order Guard: If a modal dialog is visible, block all background interaction.
     if (findTopModalWidget()) return false;
 

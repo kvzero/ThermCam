@@ -24,7 +24,7 @@ public:
 
     explicit CapsuleButton(QWidget* parent = nullptr);
 
-    /* --- UIController Interaction Protocol --- */
+    /* --- InteractionArbiter Interaction Protocol --- */
     Q_INVOKABLE bool handleInteractionUpdate(QPoint localPos);
     Q_INVOKABLE void finalizeGesture(int dy);
     Q_INVOKABLE void longPressed();

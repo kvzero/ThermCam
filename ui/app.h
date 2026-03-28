@@ -18,7 +18,7 @@ class TransitionLayer;
  * @brief The Root UI Container (Body).
  *
  * Manages the physical layout, Z-order layering, and view lifecycle.
- * It provides the "stage" for UIController to orchestrate logic.
+ * It provides the "stage" for InteractionArbiter to orchestrate logic.
  *
  * Layer Structure:
  * - Layer 0: View Stack (Camera, Gallery, Settings)
@@ -52,7 +52,7 @@ public:
 
     /**
      * @brief Locate a widget at global coordinates.
-     * Used by UIController for touch routing and hit testing.
+     * Used by InteractionArbiter for touch routing and hit testing.
      */
     QWidget* findWidgetAt(const QPoint& globalPos);
 

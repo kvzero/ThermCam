@@ -12,7 +12,7 @@ class HudContainer;
 /**
  * @brief The Main View (Layer 0 Content + Layer 1 HUD).
  *
- * Refactored to act as a passive executor for UIController commands.
+ * Refactored to act as a passive executor for InteractionArbiter commands.
  */
 class CameraView : public BaseView {
     Q_OBJECT
@@ -30,14 +30,14 @@ public:
     void handleKeyShortPress() override;
     void resetTransientUi() override;
 
-    /* --- Semantic Gestures (From UIController) --- */
+    /* --- Semantic Gestures (From InteractionArbiter) --- */
     void onGestureStarted() override;
     void onGestureUpdate(const QPoint& /*start*/, int dx, int dy) override;
     void onGestureFinished(const QPoint& /*start*/, int dx, int dy, float vx, float vy) override;
     void onLongPressDetected(const QPoint& start) override;
 
-    /* --- Widget Discovery (For UIController Hit-Testing) --- */
-    // Allows UIController to know if the user tapped the capsule or mode button
+    /* --- Widget Discovery (For InteractionArbiter Hit-Testing) --- */
+    // Allows InteractionArbiter to know if the user tapped the capsule or mode button
     QWidget* capsuleWidget() override;
     QWidget* modeSelectorWidget() override;
 

@@ -65,7 +65,7 @@ void ModeSelector::setVStretch(qreal s) {
     update();
 }
 
-/** --- Interaction Logic (UIController Implementation) --- */
+/** --- Interaction Logic (InteractionArbiter Implementation) --- */
 void ModeSelector::mousePressEvent(QMouseEvent* event) {
     // Reset interaction gate.
     m_isPressed = false;

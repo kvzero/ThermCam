@@ -24,7 +24,7 @@ class GalleryTopBar : public QWidget {
 public:
     explicit GalleryTopBar(QWidget* parent = nullptr);
 
-    /* --- UIController Interaction Protocol --- */
+    /* --- InteractionArbiter Interaction Protocol --- */
     Q_INVOKABLE bool handleInteractionUpdate(QPoint localPos);
     Q_INVOKABLE void finalizeGesture(int dy);
 

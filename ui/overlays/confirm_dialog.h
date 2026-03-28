@@ -42,7 +42,7 @@ public:
     void showMessage(const QString& title, std::function<void()> onConfirm);
     void dismiss();
 
-    /** --- UIController Interaction Protocol --- */
+    /** --- InteractionArbiter Interaction Protocol --- */
     Q_INVOKABLE bool handleInteractionUpdate(QPoint localPos);
     Q_INVOKABLE void finalizeGesture(int dy);
 

@@ -8,7 +8,7 @@
  * @brief The abstract contract for all full-screen views.
  *
  * Defines a complete set of semantic gesture handlers that align with the
- * GestureRecognizer's output signals. This allows UIController to dispatch
+ * GestureRecognizer's output signals. This allows InteractionArbiter to dispatch
  * high-level interaction commands without knowing the view's implementation details.
  *
  * NOTE: Unused parameter names in the base virtual function definitions are
@@ -25,19 +25,19 @@ public:
     virtual void onEnter() {}
     virtual void onExit() {}
 
-    /* --- Widget Discovery (For UIController Hit-Testing) --- */
+    /* --- Widget Discovery (For InteractionArbiter Hit-Testing) --- */
 
-    // Allows UIController to know if the user tapped the capsule or mode button
+    // Allows InteractionArbiter to know if the user tapped the capsule or mode button
     virtual QWidget* capsuleWidget() { return nullptr; }
     virtual QWidget* modeSelectorWidget() { return nullptr; }
 
-    /* --- Hardware Key Dispatcher (from UIController) --- */
+    /* --- Hardware Key Dispatcher (from InteractionArbiter) --- */
     /**
      * @brief Must be implemented by derived classes to handle the primary physical button.
      */
     virtual void handleKeyShortPress() = 0;
 
-    /* --- Gesture Dispatchers (from UIController) --- */
+    /* --- Gesture Dispatchers (from InteractionArbiter) --- */
 
     /** @brief Interrupts all ongoing animations the moment a touch is detected. */
     virtual void onGestureStarted() {}

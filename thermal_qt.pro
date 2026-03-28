@@ -38,7 +38,7 @@ SOURCES     +=  main.cpp \
                 ui/app.cpp \
                 ui/gesture_recognizer.cpp \
                 ui/overlays/media_viewer.cpp \
-                ui/ui_controller.cpp \
+                ui/interaction_arbiter.cpp \
                 ui/views/camera_view.cpp \
                 ui/views/gallery_view.cpp \
                 ui/overlays/confirm_dialog.cpp \
@@ -78,7 +78,7 @@ HEADERS     +=  core/global_context.h \
                 ui/app.h \
                 ui/gesture_recognizer.h \
                 ui/overlays/media_viewer.h \
-                ui/ui_controller.h \
+                ui/interaction_arbiter.h \
                 ui/views/base_view.h \
                 ui/views/camera_view.h \
                 ui/views/gallery_view.h \

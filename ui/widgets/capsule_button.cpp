@@ -27,7 +27,7 @@ CapsuleButton::CapsuleButton(QWidget* parent) : QWidget(parent) {
 }
 
 void CapsuleButton::mousePressEvent(QMouseEvent* event) {
-    // Local capture starts. UIController will now delegate handleInteractionUpdate to us.
+    // Local capture starts. InteractionArbiter will now delegate handleInteractionUpdate to us.
     m_isInside = true;
     m_glowPos = event->pos();
 
