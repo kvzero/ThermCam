@@ -24,6 +24,13 @@ void ScrollIndicator::updateState(qreal currentScroll, qreal maxScroll) {
     m_hideTimer->start(m_cfg.FADE_DELAY_MS);
 }
 
+void ScrollIndicator::forceHide() {
+    m_fadeAnim->stop();
+    m_hideTimer->stop();
+    m_opacity = 0.0;
+    emit opacityChanged();
+}
+
 void ScrollIndicator::initiateFadeOut() {
     m_fadeAnim->stop();
     m_fadeAnim->setStartValue(m_opacity);

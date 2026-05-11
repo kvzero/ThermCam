@@ -41,6 +41,7 @@ SOURCES     +=  main.cpp \
                 ui/interaction_arbiter.cpp \
                 ui/views/camera_view.cpp \
                 ui/views/gallery_view.cpp \
+                ui/views/settings_view.cpp \
                 ui/overlays/confirm_dialog.cpp \
                 ui/overlays/toast_manager.cpp \
                 ui/overlays/transition_layer.cpp \
@@ -51,6 +52,7 @@ SOURCES     +=  main.cpp \
                 ui/widgets/status_bar.cpp \
                 ui/widgets/capsule_button.cpp \
                 ui/widgets/mode_selector.cpp \
+                ui/widgets/settings_row.cpp \
                 ui/widgets/video_controlbar.cpp \
                 ui/widgets/viewer_topbar.cpp
 
@@ -82,6 +84,8 @@ HEADERS     +=  core/global_context.h \
                 ui/views/base_view.h \
                 ui/views/camera_view.h \
                 ui/views/gallery_view.h \
+                ui/views/settings_view.h \
+                core/settings_types.h \
                 ui/overlays/confirm_dialog.h \
                 ui/overlays/toast_manager.h \
                 ui/overlays/transition_layer.h \
@@ -92,6 +96,7 @@ HEADERS     +=  core/global_context.h \
                 ui/widgets/status_bar.h \
                 ui/widgets/capsule_button.h \
                 ui/widgets/mode_selector.h \
+                ui/widgets/settings_row.h \
                 ui/widgets/video_controlbar.h \
                 ui/widgets/viewer_topbar.h
 
@@ -107,5 +112,3 @@ LIBS        +=  -L$$PWD/hardware/imaging/seekcam/lib -lseekcamera \
 qnx: target.path = /tmp/$${TARGET}/bin
 else: unix:!android: target.path = /opt/$${TARGET}/bin
 !isEmpty(target.path): INSTALLS += target
-
-

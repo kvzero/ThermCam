@@ -3,7 +3,7 @@
 #include "ui/views/base_view.h"
 #include "ui/views/camera_view.h"
 #include "ui/views/gallery_view.h"
-// #include "ui/views/settings_view.h"
+#include "ui/views/settings_view.h"
 // #include "ui/overlays/quick_settings.h"
 #include "ui/overlays/confirm_dialog.h"
 #include "ui/overlays/toast_manager.h"
@@ -39,8 +39,8 @@ void App::initLayer_Stack() {
     m_viewStack->addWidget(m_galleryView);
 
     // 3. Settings View
-    // m_settingsView = new SettingsView(this);
-    // m_viewStack->addWidget(m_settingsView);
+    m_settingsView = new SettingsView(this);
+    m_viewStack->addWidget(m_settingsView);
 
     // Initialize default view
     if (m_cameraView) {
@@ -58,9 +58,9 @@ void App::initLayer_Stack() {
         switchView(App::View_Gallery, anchor);
     });
 
-//    connect(&bus, &EventBus::settingsRequested, this, [this](const QRect& anchor) {
-//        switchView(App::View_Settings, anchor);
-//    });
+    connect(&bus, &EventBus::settingsRequested, this, [this](const QRect& anchor) {
+        switchView(App::View_Settings, anchor);
+    });
 }
 
 void App::initLayer_Overlays() {
@@ -117,9 +117,9 @@ void App::switchView(ViewType type, const QRect& sourceAnchor) {
 
         if (type == View_Gallery || (type == View_Camera && oldView == m_galleryView)) {
             targetIcon = QChar(0xfa4a); // Gallery Icon
-        } /*else if (type == View_Settings || (type == View_Camera && oldView == m_settingsView)) {
+        } else if (type == View_Settings || (type == View_Camera && oldView == m_settingsView)) {
             targetIcon = QChar(0xf69e); // Settings Icon
-        }*/
+        }
 
         // ========================================================
         // Case 1: Expanding (e.g., Camera -> Gallery)

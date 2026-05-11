@@ -32,6 +32,12 @@ public:
     void updateState(qreal currentScroll, qreal maxScroll);
 
     /**
+     * @brief Immediately interrupts all indicator animations/timers and hides the bar.
+     * Used by structural view transitions where scrollbar visibility must not leak across states.
+     */
+    void forceHide();
+
+    /**
      * @brief Renders the indicator onto the parent's canvas.
      * Computes geometry, compression, and alpha blending in real-time.
      */

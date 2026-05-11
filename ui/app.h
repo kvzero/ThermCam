@@ -8,7 +8,7 @@ class QStackedWidget;
 class BaseView;
 
 class GalleryView;
-// class SettingsView;
+class SettingsView;
 // class QuickSettings;
 class ConfirmDialog;
 class ToastManager;
@@ -76,7 +76,7 @@ private:
     QStackedWidget* m_viewStack = nullptr;
     BaseView* m_cameraView = nullptr;
     BaseView* m_galleryView = nullptr;
-    // BaseView* m_settingsView = nullptr;
+    BaseView* m_settingsView = nullptr;
 
     /* Layer 1: Visual Transitions */
     TransitionLayer* m_transitionLayer = nullptr;
