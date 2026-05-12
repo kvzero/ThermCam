@@ -32,6 +32,11 @@ public:
      */
     void init(App* app);
 
+    /**
+     * @brief Cancels the current touch session and suppresses events until release.
+     */
+    void cancelTouchSession();
+
 private slots:
     /* --- Raw Hardware Inputs (from EventBus) --- */
     void handleRawKey(bool pressed);

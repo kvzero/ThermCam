@@ -57,6 +57,11 @@ public:
      */
     void reset();
 
+    /**
+     * @brief Cancel current touch session until all fingers are lifted.
+     */
+    void cancel();
+
 signals:
     /** @brief Emitted instantly on first touch to interrupt animations. */
     void touchesStarted();
@@ -94,7 +99,8 @@ private:
         State_Pending,      /**< Waiting to determine gesture type */
         State_Swiping,      /**< Confirmed movement */
         State_LongPressed,  /**< Long press triggered (can still move) */
-        State_Pinching      /**< Two fingers detected */
+        State_Pinching,     /**< Two fingers detected */
+        State_Canceled      /**< Session canceled; ignore input until release */
     };
 
     void handleSingleTouch(const RawTouchPoint& p);

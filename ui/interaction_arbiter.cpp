@@ -44,6 +44,31 @@ void InteractionArbiter::init(App* app) {
     connect(&bus, &EventBus::rawTouchSignal, this, &InteractionArbiter::handleRawTouch);
 }
 
+void InteractionArbiter::cancelTouchSession() {
+    clearHoverState();
+
+    if (m_pressedWidget) {
+        const QMetaObject* meta = m_pressedWidget->metaObject();
+        if (meta->indexOfMethod("finalizeGesture(int)") != -1) {
+            QMetaObject::invokeMethod(m_pressedWidget, "finalizeGesture",
+                                      Qt::DirectConnection,
+                                      Q_ARG(int, 0));
+        }
+        m_pressedWidget = nullptr;
+    }
+
+    m_intentLocked = false;
+    m_isGlobalGesture = false;
+
+    if (m_recognizer) {
+        if (m_wasTouching) {
+            m_recognizer->cancel();
+        } else {
+            m_recognizer->reset();
+        }
+    }
+}
+
 // ===================================================================
 // HARDWARE EVENT HANDLERS
 // ===================================================================

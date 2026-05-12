@@ -8,6 +8,7 @@
 #include "ui/overlays/confirm_dialog.h"
 #include "ui/overlays/toast_manager.h"
 #include "ui/overlays/transition_layer.h"
+#include "ui/interaction_arbiter.h"
 
 #include <QStackedWidget>
 #include <QResizeEvent>
@@ -108,6 +109,8 @@ void App::switchView(ViewType type, const QRect& sourceAnchor) {
     QWidget* targetWidget = m_viewStack->widget(index);
 
     if (oldView == targetWidget) return;
+
+    InteractionArbiter::instance().cancelTouchSession();
 
     if (m_transitionLayer) {
         /* Define visual identity for the transition based on the destination.

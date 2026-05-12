@@ -29,9 +29,24 @@ void GestureRecognizer::reset() {
     m_vy = 0.0f;
 }
 
+void GestureRecognizer::cancel() {
+    m_longPressTimer->stop();
+    m_state = State_Canceled;
+    m_vx = 0.0f;
+    m_vy = 0.0f;
+}
+
 void GestureRecognizer::update(const QList<RawTouchPoint>& points) {
     int activeCount = 0;
     for (const auto& p : points) if (p.active) activeCount++;
+
+    if (m_state == State_Canceled) {
+        m_longPressTimer->stop();
+        if (activeCount == 0) {
+            reset();
+        }
+        return;
+    }
 
     // Priority 1: Physical Conclusion (N -> 0)
     // Regardless of the semantic gesture, a complete lift-off triggers a physical settlement.
