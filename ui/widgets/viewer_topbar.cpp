@@ -122,6 +122,16 @@ void ViewerTopBar::finalizeGesture(int) {
     update();
 }
 
+void ViewerTopBar::cancelGesture() {
+    triggerGlowAnimation(m_backGlowAnim, false);
+    triggerGlowAnimation(m_deleteGlowAnim, false);
+    triggerGlowAnimation(m_timeGlowAnim, false);
+    m_hoverBack = false;
+    m_hoverDelete = false;
+    m_hoverTime = false;
+    update();
+}
+
 void ViewerTopBar::drawGlowEffect(QPainter& p, const QPainterPath& clipPath, qreal glowAlpha) {
     if (glowAlpha <= 0.01) return;
 

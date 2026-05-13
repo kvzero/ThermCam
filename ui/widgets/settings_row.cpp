@@ -67,6 +67,13 @@ void SettingsBaseRow::finalizeGesture(int /*dy*/) {
     if (shouldActivate) emit activated();
 }
 
+void SettingsBaseRow::cancelGesture() {
+    if (!m_isPressed && !m_clickCanceled) return;
+    m_isPressed = false;
+    m_clickCanceled = false;
+    onPressStateChanged();
+}
+
 void SettingsBaseRow::onPressStateChanged() {
     update();
 }

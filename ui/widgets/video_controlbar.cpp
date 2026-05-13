@@ -112,6 +112,16 @@ void VideoControlBar::finalizeGesture(int) {
     update();
 }
 
+void VideoControlBar::cancelGesture() {
+    m_hoverPlay = false;
+    if (m_isScrubbing) {
+        m_isScrubbing = false;
+        m_scrubTargetMs = -1;
+        emit scrubbingStateChanged(false);
+    }
+    update();
+}
+
 void VideoControlBar::paintEvent(QPaintEvent*) {
     if (m_opacity <= 0.01) return;
 

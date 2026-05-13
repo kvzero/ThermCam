@@ -45,6 +45,7 @@ public:
     /** --- InteractionArbiter Interaction Protocol --- */
     Q_INVOKABLE bool handleInteractionUpdate(QPoint localPos);
     Q_INVOKABLE void finalizeGesture(int dy);
+    Q_INVOKABLE void cancelGesture();
 
     /** --- Internal Feedback Interface --- */
     void setInteractionActive(bool active, const QPoint& localPos = QPoint());

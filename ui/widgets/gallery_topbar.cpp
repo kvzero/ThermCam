@@ -145,6 +145,13 @@ void GalleryTopBar::finalizeGesture(int) {
     update();
 }
 
+void GalleryTopBar::cancelGesture() {
+    triggerGlowAnimation(m_leftGlowAnim, false);
+    triggerGlowAnimation(m_rightGlowAnim, false);
+    m_hoverLeft = m_hoverRightCancel = m_hoverTrash = false;
+    update();
+}
+
 void GalleryTopBar::mousePressEvent(QMouseEvent* event) {
     handleInteractionUpdate(event->pos());
     QWidget::mousePressEvent(event);

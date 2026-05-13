@@ -128,6 +128,20 @@ void ToastManager::finalizeGesture(int /*unused*/) {
     }
 }
 
+void ToastManager::cancelGesture() {
+    m_isFirstGestureMove = true;
+    m_anim->stop();
+    disconnect(m_anim, &QPropertyAnimation::finished, this, &ToastManager::processQueue);
+
+    m_anim->setStartValue(m_offsetY);
+    m_anim->setEndValue(0);
+    m_anim->start();
+
+    if (isVisible()) {
+        m_autoHideTimer->start(RESUME_DURATION_MS);
+    }
+}
+
 void ToastManager::setOffsetY(int y) {
     m_offsetY = y;
     move(0, m_baseY + m_offsetY);

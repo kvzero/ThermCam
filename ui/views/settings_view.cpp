@@ -96,6 +96,12 @@ void SettingsTopBar::finalizeGesture(int /*dy*/) {
     update();
 }
 
+void SettingsTopBar::cancelGesture() {
+    if (m_pressedZone == PressZone::None) return;
+    m_pressedZone = PressZone::None;
+    update();
+}
+
 void SettingsTopBar::resizeEvent(QResizeEvent* /*event*/) {
     const int h = height();
     const int w = width();

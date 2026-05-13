@@ -175,6 +175,10 @@ void ConfirmDialog::finalizeGesture(int) {
     setInteractionActive(false);
 }
 
+void ConfirmDialog::cancelGesture() {
+    setInteractionActive(false);
+}
+
 void ConfirmDialog::resizeEvent(QResizeEvent* event) {
     const int w = event->size().width();
     const int h = event->size().height();

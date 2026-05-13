@@ -30,6 +30,7 @@ public:
 
     Q_INVOKABLE bool handleInteractionUpdate(QPoint localPos);
     Q_INVOKABLE void finalizeGesture(int dy = 0);
+    Q_INVOKABLE void cancelGesture();
 
     qreal opacity() const { return m_opacity; }
     void setOpacity(qreal o) { m_opacity = o; update(); }

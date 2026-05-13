@@ -121,6 +121,17 @@ void CapsuleButton::finalizeGesture(int) {
     update();
 }
 
+void CapsuleButton::cancelGesture() {
+    m_longPressTimer->stop();
+    m_glowAnim->stop();
+    m_glowAnim->setEndValue(0.0);
+    m_glowAnim->start();
+
+    m_currentZone = ActiveZone::None;
+    m_isInside = false;
+    update();
+}
+
 void CapsuleButton::longPressed() {
     emit EventBus::instance().hapticRequested(4);
 

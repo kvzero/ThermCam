@@ -54,6 +54,7 @@ public:
      * @brief Evaluates the final position to trigger dismissal or snap-back.
      */
     Q_INVOKABLE void finalizeGesture(int finalDy);
+    Q_INVOKABLE void cancelGesture();
 
     /* --- Property Accessors --- */
     int offsetY() const { return m_offsetY; }

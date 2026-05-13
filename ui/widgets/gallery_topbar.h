@@ -27,6 +27,7 @@ public:
     /* --- InteractionArbiter Interaction Protocol --- */
     Q_INVOKABLE bool handleInteractionUpdate(QPoint localPos);
     Q_INVOKABLE void finalizeGesture(int dy);
+    Q_INVOKABLE void cancelGesture();
 
     /* --- State Mutators --- */
     void setSelectionMode(bool active);

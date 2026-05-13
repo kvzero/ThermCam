@@ -49,10 +49,9 @@ void InteractionArbiter::cancelTouchSession() {
 
     if (m_pressedWidget) {
         const QMetaObject* meta = m_pressedWidget->metaObject();
-        if (meta->indexOfMethod("finalizeGesture(int)") != -1) {
-            QMetaObject::invokeMethod(m_pressedWidget, "finalizeGesture",
-                                      Qt::DirectConnection,
-                                      Q_ARG(int, 0));
+        if (meta->indexOfMethod("cancelGesture()") != -1) {
+            QMetaObject::invokeMethod(m_pressedWidget, "cancelGesture",
+                                      Qt::DirectConnection);
         }
         m_pressedWidget = nullptr;
     }

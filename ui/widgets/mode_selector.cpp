@@ -155,6 +155,15 @@ void ModeSelector::finalizeGesture(int) {
 
     update();
 }
+
+void ModeSelector::cancelGesture() {
+    m_longPressTimer->stop();
+    m_glowAnim->setEndValue(0.0);
+    m_glowAnim->start();
+    m_isPressed = false;
+    update();
+}
+
 void ModeSelector::longPressed() {
     if (m_state != State::Normal) return;
 

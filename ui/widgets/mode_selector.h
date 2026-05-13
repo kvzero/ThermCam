@@ -34,6 +34,7 @@ public:
     /** --- InteractionArbiter Protocol --- */
     Q_INVOKABLE bool handleInteractionUpdate(QPoint localPos);
     Q_INVOKABLE void finalizeGesture(int dy);
+    Q_INVOKABLE void cancelGesture();
     Q_INVOKABLE void longPressed();
     Q_INVOKABLE void collapse();
 

@@ -35,6 +35,7 @@ public:
     /** --- Interaction Protocol --- */
     Q_INVOKABLE bool handleInteractionUpdate(QPoint localPos);
     Q_INVOKABLE void finalizeGesture(int dy = 0);
+    Q_INVOKABLE void cancelGesture();
 
     /** @brief Main render pass */
     qreal opacity() const { return m_opacity; }
