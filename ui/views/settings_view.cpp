@@ -347,7 +347,7 @@ void SettingsView::onSecondaryRowActivated() {
     }
 
     if (auto* app = qobject_cast<App*>(window())) {
-        app->showConfirmDialog(sub[index].title.toUpper(), []() {});
+        app->showTextModal(sub[index].title.toUpper(), []() {});
     }
 }
 

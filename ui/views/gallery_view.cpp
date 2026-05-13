@@ -75,7 +75,7 @@ GalleryView::GalleryView(QWidget* parent) : BaseView(parent) {
 
     connect(m_viewer, &MediaViewer::deleteRequested, this, [this](int index) {
         if (auto* app = qobject_cast<App*>(window())) {
-            app->showConfirmDialog("DELETE MEDIA?", [this, index]() {
+            app->showTextModal("DELETE MEDIA?", [this, index]() {
                 GalleryService::instance().deleteMedia(index);
                 m_viewer->handleDeletion();
             });
@@ -371,7 +371,7 @@ void GalleryView::requestDeleteSelected() {
     if (m_selectedItems.isEmpty()) return;
 
     if (auto* app = qobject_cast<App*>(window())) {
-        app->showConfirmDialog("DELETE SELECTED?", [this]() {
+        app->showTextModal("DELETE SELECTED?", [this]() {
             QList<int> sortedList = m_selectedItems.values();
             std::sort(sortedList.begin(), sortedList.end(), std::greater<int>());
 

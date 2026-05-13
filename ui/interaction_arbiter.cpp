@@ -93,7 +93,7 @@ void InteractionArbiter::handleRawKey(bool pressed) {
 void InteractionArbiter::onKeyLongPressTimeout() {
     if (!m_app) return;
 
-    m_app->showConfirmDialog("CONFIRM POWER OFF?", []() {
+    m_app->showTextModal("CONFIRM POWER OFF?", []() {
         if (system("poweroff") != 0) {
             qWarning() << "[System] Shutdown command failed.";
         }

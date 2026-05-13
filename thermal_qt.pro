@@ -42,7 +42,7 @@ SOURCES     +=  main.cpp \
                 ui/views/camera_view.cpp \
                 ui/views/gallery_view.cpp \
                 ui/views/settings_view.cpp \
-                ui/overlays/confirm_dialog.cpp \
+                ui/overlays/modal_dialog.cpp \
                 ui/overlays/toast_manager.cpp \
                 ui/overlays/transition_layer.cpp \
                 ui/widgets/gallery_topbar.cpp \
@@ -86,7 +86,7 @@ HEADERS     +=  core/global_context.h \
                 ui/views/gallery_view.h \
                 ui/views/settings_view.h \
                 core/settings_types.h \
-                ui/overlays/confirm_dialog.h \
+                ui/overlays/modal_dialog.h \
                 ui/overlays/toast_manager.h \
                 ui/overlays/transition_layer.h \
                 ui/widgets/gallery_topbar.h \

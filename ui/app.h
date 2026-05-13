@@ -3,6 +3,7 @@
 
 #include <QWidget>
 #include <core/types.h>
+#include "ui/overlays/modal_dialog.h"
 
 class QStackedWidget;
 class BaseView;
@@ -10,9 +11,9 @@ class BaseView;
 class GalleryView;
 class SettingsView;
 // class QuickSettings;
-class ConfirmDialog;
 class ToastManager;
 class TransitionLayer;
+class TextModal;
 
 /**
  * @brief The Root UI Container (Body).
@@ -58,7 +59,9 @@ public:
 
     /* --- Accessors for System Overlays --- */
     // QuickSettings* quickSettings() const;
-    void showConfirmDialog(const QString& title, std::function<void()> onConfirm);
+    void showTextModal(const QString& title,
+                       std::function<void()> onPrimaryAction,
+                           ModalLevel level = ModalLevel::Critical);
     void showToast(const QString& message, ToastLevel level);
 
 protected:
@@ -83,7 +86,7 @@ private:
 
     /* Layer 2: Global System Overlays */
     // QuickSettings* m_quickSettings = nullptr;
-    ConfirmDialog* m_confirmDialog = nullptr;
+    TextModal* m_textModal = nullptr;
     ToastManager* m_toastManager = nullptr;
 };
 

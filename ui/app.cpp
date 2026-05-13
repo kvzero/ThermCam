@@ -5,7 +5,7 @@
 #include "ui/views/gallery_view.h"
 #include "ui/views/settings_view.h"
 // #include "ui/overlays/quick_settings.h"
-#include "ui/overlays/confirm_dialog.h"
+#include "ui/overlays/modal_dialog.h"
 #include "ui/overlays/toast_manager.h"
 #include "ui/overlays/transition_layer.h"
 #include "ui/interaction_arbiter.h"
@@ -13,6 +13,7 @@
 #include <QStackedWidget>
 #include <QResizeEvent>
 #include <QDebug>
+#include <utility>
 
 App::App(QWidget *parent) : QWidget(parent) {
     // Embedded fullscreen setup
@@ -74,8 +75,8 @@ void App::initLayer_Overlays() {
     // m_quickSettings->hide();
 
     // System Dialogs
-    m_confirmDialog = new ConfirmDialog(this);
-    m_confirmDialog->hide();
+    m_textModal = new TextModal(this);
+    m_textModal->hide();
 
     // Toast Notifications
     m_toastManager = new ToastManager(this);
@@ -84,10 +85,20 @@ void App::initLayer_Overlays() {
     connect(&EventBus::instance(), &EventBus::toastRequested, this, &App::showToast);
 }
 
-void App::showConfirmDialog(const QString& title, std::function<void()> onConfirm) {
-    if (m_confirmDialog) {
-        m_confirmDialog->raise();
-        m_confirmDialog->showMessage(title, onConfirm);
+void App::showTextModal(const QString& title,
+                        std::function<void()> onPrimaryAction,
+                            ModalLevel level) {
+    if (m_textModal) {
+        m_textModal->raise();
+        ModalSpec spec;
+        spec.level = level;
+        spec.primaryText = "CONFIRM";
+        spec.secondaryText = "CANCEL";
+        spec.dismissOnMaskTap = true;
+        spec.onPrimaryAction = std::move(onPrimaryAction);
+
+        m_textModal->setMessage(title);
+        m_textModal->present(spec);
     }
     if (m_toastManager && m_toastManager->isVisible()) {
         m_toastManager->raise();
@@ -223,6 +234,6 @@ void App::resizeEvent(QResizeEvent* event) {
 
     // Layer 2: System Overlays
     // if (m_quickSettings) m_quickSettings->resize(s.width(), m_quickSettings->height()); // Height managed internally
-    if (m_confirmDialog) m_confirmDialog->resize(s);
+    if (m_textModal) m_textModal->resize(s);
     if (m_toastManager) m_toastManager->resize(s.width(), qRound(s.height() * 0.2));
 }
