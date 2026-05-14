@@ -110,9 +110,9 @@ void ViewerTopBar::finalizeGesture(int) {
     triggerGlowAnimation(m_timeGlowAnim, false);
 
     if (m_hoverBack) {
-        QTimer::singleShot(100, this, &ViewerTopBar::backRequested);
+        emit backRequested();
     } else if (m_hoverDelete) {
-        QTimer::singleShot(100, this, &ViewerTopBar::deleteRequested);
+        emit deleteRequested();
     }
     // Time label is usually purely informational, so no action on hoverTime
 

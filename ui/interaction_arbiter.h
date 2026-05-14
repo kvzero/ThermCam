@@ -80,7 +80,6 @@ private:
 
     /* Internal Helpers */
     QWidget* findTargetWidget(const QPoint& globalPos);
-    QWidget* findTopModalWidget();
     void injectMouseEvent(QWidget* target, QEvent::Type type, const QPoint& globalPos);
     void updateHoverState(const QPoint& globalPos);
     void clearHoverState();

@@ -3,7 +3,6 @@
 #include <QPainterPath>
 #include <QEasingCurve>
 #include <QMouseEvent>
-#include <QTimer>
 #include <QFontMetricsF>
 #include <cmath>
 
@@ -133,8 +132,7 @@ void GalleryTopBar::finalizeGesture(int) {
         else emit backRequested();
     }
     else if (m_hoverTrash) {
-        /* Intent: Delay execution by 100ms to bypass InteractionArbiter's synthetic Tap Collision */
-        QTimer::singleShot(100, this, &GalleryTopBar::deleteRequested);
+        emit deleteRequested();
     }
     else if (m_hoverRightCancel) {
         setSelectionMode(!m_isSelectionMode);

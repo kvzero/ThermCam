@@ -120,17 +120,7 @@ void InteractionArbiter::handleRawTouch(const QList<RawTouchPoint>& points) {
         }
 
         /**
-         * STAGE 2: MODAL ARBITRATION
-         * The modal overlay acts as a firewall for all underlying layers.
-         */
-        QWidget* activeModal = findTopModalWidget();
-        if (activeModal) {
-            bool isInsideModal = (hitWidget == activeModal || activeModal->isAncestorOf(hitWidget));
-            if (!isInsideModal) hitWidget = activeModal;
-        }
-
-        /**
-         * STAGE 3: PRIMARY INTENT LOCKDOWN
+         * STAGE 2: PRIMARY INTENT LOCKDOWN
          * We capture the touch only if the widget identifies as a solid UI entity.
          * Widgets without 'isInteractable' are treated as transparent background.
          */
@@ -222,8 +212,6 @@ void InteractionArbiter::onSwipeUpdate(const QPoint& start, int dx, int dy) {
     // ---------------------------------------------------------------
     // PHASE 4: VIEW-LEVEL FALLBACK
     // ---------------------------------------------------------------
-    if (findTopModalWidget()) return;
-
     if (auto* activeView = m_app->activeView()) {
         activeView->onGestureUpdate(start, dx, dy);
     }
@@ -262,13 +250,7 @@ void InteractionArbiter::onTouchesReleased(const QPoint& start, int dx, int dy, 
 void InteractionArbiter::onTapDetected(const QPoint& start, int dx, int dy) {
     const QPoint tapPos = start + QPoint(dx, dy);
 
-    // Modal overlays handle their own release events (e.g., for dismissing).
-    if (QWidget* modal = findTopModalWidget()) {
-        injectMouseEvent(modal, QEvent::MouseButtonRelease, tapPos);
-        return;
-    }
-
-    // Only forward Tap to the View if it wasn't consumed by a high-priority Widget.
+    // Only forward Tap to the View when the hit target is not an interactable widget.
     if (isViewInteractionAllowed(tapPos)) {
         if (m_app && m_app->activeView()) {
             m_app->activeView()->onTapDetected(tapPos);
@@ -357,24 +339,8 @@ void InteractionArbiter::clearHoverState() {
     }
 }
 
-QWidget* InteractionArbiter::findTopModalWidget() {
-    if (!m_app) return nullptr;
-
-    const QObjectList& children = m_app->children();
-    for (int i = children.size() - 1; i >= 0; --i) {
-        QWidget* widget = qobject_cast<QWidget*>(children.at(i));
-        if (widget && widget->isVisible() && widget->property("modalOverlay").toBool()) {
-            return widget;
-        }
-    }
-    return nullptr;
-}
-
 bool InteractionArbiter::isViewInteractionAllowed(const QPoint& globalPos) {
-    // 1. Z-Order Guard: If a modal dialog is visible, block all background interaction.
-    if (findTopModalWidget()) return false;
-
-    // 2. Interactive Guard: If the touch is on a primary control (isInteractable),
+    // Interactive Guard: If the touch is on a primary control (isInteractable),
     // we block the view fallback to prevent "Ghost Clicks" or accidental background scrolling.
     QWidget* target = findTargetWidget(globalPos);
     if (target && target->property(PROP_IS_INTERACTABLE).toBool()) {

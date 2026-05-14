@@ -1,6 +1,7 @@
 #include "modal_dialog.h"
 
 #include "core/event_bus.h"
+#include "ui/interaction_arbiter.h"
 
 #include <QFont>
 #include <QFontMetrics>
@@ -27,6 +28,7 @@ ModalBase::ModalBase(QWidget* parent) : QWidget(parent) {
 }
 
 void ModalBase::present(const ModalSpec& spec) {
+    InteractionArbiter::instance().cancelTouchSession();
     m_spec = spec;
 
     clearPressState();
