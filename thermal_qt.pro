@@ -18,6 +18,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 SOURCES     +=  main.cpp \
                 core/global_context.cpp \
                 core/event_bus.cpp \
+                core/settings_store.cpp \
                 hardware/hardware_manager.cpp \
                 hardware/imaging/seekcam/seekcam.cpp \
                 hardware/rga/rga_image.cpp \
@@ -59,6 +60,7 @@ SOURCES     +=  main.cpp \
 HEADERS     +=  core/global_context.h \
                 core/event_bus.h \
                 core/types.h \
+                core/settings_store.h \
                 hardware/hardware_manager.h \
                 hardware/imaging/seekcam/seekcam.h \
                 hardware/rga/rga_buffer.h \
@@ -86,6 +88,7 @@ HEADERS     +=  core/global_context.h \
                 ui/views/gallery_view.h \
                 ui/views/settings_view.h \
                 core/settings_types.h \
+                ui/settings_menu_types.h \
                 ui/overlays/modal_dialog.h \
                 ui/overlays/toast_manager.h \
                 ui/overlays/transition_layer.h \

@@ -3,6 +3,7 @@
 #include <QDebug>
 
 #include "core/global_context.h"
+#include "core/settings_store.h"
 #include "core/types.h"
 #include "hardware/hardware_manager.h"
 #include "ui/app.h"
@@ -47,6 +48,12 @@ int main(int argc, char *argv[])
     mainFont.setPixelSize(14);
     mainFont.setHintingPreference(QFont::PreferFullHinting);
     a.setFont(mainFont);
+
+    /* Settings */
+    if (!SettingsStore::instance().init()) {
+        qCritical() << "Fatal: Settings Store initialization failed.";
+        return -1;
+    }
 
     /* Environment */
     if (!GlobalContext::instance().init()) {

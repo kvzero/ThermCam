@@ -2,7 +2,7 @@
 #define SETTINGS_VIEW_H
 
 #include "ui/views/base_view.h"
-#include "core/settings_types.h"
+#include "ui/settings_menu_types.h"
 #include <QPropertyAnimation>
 #include <QVector>
 

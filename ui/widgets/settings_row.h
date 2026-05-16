@@ -2,7 +2,7 @@
 #define SETTINGS_ROW_H
 
 #include <QWidget>
-#include "core/settings_types.h"
+#include "ui/settings_menu_types.h"
 
 /**
  * @brief Shared press-owner contract for settings rows under InteractionArbiter delegation.
