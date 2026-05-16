@@ -6,6 +6,7 @@
 #include "core/settings_store.h"
 #include "core/types.h"
 #include "hardware/hardware_manager.h"
+#include "services/settings_service.h"
 #include "ui/app.h"
 #include "ui/interaction_arbiter.h"
 
@@ -64,6 +65,11 @@ int main(int argc, char *argv[])
     /* Hardware */
     if (!HardwareManager::instance().init()) {
         qCritical() << "Fatal: Hardware Management Layer failed.";
+        return -1;
+    }
+
+    if (!SettingsService::instance().init()) {
+        qCritical() << "Fatal: Settings Service initialization failed.";
         return -1;
     }
 

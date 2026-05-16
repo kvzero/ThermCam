@@ -36,6 +36,7 @@ SOURCES     +=  main.cpp \
                 services/capture_worker.cpp \
                 services/gallery_service.cpp \
                 services/gallery_worker.cpp \
+                services/settings_service.cpp \
                 ui/app.cpp \
                 ui/gesture_recognizer.cpp \
                 ui/overlays/media_viewer.cpp \
@@ -79,6 +80,7 @@ HEADERS     +=  core/global_context.h \
                 services/capture_worker.h \
                 services/gallery_service.h \
                 services/gallery_worker.h \
+                services/settings_service.h \
                 ui/app.h \
                 ui/gesture_recognizer.h \
                 ui/overlays/media_viewer.h \
