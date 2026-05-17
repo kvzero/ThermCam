@@ -45,6 +45,7 @@ SOURCES     +=  main.cpp \
                 ui/views/gallery_view.cpp \
                 ui/views/settings_view.cpp \
                 ui/overlays/modal_dialog.cpp \
+                ui/overlays/bubble_dialog.cpp \
                 ui/overlays/toast_manager.cpp \
                 ui/overlays/transition_layer.cpp \
                 ui/widgets/gallery_topbar.cpp \
@@ -92,6 +93,7 @@ HEADERS     +=  core/global_context.h \
                 core/settings_types.h \
                 ui/settings_menu_types.h \
                 ui/overlays/modal_dialog.h \
+                ui/overlays/bubble_dialog.h \
                 ui/overlays/toast_manager.h \
                 ui/overlays/transition_layer.h \
                 ui/widgets/gallery_topbar.h \

@@ -15,7 +15,6 @@
 ModalBase::ModalBase(QWidget* parent) : QWidget(parent) {
     hide();
     setProperty("isInteractable", true);
-    setProperty("modalOverlay", true);
     setProperty("allowSlideTrigger", true);
 
     m_popAnim = new QPropertyAnimation(this, "animProgress", this);

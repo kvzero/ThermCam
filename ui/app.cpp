@@ -6,6 +6,7 @@
 #include "ui/views/settings_view.h"
 // #include "ui/overlays/quick_settings.h"
 #include "ui/overlays/modal_dialog.h"
+#include "ui/overlays/bubble_dialog.h"
 #include "ui/overlays/toast_manager.h"
 #include "ui/overlays/transition_layer.h"
 #include "ui/interaction_arbiter.h"
@@ -78,6 +79,13 @@ void App::initLayer_Overlays() {
     m_textModal = new TextModal(this);
     m_textModal->hide();
 
+    // Lightweight bubbles
+    m_radioListBubble = new RadioListBubble(this);
+    m_radioListBubble->hide();
+
+    m_sliderBubble = new SliderBubble(this);
+    m_sliderBubble->hide();
+
     // Toast Notifications
     m_toastManager = new ToastManager(this);
     m_toastManager->hide();
@@ -109,6 +117,43 @@ void App::showToast(const QString& msg, ToastLevel level){
     if (m_toastManager) {
         m_toastManager->raise();
         m_toastManager->showToast(msg, level);
+    }
+}
+
+void App::showRadioListBubble(const RadioListBubble::Spec& spec,
+                              const BubbleAnchorContext& anchor) {
+    if (!m_radioListBubble) return;
+    if (m_sliderBubble && m_sliderBubble->isVisible()) {
+        m_sliderBubble->dismissImmediately();
+    }
+    m_radioListBubble->raise();
+    m_radioListBubble->present(spec, anchor);
+
+    if (m_toastManager && m_toastManager->isVisible()) {
+        m_toastManager->raise();
+    }
+}
+
+void App::showSliderBubble(const SliderBubble::Spec& spec,
+                           const BubbleAnchorContext& anchor) {
+    if (!m_sliderBubble) return;
+    if (m_radioListBubble && m_radioListBubble->isVisible()) {
+        m_radioListBubble->dismissImmediately();
+    }
+    m_sliderBubble->raise();
+    m_sliderBubble->present(spec, anchor);
+
+    if (m_toastManager && m_toastManager->isVisible()) {
+        m_toastManager->raise();
+    }
+}
+
+void App::dismissBubble() {
+    if (m_radioListBubble && m_radioListBubble->isVisible()) {
+        m_radioListBubble->dismiss();
+    }
+    if (m_sliderBubble && m_sliderBubble->isVisible()) {
+        m_sliderBubble->dismiss();
     }
 }
 
@@ -235,5 +280,7 @@ void App::resizeEvent(QResizeEvent* event) {
     // Layer 2: System Overlays
     // if (m_quickSettings) m_quickSettings->resize(s.width(), m_quickSettings->height()); // Height managed internally
     if (m_textModal) m_textModal->resize(s);
+    if (m_radioListBubble) m_radioListBubble->resize(s);
+    if (m_sliderBubble) m_sliderBubble->resize(s);
     if (m_toastManager) m_toastManager->resize(s.width(), qRound(s.height() * 0.2));
 }

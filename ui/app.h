@@ -4,6 +4,7 @@
 #include <QWidget>
 #include <core/types.h>
 #include "ui/overlays/modal_dialog.h"
+#include "ui/overlays/bubble_dialog.h"
 
 class QStackedWidget;
 class BaseView;
@@ -62,6 +63,11 @@ public:
     void showTextModal(const QString& title,
                        std::function<void()> onPrimaryAction,
                            ModalLevel level = ModalLevel::Critical);
+    void showRadioListBubble(const RadioListBubble::Spec& spec,
+                             const BubbleAnchorContext& anchor);
+    void showSliderBubble(const SliderBubble::Spec& spec,
+                          const BubbleAnchorContext& anchor);
+    void dismissBubble();
     void showToast(const QString& message, ToastLevel level);
 
 protected:
@@ -87,6 +93,8 @@ private:
     /* Layer 2: Global System Overlays */
     // QuickSettings* m_quickSettings = nullptr;
     TextModal* m_textModal = nullptr;
+    RadioListBubble* m_radioListBubble = nullptr;
+    SliderBubble* m_sliderBubble = nullptr;
     ToastManager* m_toastManager = nullptr;
 };
 
