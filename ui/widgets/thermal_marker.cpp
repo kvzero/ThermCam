@@ -56,7 +56,9 @@ void ThermalMarker::drawReticle(QPainter& p, const QPointF& pos, qreal base) {
 void ThermalMarker::drawValueLabel(QPainter& p, const QPointF& pos, qreal base,
                                    bool isFahrenheit, const QSize& screenSize) {
     float val = isFahrenheit ? (m_data.temperature * 1.8f + 32.0f) : m_data.temperature;
-    QString text = QString::asprintf("%.1f%s", val, isFahrenheit ? "℉" : "℃");
+    const QChar degree(0x00B0);
+    const QString unit = QString(degree) + (isFahrenheit ? QLatin1Char('F') : QLatin1Char('C'));
+    const QString text = QString::number(val, 'f', 1) + unit;
 
     // 1. Font setup (Use Painter's font which is set in main.cpp)
     QFont font = p.font();

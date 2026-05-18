@@ -23,6 +23,7 @@ public slots:
     void startVideo(const QString& path);
     void stopVideo();
     void processVideoFrame(const VisualFrame& frame);
+    void setTemperatureUnitFahrenheit(bool isFahrenheit);
 
 signals:
     /** @brief Acknowledges completion to decrement the backpressure counter. */
@@ -33,6 +34,7 @@ private:
 
     VideoEncoder m_videoEncoder;
     bool m_isRecording = false;
+    bool m_isFahrenheit = false;
 
     /* Isolated instances strictly for off-screen rendering */
     ThermalMarker m_hotMarker{ThermalMarker::Hot};

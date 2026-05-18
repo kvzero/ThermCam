@@ -1,7 +1,21 @@
 #include "capture_service.h"
+#include "core/event_bus.h"
+#include "core/settings_store.h"
 #include "services/capture_worker.h"
 #include "hardware/storage/storage_manager.h"
 #include <QDebug>
+
+namespace {
+bool isFahrenheitFromSnapshot(const SettingsSnapshot& snapshot) {
+    bool ok = false;
+    const int raw = snapshot.values
+                        .value(SettingKey::TemperatureUnit,
+                               QVariant::fromValue(static_cast<int>(TemperatureUnit::Celsius)))
+                        .toInt(&ok);
+    if (!ok) return false;
+    return raw == static_cast<int>(TemperatureUnit::Fahrenheit);
+}
+}
 
 CaptureService& CaptureService::instance() {
     static CaptureService inst;
@@ -26,8 +40,15 @@ CaptureService::CaptureService(QObject *parent) : QObject(parent) {
 
     connect(m_worker, &CaptureWorker::frameProcessed,
             this, &CaptureService::onWorkerFrameProcessed);
+    connect(&EventBus::instance(), &EventBus::temperatureUnitChanged,
+            m_worker, &CaptureWorker::setTemperatureUnitFahrenheit);
 
     m_workerThread->start();
+
+    const bool initialIsFahrenheit =
+        isFahrenheitFromSnapshot(SettingsStore::instance().current());
+    QMetaObject::invokeMethod(m_worker, "setTemperatureUnitFahrenheit",
+                              Qt::QueuedConnection, Q_ARG(bool, initialIsFahrenheit));
 }
 
 CaptureService::~CaptureService() {

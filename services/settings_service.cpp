@@ -1,5 +1,6 @@
 #include "services/settings_service.h"
 
+#include "core/event_bus.h"
 #include "hardware/hardware_manager.h"
 #include "hardware/imaging/seekcam/seekcam.h"
 #include <QDebug>
@@ -314,6 +315,10 @@ bool SettingsService::applyRuntimeEffects(const SettingsChangeEvent& change, QSt
                    unitValue != static_cast<int>(TemperatureUnit::Fahrenheit)) {
             errors << "Committed temperature unit is unsupported";
             allSuccess = false;
+        } else {
+            const bool isFahrenheit =
+                (unitValue == static_cast<int>(TemperatureUnit::Fahrenheit));
+            emit EventBus::instance().temperatureUnitChanged(isFahrenheit);
         }
     }
 

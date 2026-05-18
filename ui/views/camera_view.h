@@ -71,6 +71,7 @@ private:
     ThermalMarker m_hotMarker{ThermalMarker::Hot};
     ThermalMarker m_coldMarker{ThermalMarker::Cold};
     ThermalMarker m_centerMarker{ThermalMarker::Center};
+    bool m_isFahrenheit = false;
 
     /* Layer 2: Interactive HUD (Widget) */
     HudContainer* m_hudContainer = nullptr;

@@ -52,6 +52,12 @@ signals:
     void emissivityChanged(float value);
 
     /**
+     * @brief Fired when temperature display unit changes.
+     * @param isFahrenheit True for Fahrenheit (°F), false for Celsius (°C).
+     */
+    void temperatureUnitChanged(bool isFahrenheit);
+
+    /**
      * @brief 全局视图路由请求 (附带触发区域的绝对物理坐标，用于形变转场动画)
      */
     void cameraRequested(const QRect& sourceAnchor = QRect());

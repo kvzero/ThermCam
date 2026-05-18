@@ -6,6 +6,10 @@
 
 CaptureWorker::CaptureWorker(QObject* parent) : QObject(parent) {}
 
+void CaptureWorker::setTemperatureUnitFahrenheit(bool isFahrenheit) {
+    m_isFahrenheit = isFahrenheit;
+}
+
 void CaptureWorker::processPhoto(const VisualFrame& frame, const QString& path) {
     /*
      * Qt Copy-on-Write Detachment:
@@ -63,7 +67,7 @@ void CaptureWorker::applyOsd(QImage& target, const VisualFrame& frame) {
     m_centerMarker.update(frame.center_spot);
 
     // Reuse the existing robust marker drawing logic off-screen
-    m_hotMarker.paint(p, target.size());
-    m_coldMarker.paint(p, target.size());
-    m_centerMarker.paint(p, target.size());
+    m_hotMarker.paint(p, target.size(), m_isFahrenheit);
+    m_coldMarker.paint(p, target.size(), m_isFahrenheit);
+    m_centerMarker.paint(p, target.size(), m_isFahrenheit);
 }

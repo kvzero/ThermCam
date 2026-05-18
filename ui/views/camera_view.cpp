@@ -1,5 +1,7 @@
 #include "camera_view.h"
+#include "core/event_bus.h"
 #include "core/global_context.h"
+#include "core/settings_store.h"
 #include "hardware/hardware_manager.h"
 #include "hardware/imaging/seekcam/seekcam.h"
 #include "processing/thermal_processor.h"
@@ -10,6 +12,18 @@
 #include <QResizeEvent>
 #include <QEasingCurve>
 #include <QDebug>
+
+namespace {
+bool isFahrenheitFromSnapshot(const SettingsSnapshot& snapshot) {
+    bool ok = false;
+    const int raw = snapshot.values
+                        .value(SettingKey::TemperatureUnit,
+                               QVariant::fromValue(static_cast<int>(TemperatureUnit::Celsius)))
+                        .toInt(&ok);
+    if (!ok) return false;
+    return raw == static_cast<int>(TemperatureUnit::Fahrenheit);
+}
+}
 
 CameraView::CameraView(QWidget* parent) : BaseView(parent) {
     // Init Logic Processor (Created but not connected yet)
@@ -24,6 +38,14 @@ CameraView::CameraView(QWidget* parent) : BaseView(parent) {
     m_shutterAnim = new QPropertyAnimation(this, "shutterProgress", this);
     m_shutterAnim->setDuration(m_cfg.ANIM_DURATION_MS);
     m_shutterAnim->setEasingCurve(QEasingCurve::OutCubic);
+
+    m_isFahrenheit = isFahrenheitFromSnapshot(SettingsStore::instance().current());
+    connect(&EventBus::instance(), &EventBus::temperatureUnitChanged, this,
+            [this](bool isFahrenheit) {
+                if (m_isFahrenheit == isFahrenheit) return;
+                m_isFahrenheit = isFahrenheit;
+                update();
+            });
 }
 
 CameraView::~CameraView() {
@@ -175,9 +197,9 @@ void CameraView::paintEvent(QPaintEvent*) {
 
     // Layer 1: Markers (Fixed, do not move with HUD)
     const QSize s = size();
-    m_hotMarker.paint(p, s);
-    m_coldMarker.paint(p, s);
-    m_centerMarker.paint(p, s);
+    m_hotMarker.paint(p, s, m_isFahrenheit);
+    m_coldMarker.paint(p, s, m_isFahrenheit);
+    m_centerMarker.paint(p, s, m_isFahrenheit);
 
     // Layer 2: Transient Optical Feedback (Zero-Widget Composition)
     if (m_shutterProgress > 0.01) {
