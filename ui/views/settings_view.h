@@ -3,6 +3,8 @@
 
 #include "ui/views/base_view.h"
 #include "ui/settings_menu_types.h"
+#include "core/settings_types.h"
+#include "services/settings_service.h"
 #include <QPropertyAnimation>
 #include <QVector>
 
@@ -106,6 +108,7 @@ private slots:
     void onSecondaryRowActivated();
     void onTopBarBackTriggered();
     void onTopBarCloseTriggered();
+    void onSettingsApplyCompleted(const SettingsService::ApplyResult& result);
 
 private:
     enum class PanelMode {
@@ -141,6 +144,9 @@ private:
     void rebuildSecondaryRows(int primaryIndex);
     void relayoutRows();
     void refreshTopMask();
+    void refreshSecondaryRowsFromSnapshot(const SettingsSnapshot& snapshot);
+    void refreshSecondaryRowsFromStore();
+    void applyPatchFromUi(const SettingsPatch& patch);
 
     /* --- Layout & Scroll Math --- */
     int topBarHeight() const;
@@ -185,6 +191,9 @@ private:
     qreal m_dragStartRight = 0.0;
     int m_lastDx = 0;
     int m_lastDy = 0;
+
+    /* --- Settings Apply Session --- */
+    bool m_applyInFlight = false;
 };
 
 #endif // SETTINGS_VIEW_H

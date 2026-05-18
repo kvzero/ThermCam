@@ -87,7 +87,10 @@ public:
     /* --- UIController Inputs --- */
     void setData(const SecondaryItemData& data);
     void setBottomDividerVisible(bool visible);
+    void setToggleOn(bool on);
+    void setValueText(const QString& valueText);
     void toggleVisualState();
+    const SecondaryItemData& data() const { return m_data; }
 
 protected:
     void mousePressEvent(QMouseEvent* event) override;
@@ -101,6 +104,7 @@ private:
     SecondaryItemData m_data;
     bool m_showBottomDivider = true;
     bool m_toggleOn = false;
+    QString m_valueText;
 };
 
 #endif // SETTINGS_ROW_H

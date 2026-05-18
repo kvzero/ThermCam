@@ -205,16 +205,26 @@ SettingsSecondaryRow::SettingsSecondaryRow(QWidget* parent) : SettingsBaseRow(pa
 
 void SettingsSecondaryRow::setData(const SecondaryItemData& data) {
     m_data = data;
-    if (m_data.type == ActionType::Toggle) {
-        // Pure-UI demo default: deterministic but non-persistent state seed.
-        m_toggleOn = (m_data.title.size() % 2 == 0);
-    }
+    m_valueText.clear();
+    m_toggleOn = false;
     update();
 }
 
 void SettingsSecondaryRow::setBottomDividerVisible(bool visible) {
     if (m_showBottomDivider == visible) return;
     m_showBottomDivider = visible;
+    update();
+}
+
+void SettingsSecondaryRow::setToggleOn(bool on) {
+    if (m_toggleOn == on) return;
+    m_toggleOn = on;
+    update();
+}
+
+void SettingsSecondaryRow::setValueText(const QString& valueText) {
+    if (m_valueText == valueText) return;
+    m_valueText = valueText;
     update();
 }
 
@@ -267,13 +277,23 @@ void SettingsSecondaryRow::paintEvent(QPaintEvent* /*event*/) {
     p.setPen(Qt::white);
     p.drawText(QRect(margin, 0, w - margin * 2, h), Qt::AlignVCenter | Qt::AlignLeft, m_data.title);
 
-    QString tail;
+    QString tail = m_valueText;
     bool useIconFont = false;
     bool drawToggle = false;
-    switch (m_data.type) {
-    case ActionType::Action: tail = kExpandChevronIcon; useIconFont = true; break;
-    case ActionType::Toggle: drawToggle = true; break;
-    case ActionType::Value:  tail = "VALUE"; break;
+    if (m_data.type == ActionType::Toggle) {
+        drawToggle = true;
+    } else if (tail.isEmpty()) {
+        switch (m_data.type) {
+        case ActionType::Action:
+            tail = kExpandChevronIcon;
+            useIconFont = true;
+            break;
+        case ActionType::Value:
+            tail = "--";
+            break;
+        case ActionType::Toggle:
+            break;
+        }
     }
 
     if (drawToggle) {

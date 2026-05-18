@@ -2,6 +2,7 @@
 #include "ui/widgets/settings_row.h"
 #include "ui/widgets/scroll_indicator.h"
 #include "core/event_bus.h"
+#include "core/settings_store.h"
 #include "ui/app.h"
 
 #include <QMouseEvent>
@@ -13,32 +14,73 @@
 namespace {
 const QVector<PrimaryItemData> kMenuBlueprint = {
     {
-        0, QString(QChar(0xecf6)), QColor(72, 104, 255), "Thermal",
+        0, QString(QChar(0xf837)), QColor(72, 104, 255), "Camera",
         {
             {SettingID::Palette, "Palette", ActionType::Action},
             {SettingID::Emissivity, "Emissivity", ActionType::Value},
-            {SettingID::TemperatureUnit, "Temperature Unit", ActionType::Toggle},
-            {SettingID::ShutterCalibration, "Shutter Calibration", ActionType::Action}
+            {SettingID::TemperatureUnit, "Temperature Unit", ActionType::Action}
         }
     },
     {
-        1, QString(QChar(0xf676)), QColor(28, 158, 112), "Capture",
+        1, QString(QChar(0xf02c)), QColor(28, 158, 112), "View",
         {
-            {SettingID::OSDOverlay, "Save OSD Overlay", ActionType::Toggle},
-            {SettingID::StorageFormat, "Storage Format", ActionType::Action}
+            {SettingID::OSDOverlay, "Save OSD Overlay", ActionType::Toggle}
         }
     },
     {
-        2, QString(QChar(0xf596)), QColor(182, 102, 45), "System",
+        2, QString(QChar(0xea03)), QColor(182, 102, 45), "System",
         {
-            {SettingID::DeviceInfo, "Device Information", ActionType::Action},
-            {SettingID::FactoryReset, "Factory Reset", ActionType::Action}
+
         }
     }
 };
 
 const QString kTopBarBackIcon = QString(QChar(0xea60));
 const QString kTopBarCloseIcon = QString(QChar(0xeb55));
+
+constexpr float kEmissivityMin = 0.01f;
+constexpr float kEmissivityMax = 1.00f;
+constexpr int kEmissivitySliderMin = 1;
+constexpr int kEmissivitySliderMax = 100;
+constexpr int kEmissivitySliderStep = 1;
+
+float clampEmissivity(float value) {
+    return qBound(kEmissivityMin, value, kEmissivityMax);
+}
+
+int emissivityToSliderValue(float value) {
+    const float clamped = clampEmissivity(value);
+    return qBound(kEmissivitySliderMin,
+                  qRound(clamped * 100.0f),
+                  kEmissivitySliderMax);
+}
+
+float sliderValueToEmissivity(int value) {
+    const int clamped = qBound(kEmissivitySliderMin, value, kEmissivitySliderMax);
+    return clampEmissivity(static_cast<float>(clamped) / 100.0f);
+}
+
+QVariant defaultValueForKey(SettingKey key) {
+    for (const auto& desc : kSettingRegistry) {
+        if (desc.key == key) return desc.defaultValue;
+    }
+    return QVariant();
+}
+
+int normalizeTemperatureUnitInt(int value) {
+    const int c = static_cast<int>(TemperatureUnit::Celsius);
+    const int f = static_cast<int>(TemperatureUnit::Fahrenheit);
+    return (value == f) ? f : c;
+}
+
+QString formatTemperatureUnit(int unitValue) {
+    const QChar degree(0x00B0);
+    return QString(degree) +
+           QString((normalizeTemperatureUnitInt(unitValue) ==
+                    static_cast<int>(TemperatureUnit::Fahrenheit))
+                       ? QLatin1Char('F')
+                       : QLatin1Char('C'));
+}
 } // namespace
 
 // ============================================================
@@ -176,6 +218,13 @@ SettingsView::SettingsView(QWidget* parent) : BaseView(parent) {
     m_splitAnim->setDuration(m_cfg.SNAP_DURATION_MS);
     m_splitAnim->setEasingCurve(QEasingCurve::OutCubic);
 
+    connect(&SettingsService::instance(), &SettingsService::applyCompleted,
+            this, &SettingsView::onSettingsApplyCompleted);
+    connect(&SettingsStore::instance(), &SettingsStore::settingsChanged, this,
+            [this](const SettingsChangeEvent& change) {
+                refreshSecondaryRowsFromSnapshot(change.snapshot);
+            });
+
     buildPrimaryRows();
     rebuildSecondaryRows(0);
 }
@@ -191,9 +240,11 @@ void SettingsView::onEnter() {
     m_rightScrollAnim->stop();
     m_splitAnim->stop();
 
+    rebuildSecondaryRows(0);
     for (auto* row : m_primaryRows) row->setSelected(false);
     m_topBar->setTitle("Settings");
     relayoutRows();
+    refreshSecondaryRowsFromStore();
     m_scrollIndicator->forceHide();
     update();
 }
@@ -341,13 +392,90 @@ void SettingsView::onSecondaryRowActivated() {
 
     const auto& sub = kMenuBlueprint[m_activePrimary].subItems;
     if (index < 0 || index >= static_cast<int>(sub.size())) return;
-    if (sub[index].type == ActionType::Toggle) {
-        row->toggleVisualState();
+    const SecondaryItemData& item = sub[index];
+
+    auto buildAnchor = [this, row]() {
+        BubbleAnchorContext anchor;
+        anchor.pressPosGlobal = row->mapToGlobal(row->rect().center());
+        anchor.triggerRectGlobal = QRect(row->mapToGlobal(QPoint(0, 0)), row->size());
+
+        const QRect rowLocal = row->geometry();
+        const QRect submenuLocal(rowLocal.x(),
+                                 topBarHeight(),
+                                 rowLocal.width(),
+                                 qMax(1, height() - topBarHeight()));
+        anchor.submenuRectGlobal = QRect(mapToGlobal(submenuLocal.topLeft()), submenuLocal.size());
+        anchor.submenuContentTopGlobalY = anchor.submenuRectGlobal.top();
+        anchor.submenuContentBottomGlobalY = anchor.submenuRectGlobal.bottom();
+        anchor.referenceRowHeightPx = rowHeight();
+        return anchor;
+    };
+
+    auto* app = qobject_cast<App*>(window());
+    if (!app) return;
+
+    switch (item.id) {
+    case SettingID::Emissivity: {
+        const SettingsSnapshot snapshot = SettingsStore::instance().current();
+        bool ok = false;
+        const float emissivity = clampEmissivity(
+            snapshot.values.value(SettingKey::Emissivity, defaultValueForKey(SettingKey::Emissivity))
+                .toFloat(&ok));
+        const float current = ok ? emissivity : 0.95f;
+
+        SliderBubble::Spec spec;
+        spec.minValue = kEmissivitySliderMin;
+        spec.maxValue = kEmissivitySliderMax;
+        spec.step = kEmissivitySliderStep;
+        spec.value = emissivityToSliderValue(current);
+        spec.dismissOnCommit = true;
+        spec.onValueChanging = [row](int sliderValue) {
+            row->setValueText(QString::number(sliderValueToEmissivity(sliderValue), 'f', 2));
+        };
+        spec.onValueCommitted = [this](int sliderValue) {
+            SettingsPatch patch;
+            patch.values.insert(SettingKey::Emissivity, QVariant(sliderValueToEmissivity(sliderValue)));
+            applyPatchFromUi(patch);
+        };
+
+        app->showSliderBubble(spec, buildAnchor());
         return;
     }
+    case SettingID::TemperatureUnit: {
+        const SettingsSnapshot snapshot = SettingsStore::instance().current();
+        bool ok = false;
+        const int parsed = snapshot.values
+                               .value(SettingKey::TemperatureUnit,
+                                      defaultValueForKey(SettingKey::TemperatureUnit))
+                               .toInt(&ok);
+        const int unitValue = normalizeTemperatureUnitInt(ok ? parsed
+                                                             : static_cast<int>(TemperatureUnit::Celsius));
 
-    if (auto* app = qobject_cast<App*>(window())) {
-        app->showTextModal(sub[index].title.toUpper(), []() {});
+        RadioListBubble::Spec spec;
+        spec.items = {
+            {"celsius", formatTemperatureUnit(static_cast<int>(TemperatureUnit::Celsius))},
+            {"fahrenheit", formatTemperatureUnit(static_cast<int>(TemperatureUnit::Fahrenheit))}
+        };
+        spec.selectedIndex = (unitValue == static_cast<int>(TemperatureUnit::Fahrenheit)) ? 1 : 0;
+        spec.dismissOnSelection = true;
+        spec.onSelected = [this](int selectedIndex, const QString& /*id*/) {
+            const int unit = (selectedIndex == 1)
+                                 ? static_cast<int>(TemperatureUnit::Fahrenheit)
+                                 : static_cast<int>(TemperatureUnit::Celsius);
+            SettingsPatch patch;
+            patch.values.insert(SettingKey::TemperatureUnit, QVariant(unit));
+            applyPatchFromUi(patch);
+        };
+
+        app->showRadioListBubble(spec, buildAnchor());
+        return;
+    }
+    case SettingID::OSDOverlay:
+        row->toggleVisualState();
+        return;
+    case SettingID::Palette:
+        app->showTextModal(item.title.toUpper(), []() {});
+        return;
     }
 }
 
@@ -387,6 +515,8 @@ void SettingsView::rebuildSecondaryRows(int primaryIndex) {
         connect(row, &SettingsSecondaryRow::activated, this, &SettingsView::onSecondaryRowActivated);
         m_secondaryRows.append(row);
     }
+
+    refreshSecondaryRowsFromStore();
 }
 
 void SettingsView::relayoutRows() {
@@ -530,4 +660,76 @@ void SettingsView::expandPrimary(int primaryIndex) {
 
 void SettingsView::triggerExitToCamera() {
     emit EventBus::instance().cameraRequested();
+}
+
+void SettingsView::refreshSecondaryRowsFromSnapshot(const SettingsSnapshot& snapshot) {
+    const int primaryIndex =
+        (m_activePrimary >= 0 && m_activePrimary < kMenuBlueprint.size()) ? m_activePrimary : 0;
+    if (primaryIndex < 0 || primaryIndex >= kMenuBlueprint.size()) return;
+
+    const auto& sub = kMenuBlueprint[primaryIndex].subItems;
+    const int rowCount = qMin(m_secondaryRows.size(), static_cast<int>(sub.size()));
+
+    for (int i = 0; i < rowCount; ++i) {
+        auto* row = m_secondaryRows[i];
+        const SecondaryItemData& item = sub[i];
+        row->setValueText(QString());
+
+        switch (item.id) {
+        case SettingID::Emissivity: {
+            bool ok = false;
+            const float parsed =
+                snapshot.values.value(SettingKey::Emissivity, defaultValueForKey(SettingKey::Emissivity))
+                    .toFloat(&ok);
+            const float value = clampEmissivity(ok ? parsed : 0.95f);
+            row->setValueText(QString::number(value, 'f', 2));
+            break;
+        }
+        case SettingID::TemperatureUnit: {
+            bool ok = false;
+            const int parsed = snapshot.values
+                                   .value(SettingKey::TemperatureUnit,
+                                          defaultValueForKey(SettingKey::TemperatureUnit))
+                                   .toInt(&ok);
+            const int unit = normalizeTemperatureUnitInt(
+                ok ? parsed : static_cast<int>(TemperatureUnit::Celsius));
+            row->setValueText(formatTemperatureUnit(unit));
+            break;
+        }
+        case SettingID::OSDOverlay:
+        case SettingID::Palette:
+            break;
+        }
+    }
+}
+
+void SettingsView::refreshSecondaryRowsFromStore() {
+    refreshSecondaryRowsFromSnapshot(SettingsStore::instance().current());
+}
+
+void SettingsView::applyPatchFromUi(const SettingsPatch& patch) {
+    if (patch.isEmpty()) return;
+
+    m_applyInFlight = true;
+    SettingsService::instance().apply(patch);
+}
+
+void SettingsView::onSettingsApplyCompleted(const SettingsService::ApplyResult& result) {
+    if (!m_applyInFlight) return;
+    m_applyInFlight = false;
+
+    if (result.code == SettingsService::ApplyCode::Ok ||
+        result.code == SettingsService::ApplyCode::NoChange) {
+        return;
+    }
+
+    auto* app = qobject_cast<App*>(window());
+    if (!app) return;
+
+    if (result.code == SettingsService::ApplyCode::RuntimeApplyFailed && result.persisted) {
+        app->showToast("APPLY DEFERRED", ToastLevel::Warning);
+        return;
+    }
+
+    app->showToast("SET FAILED", ToastLevel::Warning);
 }

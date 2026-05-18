@@ -12,11 +12,7 @@ enum class SettingID {
     Palette,
     Emissivity,
     TemperatureUnit,
-    OSDOverlay,
-    ShutterCalibration,
-    StorageFormat,
-    DeviceInfo,
-    FactoryReset
+    OSDOverlay
 };
 
 /** @brief Render/action contract for secondary row trailing affordance. */
