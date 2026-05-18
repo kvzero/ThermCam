@@ -305,6 +305,7 @@ private:
     Spec m_spec;
     int m_value = 0;
     bool m_sliderActive = false;
+    bool m_hasValueChanged = false;
     QRect m_iconRect;
     QRect m_trackRect;
     QRect m_trackHitRect;

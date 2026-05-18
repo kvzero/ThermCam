@@ -170,6 +170,52 @@ SettingsService::ApplyResult SettingsService::apply(const SettingsPatch& patch) 
     return result;
 }
 
+SettingsService::PreviewResult SettingsService::preview(const SettingsPatch& patch) {
+    PreviewResult result;
+
+    if (!m_isInitialized) {
+        result.code = PreviewCode::NotInitialized;
+        result.message = "SettingsService is not initialized";
+        return result;
+    }
+
+    SettingsPatch normalized;
+    QString normalizeError;
+    if (!normalizePatch(patch, &normalized, &normalizeError)) {
+        result.code = PreviewCode::InvalidInput;
+        result.message = normalizeError;
+        return result;
+    }
+
+    result.normalizedPatch = normalized;
+
+    if (normalized.values.isEmpty()) {
+        result.code = PreviewCode::NoChange;
+        result.runtimeApplied = true;
+        result.previewChange.snapshot = SettingsStore::instance().current();
+        return result;
+    }
+
+    SettingsChangeEvent previewChange;
+    previewChange.snapshot = SettingsStore::instance().current();
+    for (auto it = normalized.values.constBegin(); it != normalized.values.constEnd(); ++it) {
+        previewChange.snapshot.values.insert(it.key(), it.value());
+        previewChange.changedKeys.insert(it.key());
+    }
+    result.previewChange = previewChange;
+
+    QString runtimeError;
+    if (!applyRuntimeEffects(previewChange, &runtimeError)) {
+        result.code = PreviewCode::RuntimeApplyFailed;
+        result.message = runtimeError;
+        return result;
+    }
+
+    result.code = PreviewCode::Ok;
+    result.runtimeApplied = true;
+    return result;
+}
+
 bool SettingsService::normalizePatch(const SettingsPatch& input,
                                      SettingsPatch* outPatch,
                                      QString* outError) const {

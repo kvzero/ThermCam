@@ -645,6 +645,7 @@ void SliderBubble::present(const Spec& spec, const BubbleAnchorContext& anchor) 
     m_spec = spec;
     m_value = normalizeValue(m_spec.value);
     m_sliderActive = false;
+    m_hasValueChanged = false;
     BubbleBase::present(anchor);
 }
 
@@ -706,15 +707,22 @@ bool SliderBubble::contentRelease(const QPoint& contentPos) {
     if (!m_sliderActive) return false;
 
     updateValueByPointer(contentPos, true);
-    if (m_spec.onValueCommitted) m_spec.onValueCommitted(m_value);
+    if (m_hasValueChanged && m_spec.onValueCommitted) {
+        m_spec.onValueCommitted(m_value);
+    }
 
     m_sliderActive = false;
+    m_hasValueChanged = false;
     if (m_spec.dismissOnCommit) dismiss();
     return true;
 }
 
 void SliderBubble::contentCancel() {
+    if (m_sliderActive && m_hasValueChanged && m_spec.onValueCommitted) {
+        m_spec.onValueCommitted(m_value);
+    }
     m_sliderActive = false;
+    m_hasValueChanged = false;
 }
 
 void SliderBubble::onBubbleDismissed() {
@@ -795,6 +803,7 @@ void SliderBubble::updateValueByPointer(const QPoint& contentPos, bool notifyCha
     const int newValue = valueFromTrackX(widgetX);
     if (newValue == m_value) return;
     m_value = newValue;
+    m_hasValueChanged = true;
     if (notifyChanging && m_spec.onValueChanging) {
         m_spec.onValueChanging(m_value);
     }

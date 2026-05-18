@@ -40,6 +40,22 @@ public:
         bool runtimeApplied = false;
     };
 
+    enum class PreviewCode : quint8 {
+        Ok = 0,
+        NoChange,
+        InvalidInput,
+        RuntimeApplyFailed,
+        NotInitialized
+    };
+
+    struct PreviewResult {
+        PreviewCode code = PreviewCode::Ok;
+        QString message;
+        SettingsPatch normalizedPatch;
+        SettingsChangeEvent previewChange;
+        bool runtimeApplied = false;
+    };
+
     /* --- Lifecycle --- */
 
     static SettingsService& instance();
@@ -56,6 +72,15 @@ public:
      * - Persistence success is not rolled back when runtime apply fails.
      */
     ApplyResult apply(const SettingsPatch& patch);
+
+    /**
+     * @brief Validates and applies runtime-only preview without persistence.
+     *
+     * Contract:
+     * - Uses the same normalization path as apply().
+     * - Never mutates SettingsStore committed snapshot.
+     */
+    PreviewResult preview(const SettingsPatch& patch);
 
 signals:
     /**

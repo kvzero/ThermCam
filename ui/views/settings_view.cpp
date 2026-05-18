@@ -9,7 +9,9 @@
 #include <QPainter>
 #include <QEasingCurve>
 #include <QDebug>
+#include <QTimer>
 #include <cmath>
+#include <memory>
 
 namespace {
 const QVector<PrimaryItemData> kMenuBlueprint = {
@@ -43,6 +45,7 @@ constexpr float kEmissivityMax = 1.00f;
 constexpr int kEmissivitySliderMin = 1;
 constexpr int kEmissivitySliderMax = 100;
 constexpr int kEmissivitySliderStep = 1;
+constexpr int kPreviewThrottleMs = 50;
 
 float clampEmissivity(float value) {
     return qBound(kEmissivityMin, value, kEmissivityMax);
@@ -429,14 +432,50 @@ void SettingsView::onSecondaryRowActivated() {
         spec.step = kEmissivitySliderStep;
         spec.value = emissivityToSliderValue(current);
         spec.dismissOnCommit = true;
-        spec.onValueChanging = [row](int sliderValue) {
-            row->setValueText(QString::number(sliderValueToEmissivity(sliderValue), 'f', 2));
+        auto previewTimer = std::make_shared<QTimer>();
+        previewTimer->setSingleShot(true);
+        previewTimer->setInterval(kPreviewThrottleMs);
+
+        auto latestPreviewSliderValue = std::make_shared<int>(spec.value);
+        auto previewDirty = std::make_shared<bool>(false);
+
+        auto flushPreview = [latestPreviewSliderValue]() {
+            SettingsPatch previewPatch;
+            previewPatch.values.insert(SettingKey::Emissivity,
+                                       QVariant(sliderValueToEmissivity(*latestPreviewSliderValue)));
+            SettingsService::instance().preview(previewPatch);
         };
-        spec.onValueCommitted = [this](int sliderValue) {
+
+        connect(previewTimer.get(), &QTimer::timeout, this,
+                [previewTimer, previewDirty, flushPreview]() {
+                    if (!*previewDirty) return;
+                    flushPreview();
+                    *previewDirty = false;
+                    previewTimer->start();
+                });
+
+        spec.onValueChanging = [row, previewTimer, latestPreviewSliderValue, previewDirty, flushPreview](
+                                   int sliderValue) {
+            *latestPreviewSliderValue = sliderValue;
+            *previewDirty = true;
+            row->setValueText(QString::number(sliderValueToEmissivity(sliderValue), 'f', 2));
+
+            if (!previewTimer->isActive()) {
+                flushPreview();
+                *previewDirty = false;
+                previewTimer->start();
+            }
+        };
+
+        spec.onValueCommitted = [this, previewTimer, previewDirty](int sliderValue) {
+            previewTimer->stop();
+            *previewDirty = false;
+
             SettingsPatch patch;
             patch.values.insert(SettingKey::Emissivity, QVariant(sliderValueToEmissivity(sliderValue)));
             applyPatchFromUi(patch);
         };
+        spec.onDismissed = [previewTimer]() { previewTimer->stop(); };
 
         app->showSliderBubble(spec, buildAnchor());
         return;
