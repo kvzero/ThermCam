@@ -6,12 +6,16 @@
 #include "hardware/imaging/seekcam/seekcam.h"
 #include "processing/thermal_processor.h"
 #include "services/capture_service.h"
-#include "ui/widgets/hud_container.h"
+#include "ui/widgets/status_bar.h"
+#include "ui/widgets/capsule_button.h"
+#include "ui/widgets/mode_selector.h"
 
 #include <QPainter>
 #include <QResizeEvent>
 #include <QEasingCurve>
 #include <QDebug>
+#include <QMetaObject>
+#include <cmath>
 
 namespace {
 bool isFahrenheitFromSnapshot(const SettingsSnapshot& snapshot) {
@@ -30,9 +34,24 @@ CameraView::CameraView(QWidget* parent) : BaseView(parent) {
     m_processor = new ThermalProcessor(this);
     m_processor->setTargetSize(GlobalContext::instance().screenSize());
 
-    // Init UI Components
-    m_hudContainer = new HudContainer(this);
-    m_hudContainer->raise(); // HUD sits on top of the painted thermal image
+    // Init UI Components (CameraView owns HUD directly)
+    m_statusBar = new StatusBar(this);
+    m_capsuleButton = new CapsuleButton(this);
+    m_modeSelector = new ModeSelector(this);
+
+    auto setupHudAnim = [this](QPropertyAnimation** anim, QWidget* target) {
+        *anim = new QPropertyAnimation(target, "pos", this);
+        (*anim)->setDuration(m_hudCfg.ANIM_DURATION_MS);
+        (*anim)->setEasingCurve(QEasingCurve::OutCubic);
+    };
+    setupHudAnim(&m_statusBarAnim, m_statusBar);
+    setupHudAnim(&m_capsuleAnim, m_capsuleButton);
+    setupHudAnim(&m_modeSelectorAnim, m_modeSelector);
+
+    m_hudAnimGroup = new QParallelAnimationGroup(this);
+    m_hudAnimGroup->addAnimation(m_statusBarAnim);
+    m_hudAnimGroup->addAnimation(m_capsuleAnim);
+    m_hudAnimGroup->addAnimation(m_modeSelectorAnim);
 
     /* Establish non-blocking animation engine for shutter feedback */
     m_shutterAnim = new QPropertyAnimation(this, "shutterProgress", this);
@@ -46,6 +65,9 @@ CameraView::CameraView(QWidget* parent) : BaseView(parent) {
                 m_isFahrenheit = isFahrenheit;
                 update();
             });
+
+    updateHudLayout();
+    applyHudState(true);
 }
 
 CameraView::~CameraView() {
@@ -57,9 +79,7 @@ void CameraView::onEnter() {
     connectHardware();
 
     // Ensure HUD is visible when entering
-    if (m_hudContainer) {
-        m_hudContainer->resetPosition();
-    }
+    setHudVisible(true, false);
 }
 
 void CameraView::onExit() {
@@ -107,43 +127,51 @@ void CameraView::handleKeyShortPress() {
 }
 
 void CameraView::resetTransientUi() {
-    if (m_hudContainer && m_hudContainer->modeButton()) {
-        QMetaObject::invokeMethod(m_hudContainer->modeButton(), "collapse");
+    if (m_modeSelector) {
+        QMetaObject::invokeMethod(m_modeSelector, "collapse");
     }
 }
 
 /* --- Gesture Implementations (The logic moved from EventBus) --- */
 
 void CameraView::onGestureStarted() {
-
     m_swipeAxis = SwipeAxis::None;
-
-    if (m_hudContainer) {
-        m_hudContainer->stopAnimations();
-    }
+    stopHudAnimations();
 }
 
 void CameraView::onGestureUpdate(const QPoint& /*start*/, int dx, int dy) {
-
     if (m_swipeAxis == SwipeAxis::None) {
-        if (std::abs(dx) > 10 || std::abs(dy) > 10) {
+        if (std::abs(dx) > m_hudCfg.SWIPE_DEADZONE_PX || std::abs(dy) > m_hudCfg.SWIPE_DEADZONE_PX) {
             m_swipeAxis = (std::abs(dx) > std::abs(dy)) ? SwipeAxis::Horizontal : SwipeAxis::Vertical;
         }
     }
-
-    if (m_swipeAxis == SwipeAxis::None || m_swipeAxis == SwipeAxis::Horizontal) {
-        if (m_hudContainer) m_hudContainer->followGesture(dx);
-    }
 }
 
-void CameraView::onGestureFinished(const QPoint& /*start*/, int dx, int /*dy*/, float vx, float /*vy*/) {
-    // Forward the horizontal velocity to the HUD's physics engine for settlement
-    if (m_hudContainer) {
-        if (m_swipeAxis == SwipeAxis::Horizontal) {
-            m_hudContainer->finalizeGesture(dx, vx);
-        } else {
-            m_hudContainer->finalizeGesture(0, 0);
-        }
+void CameraView::onGestureFinished(const QPoint& start, int dx, int dy, float /*vx*/, float /*vy*/) {
+    if (m_swipeAxis == SwipeAxis::None &&
+        (std::abs(dx) > m_hudCfg.SWIPE_DEADZONE_PX || std::abs(dy) > m_hudCfg.SWIPE_DEADZONE_PX)) {
+        m_swipeAxis = (std::abs(dx) > std::abs(dy)) ? SwipeAxis::Horizontal : SwipeAxis::Vertical;
+    }
+
+    if (m_swipeAxis != SwipeAxis::Vertical || height() <= 0) {
+        return;
+    }
+
+    const int screenH = height();
+    const int finalY = start.y() + dy;
+    const int bottomZone = qRound(screenH * m_hudCfg.BOTTOM_TRIGGER_ZONE_RATIO);
+    const bool startedFromBottomEdge = start.y() >= (screenH - bottomZone);
+    const bool downwardEnough = dy >= m_hudCfg.SWIPE_HIDE_THRESHOLD_PX;
+    const bool upwardEnough = (-dy) >= m_hudCfg.SWIPE_SHOW_THRESHOLD_PX;
+    const bool crossedBottomEdge = finalY >= (screenH - m_hudCfg.EDGE_CONFIRM_MARGIN_PX);
+
+    if (m_hudVisible && downwardEnough && crossedBottomEdge) {
+        setHudVisible(false, true);
+        return;
+    }
+
+    if (!m_hudVisible && startedFromBottomEdge && upwardEnough) {
+        setHudVisible(true, true);
     }
 }
 
@@ -157,13 +185,11 @@ void CameraView::onLongPressDetected(const QPoint& start) {
 /* --- Widget Discovery --- */
 
 QWidget* CameraView::capsuleWidget() {
-    // Needed for InteractionArbiter to identify the "Capsule" button
-    // Assumes HudContainer exposes its internal buttons
-    return m_hudContainer ? m_hudContainer->capsuleButton() : nullptr;
+    return m_capsuleButton;
 }
 
 QWidget* CameraView::modeSelectorWidget() {
-    return m_hudContainer ? m_hudContainer->modeButton() : nullptr;
+    return m_modeSelector;
 }
 
 /* --- Rendering & Layout --- */
@@ -178,9 +204,10 @@ void CameraView::updateFrame(const VisualFrame& frame) {
 
 void CameraView::resizeEvent(QResizeEvent* event) {
     BaseView::resizeEvent(event);
-    if (m_hudContainer) {
-        m_hudContainer->resize(event->size());
-    }
+    Q_UNUSED(event);
+    stopHudAnimations();
+    updateHudLayout();
+    applyHudState(m_hudVisible);
 }
 
 void CameraView::paintEvent(QPaintEvent*) {
@@ -224,5 +251,76 @@ void CameraView::paintEvent(QPaintEvent*) {
         p.fillRect(centerHole, QColor(255, 255, 255, fillAlpha));
 
         p.restore();
+    }
+}
+
+void CameraView::setHudVisible(bool visible, bool animated) {
+    if (!m_statusBar || !m_capsuleButton || !m_modeSelector) {
+        m_hudVisible = visible;
+        return;
+    }
+
+    m_hudVisible = visible;
+    if (!animated) {
+        stopHudAnimations();
+        applyHudState(visible);
+        return;
+    }
+
+    stopHudAnimations();
+    m_statusBarAnim->setStartValue(m_statusBar->pos());
+    m_statusBarAnim->setEndValue(visible ? m_statusBarVisiblePos : m_statusBarHiddenPos);
+
+    m_capsuleAnim->setStartValue(m_capsuleButton->pos());
+    m_capsuleAnim->setEndValue(visible ? m_capsuleVisiblePos : m_capsuleHiddenPos);
+
+    m_modeSelectorAnim->setStartValue(m_modeSelector->pos());
+    m_modeSelectorAnim->setEndValue(visible ? m_modeSelectorVisiblePos : m_modeSelectorHiddenPos);
+    m_hudAnimGroup->start();
+}
+
+void CameraView::updateHudLayout() {
+    if (!m_statusBar || !m_capsuleButton || !m_modeSelector) return;
+    if (width() <= 0 || height() <= 0) return;
+
+    const int w = width();
+    const int h = height();
+    const int barH = qRound(h * m_hudCfg.STATUS_BAR_H_RATIO);
+    const int margin = qRound(w * m_hudCfg.CAPSULE_MARGIN_RATIO);
+
+    const int capW = qRound(w * m_hudCfg.CAPSULE_W_RATIO);
+    const int capH = qRound(h * m_hudCfg.CAPSULE_H_RATIO);
+    const int capX = margin;
+    const int capY = h - capH - margin;
+
+    const int modeW = qRound(w * m_hudCfg.MODE_W_RATIO);
+    const int modeH = qRound(h * m_hudCfg.MODE_H_RATIO);
+    const int modeX = w - modeW - margin;
+    const int modeY = h - modeH - margin;
+
+    m_statusBar->setGeometry(0, 0, w, barH);
+    m_capsuleButton->setGeometry(capX, capY, capW, capH);
+    m_modeSelector->setGeometry(modeX, modeY, modeW, modeH);
+
+    m_statusBarVisiblePos = QPoint(0, 0);
+    m_statusBarHiddenPos = QPoint(0, -barH);
+
+    m_capsuleVisiblePos = QPoint(capX, capY);
+    m_modeSelectorVisiblePos = QPoint(modeX, modeY);
+    const int hiddenBottomY = h + m_hudCfg.EDGE_CONFIRM_MARGIN_PX;
+    m_capsuleHiddenPos = QPoint(capX, hiddenBottomY);
+    m_modeSelectorHiddenPos = QPoint(modeX, hiddenBottomY);
+}
+
+void CameraView::applyHudState(bool visible) {
+    if (!m_statusBar || !m_capsuleButton || !m_modeSelector) return;
+    m_statusBar->move(visible ? m_statusBarVisiblePos : m_statusBarHiddenPos);
+    m_capsuleButton->move(visible ? m_capsuleVisiblePos : m_capsuleHiddenPos);
+    m_modeSelector->move(visible ? m_modeSelectorVisiblePos : m_modeSelectorHiddenPos);
+}
+
+void CameraView::stopHudAnimations() {
+    if (m_hudAnimGroup && m_hudAnimGroup->state() == QAbstractAnimation::Running) {
+        m_hudAnimGroup->stop();
     }
 }

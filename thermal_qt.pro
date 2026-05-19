@@ -51,7 +51,6 @@ SOURCES     +=  main.cpp \
                 ui/widgets/gallery_topbar.cpp \
                 ui/widgets/scroll_indicator.cpp \
                 ui/widgets/thermal_marker.cpp \
-                ui/widgets/hud_container.cpp \
                 ui/widgets/status_bar.cpp \
                 ui/widgets/capsule_button.cpp \
                 ui/widgets/mode_selector.cpp \
@@ -99,7 +98,6 @@ HEADERS     +=  core/global_context.h \
                 ui/widgets/gallery_topbar.h \
                 ui/widgets/scroll_indicator.h \
                 ui/widgets/thermal_marker.h \
-                ui/widgets/hud_container.h \
                 ui/widgets/status_bar.h \
                 ui/widgets/capsule_button.h \
                 ui/widgets/mode_selector.h \

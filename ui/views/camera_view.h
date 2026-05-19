@@ -5,9 +5,12 @@
 #include "ui/widgets/thermal_marker.h"
 #include "core/types.h"
 #include <QPropertyAnimation>
+#include <QParallelAnimationGroup>
 
 class ThermalProcessor;
-class HudContainer;
+class StatusBar;
+class CapsuleButton;
+class ModeSelector;
 
 /**
  * @brief The Main View (Layer 0 Content + Layer 1 HUD).
@@ -43,6 +46,8 @@ public:
 
     qreal shutterProgress() const { return m_shutterProgress; }
     void setShutterProgress(qreal p) { m_shutterProgress = p; update(); }
+    void setHudVisible(bool visible, bool animated = true);
+    bool isHudVisible() const { return m_hudVisible; }
 
 public slots:
     void updateFrame(const VisualFrame& frame);
@@ -54,6 +59,9 @@ protected:
 private:
     void connectHardware();
     void disconnectHardware();
+    void updateHudLayout();
+    void applyHudState(bool visible);
+    void stopHudAnimations();
 
     /* --- Visual Constants for Shutter Feedback --- */
     struct ShutterConfig {
@@ -73,12 +81,40 @@ private:
     ThermalMarker m_centerMarker{ThermalMarker::Center};
     bool m_isFahrenheit = false;
 
-    /* Layer 2: Interactive HUD (Widget) */
-    HudContainer* m_hudContainer = nullptr;
+    /* Layer 2: Interactive HUD (Widgets owned directly by CameraView) */
+    StatusBar* m_statusBar = nullptr;
+    CapsuleButton* m_capsuleButton = nullptr;
+    ModeSelector* m_modeSelector = nullptr;
+    QParallelAnimationGroup* m_hudAnimGroup = nullptr;
+    QPropertyAnimation* m_statusBarAnim = nullptr;
+    QPropertyAnimation* m_capsuleAnim = nullptr;
+    QPropertyAnimation* m_modeSelectorAnim = nullptr;
+    QPoint m_statusBarVisiblePos;
+    QPoint m_statusBarHiddenPos;
+    QPoint m_capsuleVisiblePos;
+    QPoint m_capsuleHiddenPos;
+    QPoint m_modeSelectorVisiblePos;
+    QPoint m_modeSelectorHiddenPos;
+    bool m_hudVisible = true;
 
     /* Layer 3: Zero-Widget Shutter Animation Engine */
     qreal m_shutterProgress = 0.0;
     QPropertyAnimation* m_shutterAnim = nullptr;
+
+    struct HudConfig {
+        static constexpr qreal STATUS_BAR_H_RATIO = 0.10;
+        static constexpr qreal CAPSULE_W_RATIO = 0.15;
+        static constexpr qreal CAPSULE_H_RATIO = 0.40;
+        static constexpr qreal CAPSULE_MARGIN_RATIO = 0.05;
+        static constexpr qreal MODE_W_RATIO = 0.33;
+        static constexpr qreal MODE_H_RATIO = 0.40;
+        static constexpr qreal BOTTOM_TRIGGER_ZONE_RATIO = 0.16;
+        static constexpr int SWIPE_DEADZONE_PX = 10;
+        static constexpr int SWIPE_HIDE_THRESHOLD_PX = 72;
+        static constexpr int SWIPE_SHOW_THRESHOLD_PX = 72;
+        static constexpr int EDGE_CONFIRM_MARGIN_PX = 2;
+        static constexpr int ANIM_DURATION_MS = 260;
+    } m_hudCfg;
 
     enum class SwipeAxis { None, Horizontal, Vertical };
     SwipeAxis m_swipeAxis = SwipeAxis::None;
