@@ -6,6 +6,7 @@
 #include <QByteArray>
 #include <QList>
 #include <QPoint>
+#include <QtGlobal>
 
 /**
  * @brief Global notification priority levels.
@@ -30,12 +31,22 @@ struct TempPt {
 };
 
 /**
+ * @brief Pixel format contract for RawFrame::pixelData.
+ */
+enum class ThermalPixelFormat : quint8 {
+    Gray8 = 0  /**< 8-bit single-channel grayscale */
+};
+Q_DECLARE_METATYPE(ThermalPixelFormat)
+
+/**
  * @brief Raw frame data directly from the camera driver.
  */
 struct RawFrame {
-    QByteArray pixelData;
-    int w = 0;
-    int h = 0;
+    QByteArray pixelData;  /**< Frame payload in row-major layout. */
+    int w = 0;             /**< Width in pixels. */
+    int h = 0;             /**< Height in pixels. */
+    int strideBytes = 0;   /**< Bytes per row in pixelData. */
+    ThermalPixelFormat pixelFormat = ThermalPixelFormat::Gray8;
     TempPt hot_spot;
     TempPt cold_spot;
     TempPt center_spot;

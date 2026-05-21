@@ -2,7 +2,7 @@
 
 #include "core/event_bus.h"
 #include "hardware/hardware_manager.h"
-#include "hardware/imaging/seekcam/seekcam.h"
+#include "hardware/imaging/thermal_camera.h"
 #include <QDebug>
 #include <QStringList>
 

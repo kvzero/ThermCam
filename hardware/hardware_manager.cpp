@@ -1,7 +1,7 @@
 #include "core/event_bus.h"
 #include "hardware_manager.h"
 #include "hardware/rga/rga_image.h"
-#include "imaging/seekcam/seekcam.h"
+#include "imaging/thermal_camera.h"
 #include "hardware/hmi/input_manager.h"
 #include "hardware/hmi/haptic_provider.h"
 #include "hardware/sensor/battery_monitor.h"

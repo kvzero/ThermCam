@@ -3,26 +3,41 @@
 
 #include <QObject>
 #include <QSize>
-#include "core/types.h" // 包含 RawFrame 和 VisualFrame
 
+#include "core/types.h"
+#include "processing/thermal_palette.h"
+
+/**
+ * @brief Thermal pseudo-color renderer for raw grayscale frames.
+ *
+ * Processing pipeline:
+ * - Input: RawFrame (Gray8)
+ * - Colorization: ThermalPalette LUT (ARGB32)
+ * - Scaling: RGA hardware acceleration
+ * - Output: VisualFrame for UI and capture service
+ */
 class ThermalProcessor : public QObject {
     Q_OBJECT
 public:
     explicit ThermalProcessor(QObject *parent = nullptr);
 
-    // 外部告诉处理器：屏幕/窗口现在多大
     void setTargetSize(const QSize& size);
+    void setPalette(ThermalPalette::Id id);
+    ThermalPalette::Id palette() const { return m_palette; }
 
 public slots:
-    // 接收驱动的原始帧
     void processFrame(const RawFrame& raw);
 
 signals:
-    // 发送处理好的成品帧给 UI
     void frameReady(const VisualFrame& frame);
 
 private:
-    QSize m_targetSize; // 目标输出尺寸
+    bool isFrameUsable(const RawFrame& raw) const;
+    QImage colorizeGrayFrame(const RawFrame& raw) const;
+    TempPt mapPointToTarget(const TempPt& source, int srcW, int srcH) const;
+
+    QSize m_targetSize;
+    ThermalPalette::Id m_palette = ThermalPalette::Id::Spectra;
 };
 
 #endif // THERMAL_PROCESSOR_H

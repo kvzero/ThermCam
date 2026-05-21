@@ -3,7 +3,7 @@
 #include "core/global_context.h"
 #include "core/settings_store.h"
 #include "hardware/hardware_manager.h"
-#include "hardware/imaging/seekcam/seekcam.h"
+#include "hardware/imaging/thermal_camera.h"
 #include "processing/thermal_processor.h"
 #include "services/capture_service.h"
 #include "ui/widgets/status_bar.h"

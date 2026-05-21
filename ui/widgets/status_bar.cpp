@@ -2,7 +2,7 @@
 #include "core/global_context.h"
 #include "hardware/hardware_manager.h"
 #include "hardware/sensor/battery_monitor.h"
-#include "hardware/imaging/seekcam/seekcam.h"
+#include "hardware/imaging/thermal_camera.h"
 #include "core/event_bus.h"
 
 #include <QPainter>

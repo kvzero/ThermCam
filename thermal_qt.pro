@@ -20,7 +20,7 @@ SOURCES     +=  main.cpp \
                 core/event_bus.cpp \
                 core/settings_store.cpp \
                 hardware/hardware_manager.cpp \
-                hardware/imaging/seekcam/seekcam.cpp \
+                hardware/imaging/thermal_camera.cpp \
                 hardware/rga/rga_image.cpp \
                 hardware/hmi/haptic_provider.cpp \
                 hardware/hmi/input_manager.cpp \
@@ -63,7 +63,7 @@ HEADERS     +=  core/global_context.h \
                 core/types.h \
                 core/settings_store.h \
                 hardware/hardware_manager.h \
-                hardware/imaging/seekcam/seekcam.h \
+                hardware/imaging/thermal_camera.h \
                 hardware/rga/rga_buffer.h \
                 hardware/rga/rga_image.h \
                 hardware/hmi/haptic_provider.h \
@@ -71,6 +71,7 @@ HEADERS     +=  core/global_context.h \
                 hardware/sensor/battery_monitor.h \
                 hardware/storage/storage_manager.h \
                 processing/thermal_processor.h \
+                processing/thermal_palette.h \
                 media/image_decoder.h \
                 media/image_encoder.h \
                 media/video_encoder.h \
