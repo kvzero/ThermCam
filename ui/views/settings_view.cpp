@@ -267,7 +267,6 @@ void SettingsView::onGestureStarted() {
 
     m_leftScrollAnim->stop();
     m_rightScrollAnim->stop();
-    m_splitAnim->stop();
 }
 
 void SettingsView::onGestureUpdate(const QPoint& start, int dx, int dy) {
