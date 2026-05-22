@@ -58,11 +58,18 @@ signals:
     void temperatureUnitChanged(bool isFahrenheit);
 
     /**
+     * @brief Fired when pseudo-color palette changes in runtime settings.
+     * @param paletteId ThermalPalette::Id serialized as integer.
+     */
+    void paletteChanged(int paletteId);
+
+    /**
      * @brief 全局视图路由请求 (附带触发区域的绝对物理坐标，用于形变转场动画)
      */
     void cameraRequested(const QRect& sourceAnchor = QRect());
     void galleryRequested(const QRect& sourceAnchor);
     void settingsRequested(const QRect& sourceAnchor);
+    void paletteSelectorRequested();
 
 private:
     explicit EventBus(QObject *parent = nullptr);

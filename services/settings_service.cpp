@@ -3,6 +3,7 @@
 #include "core/event_bus.h"
 #include "hardware/hardware_manager.h"
 #include "hardware/imaging/thermal_camera.h"
+#include "processing/thermal_palette.h"
 #include <QDebug>
 #include <QStringList>
 
@@ -236,6 +237,27 @@ bool SettingsService::normalizePatch(const SettingsPatch& input,
         const QVariant value = it.value();
 
         switch (key) {
+        case SettingKey::Palette: {
+            if (!value.canConvert<int>()) {
+                if (outError) *outError = "Invalid palette payload";
+                return false;
+            }
+
+            bool ok = false;
+            const int paletteId = value.toInt(&ok);
+            if (!ok) {
+                if (outError) *outError = "Invalid palette payload";
+                return false;
+            }
+
+            if (paletteId < 0 || paletteId >= static_cast<int>(ThermalPalette::Id::Count)) {
+                if (outError) *outError = "Unsupported palette id";
+                return false;
+            }
+
+            outPatch->values.insert(key, QVariant(paletteId));
+            continue;
+        }
         case SettingKey::Emissivity: {
             bool ok = false;
             float v = value.toFloat(&ok);
@@ -284,6 +306,21 @@ bool SettingsService::normalizePatch(const SettingsPatch& input,
 bool SettingsService::applyRuntimeEffects(const SettingsChangeEvent& change, QString* outError) {
     bool allSuccess = true;
     QStringList errors;
+
+    if (change.changedKeys.contains(SettingKey::Palette)) {
+        const QVariant payload = change.snapshot.values.value(SettingKey::Palette);
+        bool ok = false;
+        const int paletteId = payload.toInt(&ok);
+        if (!ok) {
+            errors << "Committed palette value is invalid";
+            allSuccess = false;
+        } else if (paletteId < 0 || paletteId >= static_cast<int>(ThermalPalette::Id::Count)) {
+            errors << "Committed palette id is unsupported";
+            allSuccess = false;
+        } else {
+            emit EventBus::instance().paletteChanged(paletteId);
+        }
+    }
 
     if (change.changedKeys.contains(SettingKey::Emissivity)) {
         const QVariant payload = change.snapshot.values.value(SettingKey::Emissivity);

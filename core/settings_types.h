@@ -12,8 +12,9 @@
 
 /** @brief Strongly typed canonical keys for persisted settings domains. */
 enum class SettingKey : quint8 {
-    Emissivity = 0,
-    TemperatureUnit = 1
+    Palette = 0,
+    Emissivity = 1,
+    TemperatureUnit = 2
 };
 
 /** @brief Typed unit selector used by service-level normalization paths. */
@@ -29,7 +30,8 @@ struct SettingDescriptor {
     QVariant defaultValue;
 };
 
-inline const std::array<SettingDescriptor, 2> kSettingRegistry = {{
+inline const std::array<SettingDescriptor, 3> kSettingRegistry = {{
+    {SettingKey::Palette, "palette", QVariant::fromValue(2)},
     {SettingKey::Emissivity, "emissivity", QVariant(0.95f)},
     {SettingKey::TemperatureUnit, "temperature_unit",
      QVariant::fromValue(static_cast<int>(TemperatureUnit::Celsius))}
