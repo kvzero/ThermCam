@@ -1,4 +1,5 @@
 #include "camera_view.h"
+
 #include "core/event_bus.h"
 #include "core/global_context.h"
 #include "core/settings_store.h"
@@ -6,15 +7,18 @@
 #include "hardware/imaging/thermal_camera.h"
 #include "processing/thermal_processor.h"
 #include "services/capture_service.h"
-#include "ui/widgets/status_bar.h"
+#include "services/settings_service.h"
 #include "ui/widgets/capsule_button.h"
 #include "ui/widgets/mode_selector.h"
+#include "ui/widgets/status_bar.h"
+#include "ui/overlays/palette_selector.h"
 
+#include <QDebug>
+#include <QEasingCurve>
+#include <QMetaObject>
 #include <QPainter>
 #include <QResizeEvent>
-#include <QEasingCurve>
-#include <QDebug>
-#include <QMetaObject>
+#include <QVariant>
 #include <cmath>
 
 namespace {
@@ -27,17 +31,45 @@ bool isFahrenheitFromSnapshot(const SettingsSnapshot& snapshot) {
     if (!ok) return false;
     return raw == static_cast<int>(TemperatureUnit::Fahrenheit);
 }
+
+ThermalPalette::Id paletteFromSnapshot(const SettingsSnapshot& snapshot) {
+    bool ok = false;
+    const int raw = snapshot.values
+                        .value(SettingKey::Palette,
+                               QVariant::fromValue(static_cast<int>(ThermalPalette::Id::Spectra)))
+                        .toInt(&ok);
+    if (!ok) return ThermalPalette::Id::Spectra;
+    if (raw < 0 || raw >= static_cast<int>(ThermalPalette::Id::Count)) {
+        return ThermalPalette::Id::Spectra;
+    }
+    return static_cast<ThermalPalette::Id>(raw);
 }
+} // namespace
 
 CameraView::CameraView(QWidget* parent) : BaseView(parent) {
-    // Init Logic Processor (Created but not connected yet)
+    /* --- Logic --- */
     m_processor = new ThermalProcessor(this);
     m_processor->setTargetSize(GlobalContext::instance().screenSize());
 
-    // Init UI Components (CameraView owns HUD directly)
+    const SettingsSnapshot snapshot = SettingsStore::instance().current();
+    m_currentPalette = paletteFromSnapshot(snapshot);
+    m_processor->setPalette(m_currentPalette);
+
+    /* --- HUD Widgets --- */
     m_statusBar = new StatusBar(this);
     m_capsuleButton = new CapsuleButton(this);
     m_modeSelector = new ModeSelector(this);
+
+    m_paletteSelector = new PaletteSelector(this);
+    m_paletteSelector->setGeometry(rect());
+
+    m_paletteOpenTimer = new QTimer(this);
+    m_paletteOpenTimer->setSingleShot(true);
+    connect(m_paletteOpenTimer, &QTimer::timeout, this, [this]() {
+        if (!m_paletteSelector || m_paletteSelector->isPresented()) return;
+        m_paletteSelector->present(m_currentPalette);
+        refreshPalettePreviews();
+    });
 
     auto setupHudAnim = [this](QPropertyAnimation** anim, QWidget* target) {
         *anim = new QPropertyAnimation(target, "pos", this);
@@ -53,12 +85,13 @@ CameraView::CameraView(QWidget* parent) : BaseView(parent) {
     m_hudAnimGroup->addAnimation(m_capsuleAnim);
     m_hudAnimGroup->addAnimation(m_modeSelectorAnim);
 
-    /* Establish non-blocking animation engine for shutter feedback */
+    /* --- Shutter Feedback --- */
     m_shutterAnim = new QPropertyAnimation(this, "shutterProgress", this);
     m_shutterAnim->setDuration(m_cfg.ANIM_DURATION_MS);
     m_shutterAnim->setEasingCurve(QEasingCurve::OutCubic);
 
-    m_isFahrenheit = isFahrenheitFromSnapshot(SettingsStore::instance().current());
+    /* --- Runtime Event Wiring --- */
+    m_isFahrenheit = isFahrenheitFromSnapshot(snapshot);
     connect(&EventBus::instance(), &EventBus::temperatureUnitChanged, this,
             [this](bool isFahrenheit) {
                 if (m_isFahrenheit == isFahrenheit) return;
@@ -66,40 +99,143 @@ CameraView::CameraView(QWidget* parent) : BaseView(parent) {
                 update();
             });
 
+    connect(&EventBus::instance(), &EventBus::paletteChanged, this,
+            [this](int paletteId) {
+                if (paletteId < 0 || paletteId >= static_cast<int>(ThermalPalette::Id::Count)) return;
+                applyPalette(static_cast<ThermalPalette::Id>(paletteId), false);
+                if (m_paletteSelector && m_paletteSelector->isPresented()) {
+                    refreshPalettePreviews();
+                }
+            });
+
+    connect(&EventBus::instance(), &EventBus::paletteSelectorRequested, this,
+            [this]() { openPaletteSelector(); });
+
+    connect(m_paletteSelector, &PaletteSelector::previewSelectionChanged, this,
+            [this](ThermalPalette::Id id) {
+                applyPalette(id, false);
+                refreshPalettePreviews();
+            });
+
+    connect(m_paletteSelector, &PaletteSelector::selectionCommitted, this,
+            [this](ThermalPalette::Id id) {
+                SettingsPatch patch;
+                patch.values.insert(SettingKey::Palette,
+                                    QVariant::fromValue(static_cast<int>(id)));
+                SettingsService::instance().apply(patch);
+
+                m_lastHapticPalette = ThermalPalette::Id::Count;
+                setHudVisible(true, true);
+            });
+
     updateHudLayout();
     applyHudState(true);
 }
 
 CameraView::~CameraView() {
-    // HardwareManager handles camera lifecycle, we just disconnect signals
+    // HardwareManager handles camera lifecycle, we just disconnect signals.
 }
 
 void CameraView::onEnter() {
     qInfo() << "[CameraView] Enter: Connecting Hardware";
     connectHardware();
 
-    // Ensure HUD is visible when entering
+    if (m_paletteSelector && m_paletteSelector->isPresented()) {
+        m_paletteSelector->dismiss(false);
+    }
+    if (m_paletteOpenTimer) {
+        m_paletteOpenTimer->stop();
+    }
+
     setHudVisible(true, false);
 }
 
 void CameraView::onExit() {
     qInfo() << "[CameraView] Exit: Disconnecting Hardware";
+
+    if (m_paletteOpenTimer) {
+        m_paletteOpenTimer->stop();
+    }
+    if (m_paletteSelector && m_paletteSelector->isPresented()) {
+        m_paletteSelector->dismiss(false);
+    }
+
     disconnectHardware();
+}
+
+void CameraView::applyPalette(ThermalPalette::Id palette, bool emitHaptic) {
+    if (palette == ThermalPalette::Id::Count) return;
+    if (static_cast<int>(palette) >= static_cast<int>(ThermalPalette::Id::Count)) {
+        return;
+    }
+
+    m_currentPalette = palette;
+    m_processor->setPalette(palette);
+
+    if (emitHaptic && palette != m_lastHapticPalette) {
+        emit EventBus::instance().hapticRequested(4);
+        m_lastHapticPalette = palette;
+    }
+}
+
+void CameraView::openPaletteSelector() {
+    if (!m_paletteSelector || !m_paletteOpenTimer) return;
+    if (m_paletteSelector->isPresented() || m_paletteOpenTimer->isActive()) return;
+
+    setHudVisible(false, true);
+    m_lastHapticPalette = m_currentPalette;
+    m_paletteOpenTimer->start(m_hudCfg.PALETTE_SHOW_DELAY_MS);
+}
+
+void CameraView::closePaletteSelector(bool commitSelection) {
+    if (m_paletteOpenTimer) {
+        m_paletteOpenTimer->stop();
+    }
+
+    if (!m_paletteSelector || !m_paletteSelector->isPresented()) {
+        if (!commitSelection) {
+            setHudVisible(true, true);
+        }
+        return;
+    }
+
+    m_paletteSelector->dismiss(commitSelection);
+
+    if (!commitSelection) {
+        m_lastHapticPalette = ThermalPalette::Id::Count;
+        setHudVisible(true, true);
+    }
+}
+
+void CameraView::refreshPalettePreviews() {
+    if (!m_paletteSelector || !m_paletteSelector->isPresented()) return;
+
+    const QSize previewSize = m_paletteSelector->previewFrameSize();
+    if (previewSize.isEmpty()) return;
+
+    const int current = static_cast<int>(m_currentPalette);
+    const int minIndex = qMax(0, current - 2);
+    const int maxIndex = qMin(static_cast<int>(ThermalPalette::Id::Count) - 1, current + 2);
+
+    for (int i = minIndex; i <= maxIndex; ++i) {
+        const auto id = static_cast<ThermalPalette::Id>(i);
+        const QImage frame = m_processor->renderPreview(id, previewSize);
+        if (!frame.isNull()) {
+            m_paletteSelector->setPreviewFrame(id, frame);
+        }
+    }
 }
 
 void CameraView::connectHardware() {
     auto* camera = HardwareManager::instance().camera();
     if (!camera) return;
 
-    // Link: Camera -> Processor
     connect(camera, &ThermalCamera::rawFrameReady,
             m_processor, &ThermalProcessor::processFrame, Qt::UniqueConnection);
 
-    // Link: Processor -> View
     connect(m_processor, &ThermalProcessor::frameReady,
             this, &CameraView::updateFrame, Qt::UniqueConnection);
 
-    // Link: Processor -> CaptureService
     connect(m_processor, &ThermalProcessor::frameReady,
             &CaptureService::instance(), &CaptureService::onFrameReady, Qt::UniqueConnection);
 }
@@ -113,8 +249,11 @@ void CameraView::disconnectHardware() {
 }
 
 void CameraView::handleKeyShortPress() {
+    if (m_paletteSelector && m_paletteSelector->isPresented()) {
+        closePaletteSelector(true);
+        return;
+    }
 
-    /* visual feedback is strictly reserved for single-shot captures. */
     if (CaptureService::instance().currentMode() == CaptureMode::Photo) {
         m_shutterAnim->stop();
         m_shutterAnim->setStartValue(1.0);
@@ -122,7 +261,6 @@ void CameraView::handleKeyShortPress() {
         m_shutterAnim->start();
     }
 
-    // Delegate the actual acquisition logic to the headless service
     CaptureService::instance().handlePhysicalTrigger();
 }
 
@@ -132,14 +270,17 @@ void CameraView::resetTransientUi() {
     }
 }
 
-/* --- Gesture Implementations (The logic moved from EventBus) --- */
+/* --- Gesture Implementations --- */
 
 void CameraView::onGestureStarted() {
     m_swipeAxis = SwipeAxis::None;
-    stopHudAnimations();
 }
 
 void CameraView::onGestureUpdate(const QPoint& /*start*/, int dx, int dy) {
+    if (m_paletteSelector && m_paletteSelector->isPresented()) {
+        return;
+    }
+
     if (m_swipeAxis == SwipeAxis::None) {
         if (std::abs(dx) > m_hudCfg.SWIPE_DEADZONE_PX || std::abs(dy) > m_hudCfg.SWIPE_DEADZONE_PX) {
             m_swipeAxis = (std::abs(dx) > std::abs(dy)) ? SwipeAxis::Horizontal : SwipeAxis::Vertical;
@@ -148,6 +289,10 @@ void CameraView::onGestureUpdate(const QPoint& /*start*/, int dx, int dy) {
 }
 
 void CameraView::onGestureFinished(const QPoint& start, int dx, int dy, float /*vx*/, float /*vy*/) {
+    if (m_paletteSelector && m_paletteSelector->isPresented()) {
+        return;
+    }
+
     if (m_swipeAxis == SwipeAxis::None &&
         (std::abs(dx) > m_hudCfg.SWIPE_DEADZONE_PX || std::abs(dy) > m_hudCfg.SWIPE_DEADZONE_PX)) {
         m_swipeAxis = (std::abs(dx) > std::abs(dy)) ? SwipeAxis::Horizontal : SwipeAxis::Vertical;
@@ -164,6 +309,12 @@ void CameraView::onGestureFinished(const QPoint& start, int dx, int dy, float /*
     const bool downwardEnough = dy >= m_hudCfg.SWIPE_HIDE_THRESHOLD_PX;
     const bool upwardEnough = (-dy) >= m_hudCfg.SWIPE_SHOW_THRESHOLD_PX;
     const bool crossedBottomEdge = finalY >= (screenH - m_hudCfg.EDGE_CONFIRM_MARGIN_PX);
+    const bool upwardForPalette = (-dy) >= m_hudCfg.PALETTE_SHOW_THRESHOLD_PX;
+
+    if (m_hudVisible && startedFromBottomEdge && upwardForPalette) {
+        openPaletteSelector();
+        return;
+    }
 
     if (m_hudVisible && downwardEnough && crossedBottomEdge) {
         setHudVisible(false, true);
@@ -175,13 +326,16 @@ void CameraView::onGestureFinished(const QPoint& start, int dx, int dy, float /*
     }
 }
 
-void CameraView::onLongPressDetected(const QPoint& start) {
-    // PRD: Long press on blank area -> Palette Wheel
-    // Logic: If hit test didn't find a widget (handled by InteractionArbiter),
-    // InteractionArbiter calls this.
-    qInfo() << "[CameraView] Show Palette Wheel at" << start;
-    // App::instance()->showPaletteWheel(start);
+void CameraView::onTapDetected(const QPoint& /*pos*/) {
+    if (m_paletteSelector && m_paletteSelector->isPresented()) {
+        closePaletteSelector(true);
+    }
 }
+
+void CameraView::onLongPressDetected(const QPoint& /*start*/) {
+    // Reserved for future in-view interactions.
+}
+
 /* --- Widget Discovery --- */
 
 QWidget* CameraView::capsuleWidget() {
@@ -199,21 +353,30 @@ void CameraView::updateFrame(const VisualFrame& frame) {
     m_hotMarker.update(frame.hot_spot);
     m_coldMarker.update(frame.cold_spot);
     m_centerMarker.update(frame.center_spot);
-    update(); // Schedules paintEvent
+
+    if (m_paletteSelector && m_paletteSelector->isPresented()) {
+        refreshPalettePreviews();
+    }
+
+    update();
 }
 
 void CameraView::resizeEvent(QResizeEvent* event) {
     BaseView::resizeEvent(event);
     Q_UNUSED(event);
+
     stopHudAnimations();
     updateHudLayout();
     applyHudState(m_hudVisible);
+
+    if (m_paletteSelector) {
+        m_paletteSelector->setGeometry(rect());
+    }
 }
 
 void CameraView::paintEvent(QPaintEvent*) {
     QPainter p(this);
 
-    // Layer 0: Thermal Image
     if (!m_currentFrame.image.isNull()) {
         p.drawImage(rect(), m_currentFrame.image);
     } else {
@@ -222,13 +385,11 @@ void CameraView::paintEvent(QPaintEvent*) {
         p.drawText(rect(), Qt::AlignCenter, "Waiting for Stream...");
     }
 
-    // Layer 1: Markers (Fixed, do not move with HUD)
     const QSize s = size();
     m_hotMarker.paint(p, s, m_isFahrenheit);
     m_coldMarker.paint(p, s, m_isFahrenheit);
     m_centerMarker.paint(p, s, m_isFahrenheit);
 
-    // Layer 2: Transient Optical Feedback (Zero-Widget Composition)
     if (m_shutterProgress > 0.01) {
         p.save();
         p.setRenderHint(QPainter::Antialiasing, false);
@@ -238,16 +399,16 @@ void CameraView::paintEvent(QPaintEvent*) {
         const int fillAlpha = qRound(m_cfg.MAX_FILL_ALPHA * m_shutterProgress);
 
         for (int i = 0; i < borderWidth; ++i) {
-
-            float t = (float)i / borderWidth;
-            int currentAlpha = edgeAlpha - static_cast<int>((edgeAlpha - fillAlpha) * (t * t));
+            const float t = static_cast<float>(i) / borderWidth;
+            const int currentAlpha = edgeAlpha - static_cast<int>((edgeAlpha - fillAlpha) * (t * t));
 
             p.setPen(QPen(QColor(255, 255, 255, currentAlpha), 1));
             p.setBrush(Qt::NoBrush);
             p.drawRect(rect().adjusted(i, i, -i - 1, -i - 1));
         }
 
-        QRect centerHole = rect().adjusted(borderWidth, borderWidth, -borderWidth, -borderWidth);
+        const QRect centerHole = rect().adjusted(borderWidth, borderWidth,
+                                                 -borderWidth, -borderWidth);
         p.fillRect(centerHole, QColor(255, 255, 255, fillAlpha));
 
         p.restore();

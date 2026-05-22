@@ -18,7 +18,6 @@ const QVector<PrimaryItemData> kMenuBlueprint = {
     {
         0, QString(QChar(0xf837)), QColor(72, 104, 255), "Camera",
         {
-            {SettingID::Palette, "Palette", ActionType::Action},
             {SettingID::Emissivity, "Emissivity", ActionType::Value},
             {SettingID::TemperatureUnit, "Temperature Unit", ActionType::Action}
         }
@@ -26,6 +25,7 @@ const QVector<PrimaryItemData> kMenuBlueprint = {
     {
         1, QString(QChar(0xf02c)), QColor(28, 158, 112), "View",
         {
+            {SettingID::Palette, "Palette", ActionType::Action},
             {SettingID::OSDOverlay, "Save OSD Overlay", ActionType::Toggle}
         }
     },
@@ -512,7 +512,8 @@ void SettingsView::onSecondaryRowActivated() {
         row->toggleVisualState();
         return;
     case SettingID::Palette:
-        app->showTextModal(item.title.toUpper(), []() {});
+        emit EventBus::instance().cameraRequested();
+        emit EventBus::instance().paletteSelectorRequested();
         return;
     }
 }

@@ -4,13 +4,16 @@
 #include "ui/views/base_view.h"
 #include "ui/widgets/thermal_marker.h"
 #include "core/types.h"
+#include "processing/thermal_palette.h"
 #include <QPropertyAnimation>
 #include <QParallelAnimationGroup>
+#include <QTimer>
 
 class ThermalProcessor;
 class StatusBar;
 class CapsuleButton;
 class ModeSelector;
+class PaletteSelector;
 
 /**
  * @brief The Main View (Layer 0 Content + Layer 1 HUD).
@@ -37,6 +40,7 @@ public:
     void onGestureStarted() override;
     void onGestureUpdate(const QPoint& /*start*/, int dx, int dy) override;
     void onGestureFinished(const QPoint& /*start*/, int dx, int dy, float vx, float vy) override;
+    void onTapDetected(const QPoint& pos) override;
     void onLongPressDetected(const QPoint& start) override;
 
     /* --- Widget Discovery (For InteractionArbiter Hit-Testing) --- */
@@ -57,11 +61,15 @@ protected:
     void paintEvent(QPaintEvent* event) override;
 
 private:
+    void applyPalette(ThermalPalette::Id palette, bool emitHaptic);
     void connectHardware();
     void disconnectHardware();
     void updateHudLayout();
     void applyHudState(bool visible);
     void stopHudAnimations();
+    void openPaletteSelector();
+    void closePaletteSelector(bool commitSelection);
+    void refreshPalettePreviews();
 
     /* --- Visual Constants for Shutter Feedback --- */
     struct ShutterConfig {
@@ -89,6 +97,8 @@ private:
     QPropertyAnimation* m_statusBarAnim = nullptr;
     QPropertyAnimation* m_capsuleAnim = nullptr;
     QPropertyAnimation* m_modeSelectorAnim = nullptr;
+    PaletteSelector* m_paletteSelector = nullptr;
+    QTimer* m_paletteOpenTimer = nullptr;
     QPoint m_statusBarVisiblePos;
     QPoint m_statusBarHiddenPos;
     QPoint m_capsuleVisiblePos;
@@ -96,6 +106,8 @@ private:
     QPoint m_modeSelectorVisiblePos;
     QPoint m_modeSelectorHiddenPos;
     bool m_hudVisible = true;
+    ThermalPalette::Id m_currentPalette = ThermalPalette::Id::Spectra;
+    ThermalPalette::Id m_lastHapticPalette = ThermalPalette::Id::Count;
 
     /* Layer 3: Zero-Widget Shutter Animation Engine */
     qreal m_shutterProgress = 0.0;
@@ -112,6 +124,8 @@ private:
         static constexpr int SWIPE_DEADZONE_PX = 10;
         static constexpr int SWIPE_HIDE_THRESHOLD_PX = 72;
         static constexpr int SWIPE_SHOW_THRESHOLD_PX = 72;
+        static constexpr int PALETTE_SHOW_THRESHOLD_PX = 56;
+        static constexpr int PALETTE_SHOW_DELAY_MS = 90;
         static constexpr int EDGE_CONFIRM_MARGIN_PX = 2;
         static constexpr int ANIM_DURATION_MS = 260;
     } m_hudCfg;
