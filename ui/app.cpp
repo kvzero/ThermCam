@@ -53,16 +53,19 @@ void App::initLayer_Stack() {
 
     auto& bus = EventBus::instance();
 
-    connect(&bus, &EventBus::cameraRequested, this, [this](const QRect& anchor) {
-        switchView(App::View_Camera, anchor);
+    connect(&bus, &EventBus::cameraRequested, this,
+            [this](const QRect& anchor, TransitionMode transitionMode) {
+        switchView(App::View_Camera, anchor, transitionMode);
     });
 
-    connect(&bus, &EventBus::galleryRequested, this, [this](const QRect& anchor) {
-        switchView(App::View_Gallery, anchor);
+    connect(&bus, &EventBus::galleryRequested, this,
+            [this](const QRect& anchor, TransitionMode transitionMode) {
+        switchView(App::View_Gallery, anchor, transitionMode);
     });
 
-    connect(&bus, &EventBus::settingsRequested, this, [this](const QRect& anchor) {
-        switchView(App::View_Settings, anchor);
+    connect(&bus, &EventBus::settingsRequested, this,
+            [this](const QRect& anchor, TransitionMode transitionMode) {
+        switchView(App::View_Settings, anchor, transitionMode);
     });
 }
 
@@ -157,7 +160,9 @@ void App::dismissBubble() {
     }
 }
 
-void App::switchView(ViewType type, const QRect& sourceAnchor) {
+void App::switchView(ViewType type,
+                     const QRect& sourceAnchor,
+                     TransitionMode transitionMode) {
     int index = static_cast<int>(type);
     if (!m_viewStack || index < 0 || index >= m_viewStack->count()) return;
 
@@ -168,7 +173,7 @@ void App::switchView(ViewType type, const QRect& sourceAnchor) {
 
     InteractionArbiter::instance().cancelTouchSession();
 
-    if (m_transitionLayer) {
+    if (m_transitionLayer && transitionMode != TransitionMode::Instant) {
         /* Define visual identity for the transition based on the destination.
            This allows the engine to be generic for Gallery, Settings, etc. */
         QString targetIcon;

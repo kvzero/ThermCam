@@ -26,7 +26,7 @@ GalleryView::GalleryView(QWidget* parent) : BaseView(parent) {
 
     // --- Signals: TopBar ---
     connect(m_topBar, &GalleryTopBar::backRequested, this, []() {
-        emit EventBus::instance().cameraRequested();
+        emit EventBus::instance().cameraRequested(QRect(), TransitionMode::Auto);
     });
 
     connect(m_topBar, &GalleryTopBar::selectionModeToggled, this, [this](bool active) {
@@ -232,7 +232,7 @@ void GalleryView::onGestureFinished(const QPoint& start, int dx, int /*dy*/, flo
                 m_topBar->setSelectionMode(false);
                 update();
             } else {
-                emit EventBus::instance().cameraRequested();
+                emit EventBus::instance().cameraRequested(QRect(), TransitionMode::Auto);
             }
             return;
         }

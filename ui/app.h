@@ -44,8 +44,11 @@ public:
      * Handles lifecycle hooks (onExit -> onEnter) and transition animations.
      * @param type The target view to switch to.
      * @param sourceAnchor Optional screen geometry (e.g., capsule button) to start the transition animation from.
+     * @param transitionMode Route-level transition policy for this switch.
      */
-    void switchView(ViewType type, const QRect& sourceAnchor = QRect());
+    void switchView(ViewType type,
+                    const QRect& sourceAnchor,
+                    TransitionMode transitionMode);
 
     /**
      * @brief Returns the currently active business view (Layer 0).

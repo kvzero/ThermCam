@@ -512,7 +512,7 @@ void SettingsView::onSecondaryRowActivated() {
         row->toggleVisualState();
         return;
     case SettingID::Palette:
-        emit EventBus::instance().cameraRequested();
+        emit EventBus::instance().cameraRequested(QRect(), TransitionMode::Instant);
         emit EventBus::instance().paletteSelectorRequested();
         return;
     }
@@ -698,7 +698,7 @@ void SettingsView::expandPrimary(int primaryIndex) {
 }
 
 void SettingsView::triggerExitToCamera() {
-    emit EventBus::instance().cameraRequested();
+    emit EventBus::instance().cameraRequested(QRect(), TransitionMode::Auto);
 }
 
 void SettingsView::refreshSecondaryRowsFromSnapshot(const SettingsSnapshot& snapshot) {

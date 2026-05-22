@@ -64,11 +64,16 @@ signals:
     void paletteChanged(int paletteId);
 
     /**
-     * @brief 全局视图路由请求 (附带触发区域的绝对物理坐标，用于形变转场动画)
+     * @brief Global view routing request with optional transition anchor.
+     * @param sourceAnchor Optional geometry used as the morph start anchor.
+     * @param transitionMode Route-level transition strategy for this request.
      */
-    void cameraRequested(const QRect& sourceAnchor = QRect());
-    void galleryRequested(const QRect& sourceAnchor);
-    void settingsRequested(const QRect& sourceAnchor);
+    void cameraRequested(const QRect& sourceAnchor,
+                         TransitionMode transitionMode);
+    void galleryRequested(const QRect& sourceAnchor,
+                          TransitionMode transitionMode);
+    void settingsRequested(const QRect& sourceAnchor,
+                           TransitionMode transitionMode);
     void paletteSelectorRequested();
 
 private:

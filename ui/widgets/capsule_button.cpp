@@ -148,9 +148,9 @@ void CapsuleButton::longPressed() {
     QRect globalAnchor(globalTopLeft, halfRect.size());
 
     if (m_currentZone == ActiveZone::Gallery) {
-        emit EventBus::instance().galleryRequested(globalAnchor);
+        emit EventBus::instance().galleryRequested(globalAnchor, TransitionMode::Auto);
     } else if (m_currentZone == ActiveZone::Settings) {
-        emit EventBus::instance().settingsRequested(globalAnchor);
+        emit EventBus::instance().settingsRequested(globalAnchor, TransitionMode::Auto);
     }
 }
 

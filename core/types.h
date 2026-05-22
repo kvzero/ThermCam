@@ -18,6 +18,16 @@ enum class ToastLevel {
 };
 
 /**
+ * @brief View transition policy for route-level navigation.
+ */
+enum class TransitionMode : quint8 {
+    Auto = 0,   /**< Use the default transition behavior of the route. */
+    Animated,   /**< Prefer animated transition when available. */
+    Instant     /**< Force immediate switch without transition animation. */
+};
+Q_DECLARE_METATYPE(TransitionMode)
+
+/**
  * @brief Raw temperature point data (Hardware independent).
  */
 struct TempPt {
