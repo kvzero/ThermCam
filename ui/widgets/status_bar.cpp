@@ -1,8 +1,8 @@
 #include "status_bar.h"
-#include "core/global_context.h"
 #include "hardware/hardware_manager.h"
 #include "hardware/sensor/battery_monitor.h"
 #include "hardware/imaging/thermal_camera.h"
+#include "hardware/storage/storage_manager.h"
 #include "core/event_bus.h"
 
 #include <QPainter>
@@ -20,6 +20,15 @@ StatusBar::StatusBar(QWidget* parent) : QWidget(parent) {
 
     connect(&EventBus::instance(), &EventBus::emissivityChanged,
             this, &StatusBar::onEmissivityChanged);
+
+    if (auto* storage = HardwareManager::instance().storage()) {
+        connect(storage, &StorageManager::sdCardStateChanged,
+                this, &StatusBar::onSdCardStateChanged);
+        connect(storage, &StorageManager::usbDiskStateChanged,
+                this, &StatusBar::onUsbDiskStateChanged);
+        m_sdCardReady = storage->isSdCardReady();
+        m_usbDiskReady = storage->isUsbDiskReady();
+    }
 
     // 2. Initial State Synchronization (Pull Mode on Startup)
     if (auto* bm = HardwareManager::instance().battery()) {
@@ -59,6 +68,18 @@ void StatusBar::onSecondTick() {
     }
 }
 
+void StatusBar::onSdCardStateChanged(bool ready) {
+    if (m_sdCardReady == ready) return;
+    m_sdCardReady = ready;
+    update();
+}
+
+void StatusBar::onUsbDiskStateChanged(bool ready) {
+    if (m_usbDiskReady == ready) return;
+    m_usbDiskReady = ready;
+    update();
+}
+
 void StatusBar::paintEvent(QPaintEvent*) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
@@ -66,53 +87,69 @@ void StatusBar::paintEvent(QPaintEvent*) {
     // Apply global content opacity for slide-to-fade effect
     p.setOpacity(m_contentsOpacity);
 
+    const int w = width();
     const int h = height();
-    const int margin  = h * kHorizontalMarginRatio;
-    const int spacing = h * kItemSpacingRatio;
-    int leftCursorX  = margin;
-    int rightCursorX = width() - margin;
+    if (w <= 0 || h <= 0) return;
+
+    const int horizontalInset = qRound(w * kHorizontalInsetWidthRatio);
+    const int leftClusterGap = qRound(w * kLeftClusterGapWidthRatio);
+    const int rightItemGap = qRound(w * kRightItemGapWidthRatio);
+    const int contentYOffset = qRound(h * kContentYOffsetRatio);
+
+    p.save();
+    p.translate(0, contentYOffset);
+
+    int leftCursorX  = horizontalInset;
+    int rightCursorX = w - horizontalInset;
 
     /* 1. RIGHT STACK (Layout Order: Right -> Left) */
 
     // SLOT R1: Battery
-    const int battW = qRound(h * 2.1); // Must bigger than "kBodyWidthRatio"
+    const int battW = qRound(h * kBatterySlotWidthRatio);
     rightCursorX -= battW;
     const QRect battRect(rightCursorX, 0, battW, h);
     drawBattery(p, battRect);
 
-    // SLOT R2: SD Card
-    /*
-    if (m_isSdCardInserted) {
-        rightCursorX -= spacing; // Add gap between Battery and SD
-        const int sdW = qRound(h * 0.8);
-        rightCursorX -= sdW;
-        const QRect sdRect(rightCursorX, 0, sdW, h);
-        drawSdCard(p, sdRect);
-    }
-    */
+    // SLOT R2/R3: Removable Storage Icons
+    QFont iconFont("tabler-icons");
+    iconFont.setPixelSize(qRound(h * 0.64));
+    iconFont.setWeight(QFont::DemiBold);
+    const QFontMetrics iconFm(iconFont);
+    const int iconGlyphW = qMax(iconFm.horizontalAdvance(QChar(ICON_SD_CARD)),
+                                iconFm.horizontalAdvance(QChar(ICON_USB_DISK)));
+    const int iconPaddingW = qMax(2, qRound(h * kStorageIconPaddingRatio));
+    const int storageIconW = iconGlyphW + iconPaddingW;
+
+    auto placeStorageIcon = [&](QChar icon) {
+        rightCursorX -= rightItemGap;
+        rightCursorX -= storageIconW;
+        drawStorageIcon(p, QRect(rightCursorX, 0, storageIconW, h), icon);
+    };
+    if (m_sdCardReady) placeStorageIcon(QChar(ICON_SD_CARD));
+    if (m_usbDiskReady) placeStorageIcon(QChar(ICON_USB_DISK));
 
     /* 2. LEFT STACK (Layout Order: Left -> Right) */
 
     // Setup font for layout metrics calculation
     QFont font("Roboto");
-    font.setPixelSize(h * kTextSizeRatio);
+    font.setPixelSize(qRound(h * kTextSizeRatio));
     font.setBold(true);
     p.setFont(font);
     QFontMetrics fm(font);
 
     // SLOT L1: Time
-    const int timeW = fm.horizontalAdvance(m_timeText);
-    int timePadding = qRound(h * 0.1);
-    const QRect timeRect(leftCursorX, 0, timeW + timePadding, h);
+    const int timeAdvanceW = fm.horizontalAdvance(m_timeText);
+    const int timeInkW = fm.boundingRect(m_timeText).width();
+    const int timeDrawW = qMax(timeAdvanceW, timeInkW) + 3; // Reserve outline overdraw on the right edge.
+    const QRect timeRect(leftCursorX, 0, timeDrawW, h);
     drawTime(p, timeRect);
-    leftCursorX += timeW;
+    leftCursorX += timeDrawW + leftClusterGap;
 
     // SLOT L2: Emissivity
-    leftCursorX += spacing * 2;
-    const int maxEmissivityW = rightCursorX - leftCursorX;
+    const int maxEmissivityW = qMax(0, rightCursorX - leftCursorX);
     const QRect emissivityRect(leftCursorX, 0, maxEmissivityW, h);
     drawEmissivity(p, emissivityRect);
-
+    p.restore();
 }
 
 void StatusBar::drawTime(QPainter& p, const QRect& rect) {
@@ -132,8 +169,16 @@ void StatusBar::drawEmissivity(QPainter& p, const QRect& rect) {
     font.setBold(true);
     p.setFont(font);
 
-    const QString text = QString("ε=%1").arg(m_emissivity, 0, 'f', 2);
-    drawOutlinedText(p, rect, Qt::AlignLeft | Qt::AlignVCenter, text);
+    const QString text = QString("ε: %1").arg(m_emissivity, 0, 'f', 2);
+    drawOutlinedText(p, rect, Qt::AlignLeft | Qt::AlignVCenter, text, EMISSIVITY_TEXT_COLOR);
+}
+
+void StatusBar::drawStorageIcon(QPainter& p, const QRect& rect, QChar icon) {
+    QFont iconFont("tabler-icons");
+    iconFont.setPixelSize(qRound(height() * 0.64));
+    iconFont.setWeight(QFont::DemiBold);
+    p.setFont(iconFont);
+    drawOutlinedText(p, rect, Qt::AlignCenter, QString(icon));
 }
 
 void StatusBar::drawBattery(QPainter& p, const QRect& rect) {
@@ -142,7 +187,7 @@ void StatusBar::drawBattery(QPainter& p, const QRect& rect) {
     // ---------------------------------------------------------
 
     // --- Chassis & Positive Pole (Nipple) ---
-    const qreal kBodyHeightRatio       = 0.60;  // Vertical scale of the battery body relative to the container height
+    const qreal kBodyHeightRatio       = 0.55;  // Vertical scale of the battery body relative to the container height
     const qreal kBodyWidthRatio        = 2.05;  // Fixed aspect ratio (Width/Height) for the body to ensure consistent shape across resolutions
     const qreal kBodyCornerRadiusRatio = 0.30;  // Rounding intensity: 0.5 creates a perfect semi-circle (capsule)
     const qreal kNippleWidthRatio      = 0.08;  // Width of the positive pole relative to the total component width
@@ -186,6 +231,8 @@ void StatusBar::drawBattery(QPainter& p, const QRect& rect) {
 
     // Define final body and nipple rectangles
     const QRectF bodyRect(groupStartX, bodyY, bodyW, bodyH);
+    QPainterPath bodyPath;
+    bodyPath.addRoundedRect(bodyRect, bodyRadius, bodyRadius);
 
     const qreal nippleH = bodyH * kNippleHeightRatio;
     const qreal nippleY = rect.y() + (h - nippleH) / 2.0;
@@ -198,7 +245,7 @@ void StatusBar::drawBattery(QPainter& p, const QRect& rect) {
 
     // 1A: Draw Body Capsule (Always Surface Color)
     p.setBrush(BATT_SURFACE);
-    p.drawRoundedRect(bodyRect, bodyRadius, bodyRadius);
+    p.drawPath(bodyPath);
 
     // 1B: Draw Chord-cut Nipple (Conditional Coloring)
     if (m_batteryStatus.isPresent && m_batteryStatus.level == 100) {
@@ -245,11 +292,17 @@ void StatusBar::drawBattery(QPainter& p, const QRect& rect) {
     }
 
     qreal fillWidth = bodyW * (m_batteryStatus.level / 100.0);
-    if (fillWidth < bodyH && m_batteryStatus.level > 0) fillWidth = bodyH;
+    if (m_batteryStatus.level > 0) {
+        const qreal kMinVisibleFillPx = qMax<qreal>(1.0, bodyH * 0.12);
+        fillWidth = qMax(fillWidth, kMinVisibleFillPx);
+    }
+    fillWidth = qMin(fillWidth, bodyW);
 
     if (fillWidth > 0) {
         p.setBrush(fillColor);
-        p.drawRoundedRect(QRectF(bodyRect.x(), bodyRect.y(), fillWidth, bodyH), bodyRadius, bodyRadius);
+        QPainterPath fillClipPath;
+        fillClipPath.addRect(QRectF(bodyRect.x(), bodyRect.y(), fillWidth, bodyH));
+        p.drawPath(bodyPath.intersected(fillClipPath));
     }
 
     // ---------------------------------------------------------
@@ -330,7 +383,8 @@ void StatusBar::drawBattery(QPainter& p, const QRect& rect) {
     }
 }
 
-void StatusBar::drawOutlinedText(QPainter& p, const QRect& rect, int flags, const QString& text) {
+void StatusBar::drawOutlinedText(QPainter& p, const QRect& rect, int flags, const QString& text,
+                                 const QColor& textColor) {
     // 1. Performance Guard: If HUD is nearly invisible, skip rendering entirely
     if (m_contentsOpacity < 0.02) return;
 
@@ -354,6 +408,6 @@ void StatusBar::drawOutlinedText(QPainter& p, const QRect& rect, int flags, cons
     }
 
     // 4. Primary text rendering
-    p.setPen(Qt::white);
+    p.setPen(textColor);
     p.drawText(rect, flags, text);
 }

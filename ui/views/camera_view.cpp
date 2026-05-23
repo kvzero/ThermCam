@@ -382,19 +382,26 @@ void CameraView::resizeEvent(QResizeEvent* event) {
 
 void CameraView::paintEvent(QPaintEvent*) {
     QPainter p(this);
+    const bool hasFrame = !m_currentFrame.image.isNull();
 
-    if (!m_currentFrame.image.isNull()) {
+    if (hasFrame) {
         p.drawImage(rect(), m_currentFrame.image);
     } else {
         p.fillRect(rect(), Qt::black);
-        p.setPen(Qt::white);
-        p.drawText(rect(), Qt::AlignCenter, "Waiting for Stream...");
+        QFont iconFont("tabler-icons");
+        iconFont.setPixelSize(qRound(qMin(width(), height()) * 0.22));
+        iconFont.setWeight(QFont::DemiBold);
+        p.setFont(iconFont);
+        p.setPen(QColor(170, 170, 170, 150));
+        p.drawText(rect(), Qt::AlignCenter, QString(QChar(0xf83f)));
     }
 
-    const QSize s = size();
-    m_hotMarker.paint(p, s, m_isFahrenheit);
-    m_coldMarker.paint(p, s, m_isFahrenheit);
-    m_centerMarker.paint(p, s, m_isFahrenheit);
+    if (hasFrame) {
+        const QSize s = size();
+        m_hotMarker.paint(p, s, m_isFahrenheit);
+        m_coldMarker.paint(p, s, m_isFahrenheit);
+        m_centerMarker.paint(p, s, m_isFahrenheit);
+    }
 
     if (m_shutterProgress > 0.01) {
         p.save();

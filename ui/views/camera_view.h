@@ -114,10 +114,10 @@ private:
     QPropertyAnimation* m_shutterAnim = nullptr;
 
     struct HudConfig {
-        static constexpr qreal STATUS_BAR_H_RATIO = 0.10;
+        static constexpr qreal STATUS_BAR_H_RATIO = 0.118;
         static constexpr qreal CAPSULE_W_RATIO = 0.15;
         static constexpr qreal CAPSULE_H_RATIO = 0.40;
-        static constexpr qreal CAPSULE_MARGIN_RATIO = 0.05;
+        static constexpr qreal CAPSULE_MARGIN_RATIO = 0.03;
         static constexpr qreal MODE_W_RATIO = 0.33;
         static constexpr qreal MODE_H_RATIO = 0.40;
         static constexpr qreal BOTTOM_TRIGGER_ZONE_RATIO = 0.16;
