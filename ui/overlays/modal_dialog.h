@@ -5,6 +5,7 @@
 #include <QPoint>
 #include <QPropertyAnimation>
 #include <functional>
+#include "ui/interaction_target.h"
 
 class QPainter;
 
@@ -29,8 +30,9 @@ struct ModalSpec {
  * shell press feedback, and primary/secondary action contract dispatch. Subclasses
  * only provide content sizing/painting and optional content interaction.
  */
-class ModalBase : public QWidget {
+class ModalBase : public QWidget, public InteractionTarget {
     Q_OBJECT
+    Q_INTERFACES(InteractionTarget)
     Q_PROPERTY(qreal animProgress READ animProgress WRITE setAnimProgress)
     Q_PROPERTY(qreal touchProgress READ touchProgress WRITE setTouchProgress)
 
@@ -48,10 +50,11 @@ public:
     void present(const ModalSpec& spec);
     void dismiss();
 
-    /* --- UIController Protocol --- */
-    Q_INVOKABLE bool handleInteractionUpdate(QPoint localPos);
-    Q_INVOKABLE void finalizeGesture(int dy);
-    Q_INVOKABLE void cancelGesture();
+    /* --- InteractionTarget Contract --- */
+    void onInteractionBegin(const InteractionEvent& event) override;
+    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
+    void onInteractionEnd(const InteractionEvent& event) override;
+    void onInteractionCancel() override;
 
     /* --- Animation Properties --- */
     qreal animProgress() const { return m_animProgress; }
@@ -73,8 +76,6 @@ protected:
 
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
-    void mousePressEvent(QMouseEvent* event) override;
-    void mouseReleaseEvent(QMouseEvent* event) override;
 
 private:
     /* --- Interaction Model --- */
@@ -145,7 +146,6 @@ private:
     QPoint m_lastPos;
     QPoint m_glowPos;
     bool m_isPanelPressed = false;
-    bool m_swallowNextRelease = false;
     bool m_isDismissing = false;
 
     /* --- Animation Engine --- */

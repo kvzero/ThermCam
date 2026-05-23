@@ -125,7 +125,7 @@ void GalleryView::onExit() {
 // Gesture Routing & Handling
 // ============================================================================
 
-void GalleryView::onGestureStarted() {
+void GalleryView::onInteractionBegin(const InteractionEvent& /*event*/) {
     m_lastGestureDx = 0;
     m_lastGestureDy = 0;
     m_swipeAxis = SwipeAxis::None;
@@ -139,19 +139,22 @@ void GalleryView::onGestureStarted() {
     }
 }
 
-void GalleryView::onGestureUpdate(const QPoint& start, int dx, int dy) {
-    int deltaX = dx - m_lastGestureDx;
-    int deltaY = dy - m_lastGestureDy;
+InteractionUpdateDecision GalleryView::onInteractionUpdate(const InteractionEvent& event) {
+    const QPoint start = event.startGlobal;
+    const int dx = event.deltaFromStartGlobal.x();
+    const int dy = event.deltaFromStartGlobal.y();
+    const int deltaX = event.deltaFromPreviousGlobal.x();
+    const int deltaY = event.deltaFromPreviousGlobal.y();
     m_lastGestureDx = dx;
     m_lastGestureDy = dy;
 
-    const QPoint currentPos = start + QPoint(dx, dy);
+    const QPoint currentPos = event.currentGlobal;
     if (m_viewer->currentState() != MediaViewer::Hidden) {
          m_viewer->onPanUpdate(currentPos, deltaX, deltaY);
-        return;
+        return InteractionUpdateDecision::KeepOwner;
     }
 
-    if (m_isPinching) return;
+    if (m_isPinching) return InteractionUpdateDecision::KeepOwner;
 
     m_lastDragPos = currentPos;
 
@@ -186,7 +189,7 @@ void GalleryView::onGestureUpdate(const QPoint& start, int dx, int dy) {
         } else {
             m_edgeScrollTimer->stop();
         }
-        return;
+        return InteractionUpdateDecision::KeepOwner;
     }
 
     // Intent: Standard grid panning
@@ -201,9 +204,14 @@ void GalleryView::onGestureUpdate(const QPoint& start, int dx, int dy) {
         }
         setActiveScroll(target);
     }
+    return InteractionUpdateDecision::KeepOwner;
 }
 
-void GalleryView::onGestureFinished(const QPoint& start, int dx, int /*dy*/, float vx, float vy) {
+void GalleryView::onInteractionEnd(const InteractionEvent& event) {
+    const QPoint start = event.startGlobal;
+    const int dx = event.deltaFromStartGlobal.x();
+    const float vx = event.velocityPxPerMs.x();
+    const float vy = event.velocityPxPerMs.y();
     if (m_viewer->currentState() != MediaViewer::Hidden) {
         m_viewer->onPanFinished(vx, vy);
         return;
@@ -243,7 +251,11 @@ void GalleryView::onGestureFinished(const QPoint& start, int dx, int /*dy*/, flo
     }
 }
 
-void GalleryView::onPinchUpdate(const QPoint& center, float factor) {
+void GalleryView::onInteractionCancel() {
+    m_edgeScrollTimer->stop();
+}
+
+void GalleryView::onInteractionPinch(const QPoint& center, float factor) {
     if (m_viewer->currentState() != MediaViewer::Hidden) {
         return;
     }
@@ -279,7 +291,8 @@ void GalleryView::onPinchUpdate(const QPoint& center, float factor) {
     setZoomProgress(targetZoom);
 }
 
-void GalleryView::onTapDetected(const QPoint& pos) {
+void GalleryView::onInteractionTap(const InteractionEvent& event) {
+    const QPoint pos = event.currentGlobal;
     if (m_viewer->currentState() != MediaViewer::Hidden) {
         m_viewer->onTap(pos);
         return;
@@ -298,7 +311,8 @@ void GalleryView::onTapDetected(const QPoint& pos) {
     }
 }
 
-void GalleryView::onLongPressDetected(const QPoint& start) {
+void GalleryView::onInteractionLongPress(const InteractionEvent& event) {
+    const QPoint start = event.currentGlobal;
     if (m_viewer->currentState() != MediaViewer::Hidden) return;
     if (m_isSelectionMode) return;
 

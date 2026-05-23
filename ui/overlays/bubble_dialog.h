@@ -8,6 +8,7 @@
 #include <QString>
 #include <QVector>
 #include <QWidget>
+#include "ui/interaction_target.h"
 
 #include <functional>
 
@@ -32,8 +33,9 @@ struct BubbleAnchorContext {
  * anchor-aware placement, and entry/exit lifecycle. Subclasses only provide
  * content rendering and content interaction contracts.
  */
-class BubbleBase : public QWidget {
+class BubbleBase : public QWidget, public InteractionTarget {
     Q_OBJECT
+    Q_INTERFACES(InteractionTarget)
     Q_PROPERTY(qreal animProgress READ animProgress WRITE setAnimProgress)
     Q_PROPERTY(qreal touchProgress READ touchProgress WRITE setTouchProgress)
 
@@ -51,10 +53,11 @@ public:
     void dismiss();
     void dismissImmediately();
 
-    /* --- UIController Protocol --- */
-    Q_INVOKABLE bool handleInteractionUpdate(QPoint localPos);
-    Q_INVOKABLE void finalizeGesture(int dy);
-    Q_INVOKABLE void cancelGesture();
+    /* --- InteractionTarget Contract --- */
+    void onInteractionBegin(const InteractionEvent& event) override;
+    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
+    void onInteractionEnd(const InteractionEvent& event) override;
+    void onInteractionCancel() override;
 
     /* --- Animation Properties --- */
     qreal animProgress() const { return m_animProgress; }
@@ -87,8 +90,6 @@ protected:
 
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
-    void mousePressEvent(QMouseEvent* event) override;
-    void mouseReleaseEvent(QMouseEvent* event) override;
 
 private:
     /* --- Interaction Model --- */
@@ -153,7 +154,6 @@ private:
     QPoint m_lastPos;
     QPoint m_glowPos;
     bool m_isPanelPressed = false;
-    bool m_swallowNextRelease = false;
     bool m_isDismissing = false;
     bool m_releasedByOutsidePan = false;
 

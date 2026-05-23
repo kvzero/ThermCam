@@ -19,8 +19,9 @@ class SettingsSecondaryRow;
  * for Back/Close actions, and renders the non-widget black-to-transparent mask
  * required by the settings scroll interaction.
  */
-class SettingsTopBar : public QWidget {
+class SettingsTopBar : public QWidget, public InteractionTarget {
     Q_OBJECT
+    Q_INTERFACES(InteractionTarget)
     Q_PROPERTY(qreal maskOpacity READ maskOpacity WRITE setMaskOpacity)
 public:
     /* --- Lifecycle --- */
@@ -31,10 +32,11 @@ public:
     qreal maskOpacity() const { return m_maskOpacity; }
     void setMaskOpacity(qreal v);
 
-    /* --- UIController Protocol --- */
-    Q_INVOKABLE bool handleInteractionUpdate(QPoint localPos);
-    Q_INVOKABLE void finalizeGesture(int dy);
-    Q_INVOKABLE void cancelGesture();
+    /* --- InteractionTarget Forwarding --- */
+    void onInteractionBegin(const InteractionEvent& event) override;
+    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
+    void onInteractionEnd(const InteractionEvent& event) override;
+    void onInteractionCancel() override;
 
 signals:
     /* --- Cross-Module Signals --- */
@@ -43,7 +45,6 @@ signals:
 
 protected:
     void paintEvent(QPaintEvent* event) override;
-    void mousePressEvent(QMouseEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
 
 private:
@@ -85,10 +86,11 @@ public:
     void onExit() override;
     void handleKeyShortPress() override {}
 
-    /* --- UIController Protocol --- */
-    void onGestureStarted() override;
-    void onGestureUpdate(const QPoint& start, int dx, int dy) override;
-    void onGestureFinished(const QPoint& start, int dx, int dy, float vx, float vy) override;
+    /* --- InteractionTarget Contract --- */
+    void onInteractionBegin(const InteractionEvent& event) override;
+    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
+    void onInteractionEnd(const InteractionEvent& event) override;
+    void onInteractionCancel() override;
 
     /* --- Public Properties --- */
     qreal leftScroll() const { return m_leftScroll; }

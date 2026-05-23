@@ -4,7 +4,6 @@
 
 #include <QFont>
 #include <QLinearGradient>
-#include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QRadialGradient>
@@ -87,16 +86,21 @@ void BubbleBase::dismissImmediately() {
     onBubbleDismissed();
 }
 
-bool BubbleBase::handleInteractionUpdate(QPoint localPos) {
-    return updatePress(localPos);
+void BubbleBase::onInteractionBegin(const InteractionEvent& event) {
+    beginPress(event.currentLocal);
 }
 
-void BubbleBase::finalizeGesture(int /*dy*/) {
+InteractionUpdateDecision BubbleBase::onInteractionUpdate(const InteractionEvent& event) {
+    return updatePress(event.currentLocal)
+               ? InteractionUpdateDecision::KeepOwner
+               : InteractionUpdateDecision::ReleaseOwner;
+}
+
+void BubbleBase::onInteractionEnd(const InteractionEvent& /*event*/) {
     endPress(true);
-    m_swallowNextRelease = true;
 }
 
-void BubbleBase::cancelGesture() {
+void BubbleBase::onInteractionCancel() {
     endPress(false);
 }
 
@@ -159,25 +163,7 @@ void BubbleBase::resizeEvent(QResizeEvent* /*event*/) {
     relayout();
 }
 
-void BubbleBase::mousePressEvent(QMouseEvent* event) {
-    beginPress(event->pos());
-    QWidget::mousePressEvent(event);
-}
-
-void BubbleBase::mouseReleaseEvent(QMouseEvent* event) {
-    m_lastPos = event->pos();
-    if (m_swallowNextRelease) {
-        m_swallowNextRelease = false;
-        QWidget::mouseReleaseEvent(event);
-        return;
-    }
-
-    endPress(true);
-    QWidget::mouseReleaseEvent(event);
-}
-
 void BubbleBase::beginPress(const QPoint& localPos) {
-    m_swallowNextRelease = false;
     m_releasedByOutsidePan = false;
     m_pressStartPos = localPos;
     m_lastPos = localPos;

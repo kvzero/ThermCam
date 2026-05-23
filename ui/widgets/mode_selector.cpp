@@ -5,7 +5,6 @@
 #include "hardware/hmi/haptic_provider.h"
 #include <QPainter>
 #include <QPainterPath>
-#include <QMouseEvent>
 #include <QEasingCurve>
 
 ModeSelector::ModeSelector(QWidget* parent) : QWidget(parent) {
@@ -66,12 +65,12 @@ void ModeSelector::setVStretch(qreal s) {
 }
 
 /** --- Interaction Logic (InteractionArbiter Implementation) --- */
-void ModeSelector::mousePressEvent(QMouseEvent* event) {
+void ModeSelector::onInteractionBegin(const InteractionEvent& event) {
     // Reset interaction gate.
     m_isPressed = false;
 
-    if (!isPointInVisualArea(event->pos())) {
-        // 如果在 Picking 状态下点到了自己的空白区域，视为“取消意图”，执行收回
+    if (!isPointInVisualArea(event.currentLocal)) {
+        // Collapse immediately when tapping outside the visual body in Picking state.
         if (m_state == State::Picking) {
             collapse();
         }
@@ -79,7 +78,7 @@ void ModeSelector::mousePressEvent(QMouseEvent* event) {
     }
 
     m_isPressed = true; // Only authorized if hit-test passes
-    m_glowPos = event->pos();
+    m_glowPos = event.currentLocal;
 
     m_glowAnim->stop();
     m_glowAnim->setEndValue(1.0);
@@ -87,7 +86,7 @@ void ModeSelector::mousePressEvent(QMouseEvent* event) {
 
     if (m_state == State::Picking) {
         CaptureMode otherMode = (m_currentMode == CaptureMode::Photo) ? CaptureMode::Video : CaptureMode::Photo;
-        m_hoveredMode = (event->pos().y() < height() / 2) ? otherMode : m_currentMode;
+        m_hoveredMode = (event.currentLocal.y() < height() / 2) ? otherMode : m_currentMode;
         m_isStickyPicking = false;
     } else {
         m_popAnim->stop();
@@ -98,7 +97,8 @@ void ModeSelector::mousePressEvent(QMouseEvent* event) {
     update();
 }
 
-bool ModeSelector::handleInteractionUpdate(QPoint localPos) {
+InteractionUpdateDecision ModeSelector::onInteractionUpdate(const InteractionEvent& event) {
+    const QPoint localPos = event.currentLocal;
     /**
      * Dynamic Hitbox.relinquishing control to the background view
      * immediately if the finger leaves the visual area.
@@ -106,7 +106,7 @@ bool ModeSelector::handleInteractionUpdate(QPoint localPos) {
     if (m_state != State::Picking && !isPointInVisualArea(localPos)) {
         m_isPressed = false;
         m_longPressTimer->stop();
-        return false;
+        return InteractionUpdateDecision::ReleaseOwner;
     }
 
     m_glowPos = localPos;
@@ -122,10 +122,10 @@ bool ModeSelector::handleInteractionUpdate(QPoint localPos) {
         }
     }
     update();
-    return true;
+    return InteractionUpdateDecision::KeepOwner;
 }
 
-void ModeSelector::finalizeGesture(int) {
+void ModeSelector::onInteractionEnd(const InteractionEvent& /*event*/) {
     m_longPressTimer->stop();
     m_glowAnim->setEndValue(0.0);
     m_glowAnim->start();
@@ -156,7 +156,7 @@ void ModeSelector::finalizeGesture(int) {
     update();
 }
 
-void ModeSelector::cancelGesture() {
+void ModeSelector::onInteractionCancel() {
     m_longPressTimer->stop();
     m_glowAnim->setEndValue(0.0);
     m_glowAnim->start();

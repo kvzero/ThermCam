@@ -36,17 +36,17 @@ public:
     void handleKeyShortPress() override;
     void resetTransientUi() override;
 
-    /* --- Semantic Gestures (From InteractionArbiter) --- */
-    void onGestureStarted() override;
-    void onGestureUpdate(const QPoint& /*start*/, int dx, int dy) override;
-    void onGestureFinished(const QPoint& /*start*/, int dx, int dy, float vx, float vy) override;
-    void onTapDetected(const QPoint& pos) override;
-    void onLongPressDetected(const QPoint& start) override;
+    /* --- InteractionTarget Contract --- */
+    void onInteractionBegin(const InteractionEvent& event) override;
+    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
+    void onInteractionEnd(const InteractionEvent& event) override;
+    void onInteractionCancel() override;
+    void onInteractionTap(const InteractionEvent& event) override;
+    void onInteractionLongPress(const InteractionEvent& event) override;
 
-    /* --- Widget Discovery (For InteractionArbiter Hit-Testing) --- */
-    // Allows InteractionArbiter to know if the user tapped the capsule or mode button
+    /* --- Transition Anchor Hook --- */
+    /** @brief Exposes the capsule widget as Camera's fallback transition anchor. */
     QWidget* capsuleWidget() override;
-    QWidget* modeSelectorWidget() override;
 
     qreal shutterProgress() const { return m_shutterProgress; }
     void setShutterProgress(qreal p) { m_shutterProgress = p; update(); }

@@ -72,12 +72,17 @@ void ToastManager::animateOut() {
     m_anim->start();
 }
 
-bool ToastManager::handleInteractionUpdate(QPoint localPos) {
+void ToastManager::onInteractionBegin(const InteractionEvent& event) {
+    m_gestureStartOffsetY = m_offsetY;
+    m_gestureStartY = event.currentGlobal.y();
+    m_isFirstGestureMove = false;
+}
+
+InteractionUpdateDecision ToastManager::onInteractionUpdate(const InteractionEvent& event) {
     m_autoHideTimer->stop();
     m_anim->stop();
 
-    // Map the local coordinate back to global to get a stable, non-moving reference
-    QPoint currentGlobalPos = this->mapToGlobal(localPos);
+    QPoint currentGlobalPos = event.currentGlobal;
 
     // If the gesture entered from outside (Searchlight), sync the anchor on the first move
     if (m_isFirstGestureMove) {
@@ -104,10 +109,10 @@ bool ToastManager::handleInteractionUpdate(QPoint localPos) {
 
     setOffsetY(newVisualOffsetY);
 
-    return true;
+    return InteractionUpdateDecision::KeepOwner;
 }
 
-void ToastManager::finalizeGesture(int /*unused*/) {
+void ToastManager::onInteractionEnd(const InteractionEvent& /*event*/) {
     // Calculate the final displacement based on the currentOffsetY vs startOffsetY
     int finalVisualDelta = m_offsetY - m_gestureStartOffsetY;
 
@@ -128,7 +133,7 @@ void ToastManager::finalizeGesture(int /*unused*/) {
     }
 }
 
-void ToastManager::cancelGesture() {
+void ToastManager::onInteractionCancel() {
     m_isFirstGestureMove = true;
     m_anim->stop();
     disconnect(m_anim, &QPropertyAnimation::finished, this, &ToastManager::processQueue);
@@ -153,17 +158,6 @@ QRect ToastManager::getVisualRect() const {
     return QRect((width() - pillW) / 2, 0, pillW, m_contentH);
 }
 
-
-void ToastManager::mousePressEvent(QMouseEvent* event) {
-    // Record the baseline state when widget is grabbed
-    m_gestureStartOffsetY = m_offsetY;
-
-    // Capture the absolute global Y as the starting anchor
-    m_gestureStartY = event->globalPos().y();
-    m_isFirstGestureMove = false; // Mouse press already sets the anchor
-
-    QWidget::mousePressEvent(event);
-}
 
 void ToastManager::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);

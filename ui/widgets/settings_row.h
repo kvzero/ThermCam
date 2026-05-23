@@ -3,6 +3,7 @@
 
 #include <QWidget>
 #include "ui/settings_menu_types.h"
+#include "ui/interaction_target.h"
 
 /**
  * @brief Shared press-owner contract for settings rows under InteractionArbiter delegation.
@@ -10,24 +11,32 @@
  * Owns per-row gesture intent gating (press highlight, vertical-scroll cancel,
  * and release-time activation) while a touch stream is captured by this row.
  */
-class SettingsBaseRow : public QWidget {
+class SettingsBaseRow : public QWidget, public InteractionTarget {
     Q_OBJECT
+    Q_INTERFACES(InteractionTarget)
 public:
     /* --- Lifecycle --- */
     explicit SettingsBaseRow(QWidget* parent = nullptr);
 
-    /* --- UIController Protocol --- */
-    Q_INVOKABLE bool handleInteractionUpdate(QPoint localPos);
-    Q_INVOKABLE void finalizeGesture(int dy);
-    Q_INVOKABLE void cancelGesture();
+    /* --- InteractionTarget Contract --- */
+    void onInteractionBegin(const InteractionEvent& event) override;
+    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
+    void onInteractionEnd(const InteractionEvent& event) override;
+    void onInteractionCancel() override;
 
 signals:
     /* --- Cross-Module Signals --- */
     void activated();
 
 protected:
-    void mousePressEvent(QMouseEvent* event) override;
-    void mouseReleaseEvent(QMouseEvent* event) override;
+    /**
+     * @brief Returns whether the current touch may arm release-time activation.
+     *
+     * The default implementation allows full-row activation. Derived rows can
+     * narrow the effective hit area (for example, toggle-only activation zones)
+     * without changing the shared press/drag cancellation contract.
+     */
+    virtual bool isActivationArmed(const QPoint& localPos) const;
 
     /* --- Visual State Hooks --- */
     bool isPressed() const { return m_isPressed; }
@@ -35,6 +44,7 @@ protected:
 
 private:
     /* --- Private State --- */
+    bool m_activationArmed = false;
     bool m_isPressed = false;
     bool m_clickCanceled = false;
     QPoint m_pressPos;
@@ -93,7 +103,7 @@ public:
     const SecondaryItemData& data() const { return m_data; }
 
 protected:
-    void mousePressEvent(QMouseEvent* event) override;
+    bool isActivationArmed(const QPoint& localPos) const override;
     void paintEvent(QPaintEvent* event) override;
 
 private:

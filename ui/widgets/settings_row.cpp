@@ -1,8 +1,8 @@
 #include "settings_row.h"
-#include <QMouseEvent>
 #include <QPainter>
 #include <QLinearGradient>
 #include <QFont>
+#include <QVariant>
 
 namespace {
 const QString kExpandChevronIcon = QString(QChar(0xea61));
@@ -14,18 +14,25 @@ SettingsBaseRow::SettingsBaseRow(QWidget* parent) : QWidget(parent) {
     setAttribute(Qt::WA_TranslucentBackground, true);
 }
 
-void SettingsBaseRow::mousePressEvent(QMouseEvent* event) {
+void SettingsBaseRow::onInteractionBegin(const InteractionEvent& event) {
+    m_activationArmed = isActivationArmed(event.currentLocal);
+    if (!m_activationArmed) {
+        m_isPressed = false;
+        m_clickCanceled = false;
+        return;
+    }
+
     m_isPressed = true;
     m_clickCanceled = false;
-    m_pressPos = event->pos();
-    m_lastPos = event->pos();
+    m_pressPos = event.currentLocal;
+    m_lastPos = event.currentLocal;
     onPressStateChanged();
 }
 
-void SettingsBaseRow::mouseReleaseEvent(QMouseEvent* /*event*/) {}
-
-bool SettingsBaseRow::handleInteractionUpdate(QPoint localPos) {
-    if (!m_isPressed) return false;
+InteractionUpdateDecision SettingsBaseRow::onInteractionUpdate(const InteractionEvent& event) {
+    const QPoint localPos = event.currentLocal;
+    if (!m_activationArmed) return InteractionUpdateDecision::ReleaseOwner;
+    if (!m_isPressed) return InteractionUpdateDecision::ReleaseOwner;
 
     m_lastPos = localPos;
     const int dx = localPos.x() - m_pressPos.x();
@@ -37,7 +44,7 @@ bool SettingsBaseRow::handleInteractionUpdate(QPoint localPos) {
         m_isPressed = false;
         m_clickCanceled = true;
         onPressStateChanged();
-        return false;
+        return InteractionUpdateDecision::ReleaseOwner;
     }
 
     // Horizontal drag means navigation gesture intent, row should relinquish ownership.
@@ -45,21 +52,23 @@ bool SettingsBaseRow::handleInteractionUpdate(QPoint localPos) {
         m_isPressed = false;
         m_clickCanceled = true;
         onPressStateChanged();
-        return false;
+        return InteractionUpdateDecision::ReleaseOwner;
     }
 
     if (!rect().contains(localPos)) {
         m_isPressed = false;
         m_clickCanceled = true;
         onPressStateChanged();
-        return false;
+        return InteractionUpdateDecision::ReleaseOwner;
     }
 
-    return true;
+    return InteractionUpdateDecision::KeepOwner;
 }
 
-void SettingsBaseRow::finalizeGesture(int /*dy*/) {
-    const bool shouldActivate = m_isPressed && !m_clickCanceled && rect().contains(m_lastPos);
+void SettingsBaseRow::onInteractionEnd(const InteractionEvent& /*event*/) {
+    const bool shouldActivate = m_activationArmed && m_isPressed && !m_clickCanceled &&
+                                rect().contains(m_lastPos);
+    m_activationArmed = false;
     m_isPressed = false;
     m_clickCanceled = false;
     onPressStateChanged();
@@ -67,11 +76,16 @@ void SettingsBaseRow::finalizeGesture(int /*dy*/) {
     if (shouldActivate) emit activated();
 }
 
-void SettingsBaseRow::cancelGesture() {
-    if (!m_isPressed && !m_clickCanceled) return;
+void SettingsBaseRow::onInteractionCancel() {
+    if (!m_activationArmed && !m_isPressed && !m_clickCanceled) return;
+    m_activationArmed = false;
     m_isPressed = false;
     m_clickCanceled = false;
     onPressStateChanged();
+}
+
+bool SettingsBaseRow::isActivationArmed(const QPoint& /*localPos*/) const {
+    return true;
 }
 
 void SettingsBaseRow::onPressStateChanged() {
@@ -251,11 +265,9 @@ QRect SettingsSecondaryRow::toggleHitRect() const {
     return toggleTrackRect().adjusted(-pad, -pad, pad, pad);
 }
 
-void SettingsSecondaryRow::mousePressEvent(QMouseEvent* event) {
-    if (m_data.type == ActionType::Toggle && !toggleHitRect().contains(event->pos())) {
-        return;
-    }
-    SettingsBaseRow::mousePressEvent(event);
+bool SettingsSecondaryRow::isActivationArmed(const QPoint& localPos) const {
+    if (m_data.type != ActionType::Toggle) return true;
+    return toggleHitRect().contains(localPos);
 }
 
 void SettingsSecondaryRow::paintEvent(QPaintEvent* /*event*/) {

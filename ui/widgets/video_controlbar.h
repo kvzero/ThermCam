@@ -8,6 +8,7 @@
 #include <QPoint>
 #include <QColor>
 #include <QString>
+#include "ui/interaction_target.h"
 
 class QPainter;
 
@@ -17,8 +18,9 @@ class QPainter;
  * DESIGN PRINCIPLE: All visual metrics are ratio-based to ensure perfect scaling
  * across different screen resolutions. No magic numbers are allowed in the logic.
  */
-class VideoControlBar : public QWidget {
+class VideoControlBar : public QWidget, public InteractionTarget {
     Q_OBJECT
+    Q_INTERFACES(InteractionTarget)
     Q_PROPERTY(qreal opacity READ opacity WRITE setOpacity)
 public:
     explicit VideoControlBar(QWidget* parent = nullptr);
@@ -28,9 +30,10 @@ public:
 
     void updatePlaybackState(bool playing, qint64 currentMs, qint64 totalMs, const QString& durationStr);
 
-    Q_INVOKABLE bool handleInteractionUpdate(QPoint localPos);
-    Q_INVOKABLE void finalizeGesture(int dy = 0);
-    Q_INVOKABLE void cancelGesture();
+    void onInteractionBegin(const InteractionEvent& event) override;
+    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
+    void onInteractionEnd(const InteractionEvent& event) override;
+    void onInteractionCancel() override;
 
     qreal opacity() const { return m_opacity; }
     void setOpacity(qreal o) { m_opacity = o; update(); }
@@ -43,7 +46,6 @@ signals:
 
 protected:
     void paintEvent(QPaintEvent* event) override;
-    void mousePressEvent(QMouseEvent* event) override;
 
 private slots:
     void initiateFadeOut();

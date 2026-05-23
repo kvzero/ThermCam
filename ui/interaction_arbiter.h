@@ -1,26 +1,29 @@
 #ifndef INTERACTION_ARBITER_H
 #define INTERACTION_ARBITER_H
 
+#include <QList>
 #include <QObject>
 #include <QPoint>
-#include <QList>
-#include <QEvent>
+#include <QPointF>
+
+#include "ui/interaction_target.h"
 
 class App;
+class BaseView;
+class GestureRecognizer;
 class QTimer;
 class QWidget;
-class GestureRecognizer;
 struct RawTouchPoint;
 
 /**
- * @brief The Logic Brain & Event Arbiter.
+ * @brief Central touch/key router that owns one interaction session at a time.
  *
- * Responsibilities:
- * 1. Receives screen-mapped events from EventBus (InputManager handles rotation).
- * 2. Uses GestureRecognizer to translate raw data into semantic gestures.
- * 3. Arbitrates between Global Gestures (Pull-down) and Local View Gestures.
- * 4. Injects atomic events (Hover, Click, LongPress) into specific Widgets.
- * 5. Manages System Power (3s shutdown hold).
+ * InteractionArbiter lives for the whole app lifecycle. It consumes hardware
+ * input from EventBus, feeds GestureRecognizer, and dispatches interaction
+ * callbacks to exactly one `InteractionTarget` during each touch session.
+ *
+ * Global pull-down gesture detection remains in this layer and preempts local
+ * target updates when the global route is selected.
  */
 class InteractionArbiter : public QObject {
     Q_OBJECT
@@ -43,14 +46,13 @@ private slots:
     void handleRawTouch(const QList<RawTouchPoint>& points);
 
     /* --- Semantic Gesture Handlers (from GestureRecognizer) --- */
-    void onTouchesStarted();
-    void onTouchesReleased(const QPoint& start, int dx, int dy, float vx, float vy);
-    void onTapDetected(const QPoint& start, int dx, int dy);
-    void onDoubleTapDetected(const QPoint& start, int dx, int dy);
-    void onLongPressDetected(const QPoint& start);
-
-    void onSwipeUpdate(const QPoint& start, int dx, int dy);
-    void onPinchUpdate(const QPoint& center, float factor);
+    void onRecognizerTouchesStarted();
+    void onRecognizerTouchesReleased(const QPoint& start, int dx, int dy, float vx, float vy);
+    void onRecognizerTap(const QPoint& start, int dx, int dy);
+    void onRecognizerDoubleTap(const QPoint& start, int dx, int dy);
+    void onRecognizerLongPress(const QPoint& start);
+    void onRecognizerSwipeUpdate(const QPoint& start, int dx, int dy);
+    void onRecognizerPinchUpdate(const QPoint& center, float factor);
 
     /* --- System Logic --- */
     void onKeyLongPressTimeout();
@@ -62,29 +64,38 @@ private:
     GestureRecognizer* m_recognizer = nullptr;
     QTimer* m_shutdownTimer = nullptr;
 
-    /* Interaction State */
-    bool m_isGlobalGesture = false;    /**< True if controlling System Overlay (Layer 2) */
-    bool m_intentLocked = false;       /**< True if gesture type (Global vs View) is decided */
-    bool m_wasTouching = false;        /**< Tracking rising edge of touch */
+    /* --- Interaction Session State --- */
+    bool m_isGlobalGesture = false; /**< True when current swipe is routed as global pull-down. */
+    bool m_intentLocked = false;    /**< True once global-vs-local route is decided for this swipe. */
+    bool m_wasTouching = false;     /**< Tracks the raw touch rising/falling edge. */
+    int m_activePointerCount = 0;
 
-    /* Hover Tracking */
-    QWidget* m_pressedWidget = nullptr; /**< Current active physical or button target */
-    QWidget* m_currentHoveredWidget = nullptr;
+    /* --- Session Owner State --- */
+    InteractionTarget* m_ownerTarget = nullptr;
+    QWidget* m_ownerWidget = nullptr;
+    QPoint m_ownerStartGlobal;
+    QPoint m_ownerPrevGlobal;
 
-    /* Constants & Config */
+    /* --- Constants --- */
     static constexpr int SHUTDOWN_HOLD_MS = 3000;
-    static constexpr float TOP_EDGE_RATIO = 0.12f; /**< Top 12% triggers global menu */
-    static constexpr int HIT_EXPANSION_PX = 10;    /**< Expanded hit area for small buttons */
+    static constexpr float TOP_EDGE_RATIO = 0.12f; /**< Top 12% can trigger global pull-down. */
+    static constexpr int HIT_EXPANSION_PX = 10;    /**< Fuzzy hit radius for small controls. */
     static const char* PROP_ALLOW_SLIDE_TRIGGER;
     static const char* PROP_IS_INTERACTABLE;
 
-    /* Internal Helpers */
+    /* --- Internal Helpers --- */
+    BaseView* activeViewTarget() const;
+    InteractionTarget* targetFromWidget(QWidget* widget) const;
     QWidget* findTargetWidget(const QPoint& globalPos);
-    void injectMouseEvent(QWidget* target, QEvent::Type type, const QPoint& globalPos);
-    void updateHoverState(const QPoint& globalPos);
-    void clearHoverState();
+    void setOwner(InteractionTarget* target, QWidget* widget, const QPoint& anchorGlobal);
+    void clearOwner();
+    InteractionEvent buildEventFor(QWidget* widget,
+                                   const QPoint& startGlobal,
+                                   const QPoint& previousGlobal,
+                                   const QPoint& currentGlobal,
+                                   const QPointF& velocityPxPerMs) const;
+    InteractionEvent buildSemanticEvent(const QPoint& globalPos) const;
     bool isViewInteractionAllowed(const QPoint& globalPos);
-
 };
 
 #endif // INTERACTION_ARBITER_H

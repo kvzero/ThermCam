@@ -2,8 +2,6 @@
 #include "core/event_bus.h"
 #include <QPainter>
 #include <QPainterPath>
-#include <QMouseEvent>
-#include <QDebug>
 
 CapsuleButton::CapsuleButton(QWidget* parent) : QWidget(parent) {
     // Stage 3 Protocol: We are an entity, but we refuse "Searchlight" hijacking
@@ -26,20 +24,19 @@ CapsuleButton::CapsuleButton(QWidget* parent) : QWidget(parent) {
     setupAnim(&m_glowAnim, "glowOpacity");
 }
 
-void CapsuleButton::mousePressEvent(QMouseEvent* event) {
-    // Local capture starts. InteractionArbiter will now delegate handleInteractionUpdate to us.
+void CapsuleButton::onInteractionBegin(const InteractionEvent& event) {
     m_isInside = true;
-    m_glowPos = event->pos();
+    m_glowPos = event.currentLocal;
 
     m_glowAnim->stop();
     m_glowAnim->setEndValue(1.0);
     m_glowAnim->start();
 
-    updateZone(event->pos());
-    QWidget::mousePressEvent(event);
+    updateZone(event.currentLocal);
 }
 
-bool CapsuleButton::handleInteractionUpdate(QPoint localPos) {
+InteractionUpdateDecision CapsuleButton::onInteractionUpdate(const InteractionEvent& event) {
+    const QPoint localPos = event.currentLocal;
     m_glowPos = localPos;
     bool wasInside = m_isInside;
     m_isInside = rect().contains(localPos);
@@ -65,7 +62,7 @@ bool CapsuleButton::handleInteractionUpdate(QPoint localPos) {
     }
 
     update();
-    return true; // We maintain strict ownership until finger release
+    return InteractionUpdateDecision::KeepOwner; // We maintain strict ownership until release.
 }
 
 void CapsuleButton::updateZone(const QPoint& pos) {
@@ -110,7 +107,7 @@ void CapsuleButton::startLongPressTimer() {
     }
 }
 
-void CapsuleButton::finalizeGesture(int) {
+void CapsuleButton::onInteractionEnd(const InteractionEvent& /*event*/) {
     m_longPressTimer->stop();
     m_glowAnim->stop();
     m_glowAnim->setEndValue(0.0);
@@ -121,7 +118,7 @@ void CapsuleButton::finalizeGesture(int) {
     update();
 }
 
-void CapsuleButton::cancelGesture() {
+void CapsuleButton::onInteractionCancel() {
     m_longPressTimer->stop();
     m_glowAnim->stop();
     m_glowAnim->setEndValue(0.0);

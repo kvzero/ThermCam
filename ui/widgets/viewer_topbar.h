@@ -8,14 +8,16 @@
 #include <QRect>
 #include <QPainter>
 #include "core/types.h"
+#include "ui/interaction_target.h"
 
 /**
  * @brief Render helper for the Media Viewer's top control bar.
  * Handles auto-hiding, hit-testing, and drawing the Back/Delete actions.
  * Operates purely in physical coordinates without QWidget overhead.
  */
-class ViewerTopBar : public QWidget  {
+class ViewerTopBar : public QWidget, public InteractionTarget  {
     Q_OBJECT
+    Q_INTERFACES(InteractionTarget)
     Q_PROPERTY(qreal opacity READ opacity WRITE setOpacity)
     Q_PROPERTY(qreal backGlow READ backGlow WRITE setBackGlow)
     Q_PROPERTY(qreal deleteGlow READ deleteGlow WRITE setDeleteGlow)
@@ -32,10 +34,11 @@ public:
     /** @brief Update the displayed file metadata */
     void updateInfo(const MediaFileInfo& info);
 
-    /** --- Interaction Protocol --- */
-    Q_INVOKABLE bool handleInteractionUpdate(QPoint localPos);
-    Q_INVOKABLE void finalizeGesture(int dy = 0);
-    Q_INVOKABLE void cancelGesture();
+    /** --- InteractionTarget Contract --- */
+    void onInteractionBegin(const InteractionEvent& event) override;
+    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
+    void onInteractionEnd(const InteractionEvent& event) override;
+    void onInteractionCancel() override;
 
     /** @brief Main render pass */
     qreal opacity() const { return m_opacity; }
@@ -57,7 +60,6 @@ signals:
 
 protected:
     void paintEvent(QPaintEvent* event) override;
-    void mousePressEvent(QMouseEvent* event) override;
 
 private slots:
     void initiateFadeOut();

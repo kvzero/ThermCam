@@ -3,6 +3,7 @@
 
 #include <QWidget>
 #include <QPropertyAnimation>
+#include "ui/interaction_target.h"
 
 /**
  * @brief Floating navigation and action bar for the Gallery.
@@ -12,8 +13,9 @@
  * Touch interaction emits a white glow, which erupts into a red shockwave
  * upon release, seamlessly pulling out the Trash module.
  */
-class GalleryTopBar : public QWidget {
+class GalleryTopBar : public QWidget, public InteractionTarget {
     Q_OBJECT
+    Q_INTERFACES(InteractionTarget)
     Q_PROPERTY(qreal morphProgress READ morphProgress WRITE setMorphProgress)
     Q_PROPERTY(qreal trashExtraWidth READ trashExtraWidth WRITE setTrashExtraWidth)
     Q_PROPERTY(qreal leftGlow READ leftGlow WRITE setLeftGlow)
@@ -24,10 +26,11 @@ class GalleryTopBar : public QWidget {
 public:
     explicit GalleryTopBar(QWidget* parent = nullptr);
 
-    /* --- InteractionArbiter Interaction Protocol --- */
-    Q_INVOKABLE bool handleInteractionUpdate(QPoint localPos);
-    Q_INVOKABLE void finalizeGesture(int dy);
-    Q_INVOKABLE void cancelGesture();
+    /* --- InteractionTarget Contract --- */
+    void onInteractionBegin(const InteractionEvent& event) override;
+    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
+    void onInteractionEnd(const InteractionEvent& event) override;
+    void onInteractionCancel() override;
 
     /* --- State Mutators --- */
     void setSelectionMode(bool active);
@@ -66,7 +69,6 @@ signals:
 
 protected:
     void paintEvent(QPaintEvent* event) override;
-    void mousePressEvent(QMouseEvent* event) override;
 
 private:
     void drawLeftAction(QPainter& p, int H);

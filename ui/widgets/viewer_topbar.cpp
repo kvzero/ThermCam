@@ -3,7 +3,6 @@
 #include <QEasingCurve>
 #include <QDateTime>
 #include <QPainterPath>
-#include <QMouseEvent>
 
 ViewerTopBar::ViewerTopBar(QWidget* parent) : QWidget(parent) {
     setProperty("isInteractable", true);
@@ -65,13 +64,13 @@ void ViewerTopBar::triggerGlowAnimation(QPropertyAnimation* anim, bool active) {
     }
 }
 
-void ViewerTopBar::mousePressEvent(QMouseEvent* event) {
-    handleInteractionUpdate(event->pos());
-    QWidget::mousePressEvent(event);
+void ViewerTopBar::onInteractionBegin(const InteractionEvent& event) {
+    (void)onInteractionUpdate(event);
 }
 
-bool ViewerTopBar::handleInteractionUpdate(QPoint localPos) {
-    if (m_opacity < 0.1) return false;
+InteractionUpdateDecision ViewerTopBar::onInteractionUpdate(const InteractionEvent& event) {
+    const QPoint localPos = event.currentLocal;
+    if (m_opacity < 0.1) return InteractionUpdateDecision::ReleaseOwner;
 
     m_lastGlowPos = localPos;
 
@@ -98,12 +97,12 @@ bool ViewerTopBar::handleInteractionUpdate(QPoint localPos) {
     if (newHoverBack || newHoverDel || newHoverTime) {
         m_hideTimer->start(m_cfg.FADE_DELAY_MS);
         emit interactionActive();
-        return true;
+        return InteractionUpdateDecision::KeepOwner;
     }
-    return false;
+    return InteractionUpdateDecision::ReleaseOwner;
 }
 
-void ViewerTopBar::finalizeGesture(int) {
+void ViewerTopBar::onInteractionEnd(const InteractionEvent& /*event*/) {
     // Turn off all glows
     triggerGlowAnimation(m_backGlowAnim, false);
     triggerGlowAnimation(m_deleteGlowAnim, false);
@@ -122,7 +121,7 @@ void ViewerTopBar::finalizeGesture(int) {
     update();
 }
 
-void ViewerTopBar::cancelGesture() {
+void ViewerTopBar::onInteractionCancel() {
     triggerGlowAnimation(m_backGlowAnim, false);
     triggerGlowAnimation(m_deleteGlowAnim, false);
     triggerGlowAnimation(m_timeGlowAnim, false);

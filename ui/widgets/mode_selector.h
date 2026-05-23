@@ -5,6 +5,7 @@
 #include <QPropertyAnimation>
 #include <QPoint>
 #include "core/types.h"
+#include "ui/interaction_target.h"
 
 /**
  * @brief Professional Mode Selection and Recording Feedback Widget.
@@ -15,8 +16,9 @@
  *
  * Visuals follow the "Glass DNA": Frosted background, inner stroke, and adaptive contrast.
  */
-class ModeSelector : public QWidget {
+class ModeSelector : public QWidget, public InteractionTarget {
     Q_OBJECT
+    Q_INTERFACES(InteractionTarget)
     Q_PROPERTY(qreal vStretch READ vStretch WRITE setVStretch)
     Q_PROPERTY(qreal hStretch READ hStretch WRITE setHStretch)
     Q_PROPERTY(qreal iconPop READ iconPop WRITE setIconPop)
@@ -31,10 +33,11 @@ public:
 
     explicit ModeSelector(QWidget* parent = nullptr);
 
-    /** --- InteractionArbiter Protocol --- */
-    Q_INVOKABLE bool handleInteractionUpdate(QPoint localPos);
-    Q_INVOKABLE void finalizeGesture(int dy);
-    Q_INVOKABLE void cancelGesture();
+    /** --- InteractionTarget Contract --- */
+    void onInteractionBegin(const InteractionEvent& event) override;
+    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
+    void onInteractionEnd(const InteractionEvent& event) override;
+    void onInteractionCancel() override;
     Q_INVOKABLE void longPressed();
     Q_INVOKABLE void collapse();
 
@@ -53,7 +56,6 @@ public:
 
 protected:
     void paintEvent(QPaintEvent* event) override;
-    void mousePressEvent(QMouseEvent* event) override;
 
 private slots:
     /* Service State Synchronization */

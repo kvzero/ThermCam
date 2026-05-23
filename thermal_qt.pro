@@ -85,6 +85,7 @@ HEADERS     +=  core/global_context.h \
                 services/settings_service.h \
                 ui/app.h \
                 ui/gesture_recognizer.h \
+                ui/interaction_target.h \
                 ui/overlays/media_viewer.h \
                 ui/interaction_arbiter.h \
                 ui/views/base_view.h \

@@ -8,6 +8,7 @@
 #include <QWidget>
 
 #include "processing/thermal_palette.h"
+#include "ui/interaction_target.h"
 
 class QPainter;
 
@@ -17,8 +18,9 @@ class QPainter;
  * - Manages one interactive selection session from present() to dismiss().
  * - Emits semantic selection events; rendering/persistence is handled by upper layers.
  */
-class PaletteSelector : public QWidget {
+class PaletteSelector : public QWidget, public InteractionTarget {
     Q_OBJECT
+    Q_INTERFACES(InteractionTarget)
     Q_PROPERTY(qreal panelProgress READ panelProgress WRITE setPanelProgress)
     Q_PROPERTY(qreal centerIndex READ centerIndex WRITE setCenterIndex)
 
@@ -38,10 +40,11 @@ public:
     void clearPreviewFrames();
     QSize previewFrameSize() const;
 
-    /* --- InteractionArbiter Protocol --- */
-    Q_INVOKABLE bool handleInteractionUpdate(QPoint localPos);
-    Q_INVOKABLE void finalizeGesture(int dy);
-    Q_INVOKABLE void cancelGesture();
+    /* --- InteractionTarget Contract --- */
+    void onInteractionBegin(const InteractionEvent& event) override;
+    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
+    void onInteractionEnd(const InteractionEvent& event) override;
+    void onInteractionCancel() override;
 
     /* --- Animated Properties --- */
     qreal panelProgress() const { return m_panelProgress; }
@@ -64,7 +67,6 @@ signals:
 protected:
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
-    void mousePressEvent(QMouseEvent* event) override;
 
 private:
     /* --- Rendering Helpers --- */

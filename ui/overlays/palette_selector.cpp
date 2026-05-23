@@ -1,6 +1,5 @@
 #include "palette_selector.h"
 
-#include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QEasingCurve>
@@ -188,9 +187,40 @@ QSize PaletteSelector::previewFrameSize() const {
     return QSize(qMax(1, w), qMax(1, h));
 }
 
-/* --- InteractionArbiter Protocol --- */
-bool PaletteSelector::handleInteractionUpdate(QPoint localPos) {
-    if (!m_isPresented) return false;
+/* --- InteractionTarget Contract --- */
+void PaletteSelector::onInteractionBegin(const InteractionEvent& event) {
+    if (!m_isPresented) return;
+
+    m_panelAnim->stop();
+    m_snapAnim->stop();
+
+    m_pressLocalPos = event.currentLocal;
+    m_lastLocalPos = event.currentLocal;
+    m_dragStartCenterIndex = m_centerIndex;
+    m_dragStartPanelProgress = m_panelProgress;
+    m_dragAxis = DragAxis::Unknown;
+
+    const QRect panel = panelRect();
+    const QRect preview = previewRect();
+
+    m_pressInPreview = preview.contains(event.currentLocal);
+
+    if (!panel.contains(event.currentLocal)) {
+        m_mode = InteractionMode::OutsideTap;
+        return;
+    }
+
+    if (m_pressInPreview) {
+        m_mode = InteractionMode::PreviewDrag;
+        return;
+    }
+
+    m_mode = InteractionMode::Passive;
+}
+
+InteractionUpdateDecision PaletteSelector::onInteractionUpdate(const InteractionEvent& event) {
+    const QPoint localPos = event.currentLocal;
+    if (!m_isPresented) return InteractionUpdateDecision::ReleaseOwner;
 
     m_lastLocalPos = localPos;
     const qreal dx = static_cast<qreal>(localPos.x() - m_pressLocalPos.x());
@@ -201,27 +231,27 @@ bool PaletteSelector::handleInteractionUpdate(QPoint localPos) {
         if (std::hypot(dx, dy) > m_cfg.DISMISS_TAP_SLOP_PX) {
             m_mode = InteractionMode::Passive;
         }
-        return true;
+        return InteractionUpdateDecision::KeepOwner;
     }
     case InteractionMode::Passive: {
         if (std::abs(dy) > m_cfg.DRAG_SLOP_PX && std::abs(dy) > std::abs(dx) && dy > 0) {
             m_mode = InteractionMode::DismissDrag;
             m_dragStartPanelProgress = m_panelProgress;
         }
-        return true;
+        return InteractionUpdateDecision::KeepOwner;
     }
     case InteractionMode::DismissDrag: {
         const QRect panel = panelRect();
-        if (panel.height() <= 0) return true;
+        if (panel.height() <= 0) return InteractionUpdateDecision::KeepOwner;
 
         const qreal progress = m_dragStartPanelProgress - (dy / panel.height());
         setPanelProgress(qBound(0.0, progress, 1.0));
-        return true;
+        return InteractionUpdateDecision::KeepOwner;
     }
     case InteractionMode::PreviewDrag: {
         if (m_dragAxis == DragAxis::Unknown) {
             if (std::hypot(dx, dy) < m_cfg.DRAG_SLOP_PX) {
-                return true;
+                return InteractionUpdateDecision::KeepOwner;
             }
 
             if (std::abs(dy) > std::abs(dx)) {
@@ -230,31 +260,31 @@ bool PaletteSelector::handleInteractionUpdate(QPoint localPos) {
                     m_mode = InteractionMode::DismissDrag;
                     m_dragStartPanelProgress = m_panelProgress;
                 }
-                return true;
+                return InteractionUpdateDecision::KeepOwner;
             }
 
             m_dragAxis = DragAxis::Horizontal;
         }
 
         if (m_dragAxis != DragAxis::Horizontal) {
-            return true;
+            return InteractionUpdateDecision::KeepOwner;
         }
 
         const qreal spacing = itemSpacingPx();
-        if (spacing < 1.0) return true;
+        if (spacing < 1.0) return InteractionUpdateDecision::KeepOwner;
 
         const qreal candidate = m_dragStartCenterIndex - (dx / spacing);
         setCenterIndex(applyEdgeResistance(candidate));
-        return true;
+        return InteractionUpdateDecision::KeepOwner;
     }
     case InteractionMode::None:
-        return true;
+        return InteractionUpdateDecision::KeepOwner;
     }
 
-    return true;
+    return InteractionUpdateDecision::KeepOwner;
 }
 
-void PaletteSelector::finalizeGesture(int /*dy*/) {
+void PaletteSelector::onInteractionEnd(const InteractionEvent& /*event*/) {
     if (!m_isPresented) return;
 
     const qreal dx = static_cast<qreal>(m_lastLocalPos.x() - m_pressLocalPos.x());
@@ -297,7 +327,7 @@ void PaletteSelector::finalizeGesture(int /*dy*/) {
     m_dragAxis = DragAxis::Unknown;
 }
 
-void PaletteSelector::cancelGesture() {
+void PaletteSelector::onInteractionCancel() {
     if (!m_isPresented) return;
 
     if (m_mode == InteractionMode::PreviewDrag) {
@@ -499,36 +529,6 @@ void PaletteSelector::paintEvent(QPaintEvent* /*event*/) {
 
 void PaletteSelector::resizeEvent(QResizeEvent* /*event*/) {
     update();
-}
-
-void PaletteSelector::mousePressEvent(QMouseEvent* event) {
-    if (!m_isPresented) return;
-
-    m_panelAnim->stop();
-    m_snapAnim->stop();
-
-    m_pressLocalPos = event->pos();
-    m_lastLocalPos = event->pos();
-    m_dragStartCenterIndex = m_centerIndex;
-    m_dragStartPanelProgress = m_panelProgress;
-    m_dragAxis = DragAxis::Unknown;
-
-    const QRect panel = panelRect();
-    const QRect preview = previewRect();
-
-    m_pressInPreview = preview.contains(event->pos());
-
-    if (!panel.contains(event->pos())) {
-        m_mode = InteractionMode::OutsideTap;
-        return;
-    }
-
-    if (m_pressInPreview) {
-        m_mode = InteractionMode::PreviewDrag;
-        return;
-    }
-
-    m_mode = InteractionMode::Passive;
 }
 
 /* --- Geometry Helpers --- */

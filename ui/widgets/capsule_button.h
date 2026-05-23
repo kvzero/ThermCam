@@ -7,14 +7,16 @@
 #include <QTimer>
 #include <QPropertyAnimation>
 #include <QParallelAnimationGroup>
+#include "ui/interaction_target.h"
 
 /**
  * @brief Industrial-grade interaction widget for Settings and Gallery access.
  * Implements "Explicit Intent" protocol: Only captures touches starting inside.
  * Features dual-layer glow, hysteresis-based zone switching, and "Pop" animations.
  */
-class CapsuleButton : public QWidget {
+class CapsuleButton : public QWidget, public InteractionTarget {
     Q_OBJECT
+    Q_INTERFACES(InteractionTarget)
     Q_PROPERTY(qreal topIconScale READ topIconScale WRITE setTopIconScale)
     Q_PROPERTY(qreal bottomIconScale READ bottomIconScale WRITE setBottomIconScale)
     Q_PROPERTY(qreal glowOpacity READ glowOpacity WRITE setGlowOpacity)
@@ -24,10 +26,11 @@ public:
 
     explicit CapsuleButton(QWidget* parent = nullptr);
 
-    /* --- InteractionArbiter Interaction Protocol --- */
-    Q_INVOKABLE bool handleInteractionUpdate(QPoint localPos);
-    Q_INVOKABLE void finalizeGesture(int dy);
-    Q_INVOKABLE void cancelGesture();
+    /* --- InteractionTarget Contract --- */
+    void onInteractionBegin(const InteractionEvent& event) override;
+    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
+    void onInteractionEnd(const InteractionEvent& event) override;
+    void onInteractionCancel() override;
     Q_INVOKABLE void longPressed();
 
     /* --- Property Accessors --- */
@@ -43,7 +46,6 @@ public:
 
 protected:
     void paintEvent(QPaintEvent* event) override;
-    void mousePressEvent(QMouseEvent* event) override;
 
 private:
     void updateZone(const QPoint& pos);

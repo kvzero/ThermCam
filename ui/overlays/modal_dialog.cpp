@@ -6,7 +6,6 @@
 #include <QFont>
 #include <QFontMetrics>
 #include <QLinearGradient>
-#include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QRadialGradient>
@@ -60,17 +59,20 @@ void ModalBase::dismiss() {
     m_popAnim->start();
 }
 
-bool ModalBase::handleInteractionUpdate(QPoint localPos) {
-    updatePress(localPos);
-    return true;
+void ModalBase::onInteractionBegin(const InteractionEvent& event) {
+    beginPress(event.currentLocal);
 }
 
-void ModalBase::finalizeGesture(int /*dy*/) {
+InteractionUpdateDecision ModalBase::onInteractionUpdate(const InteractionEvent& event) {
+    updatePress(event.currentLocal);
+    return InteractionUpdateDecision::KeepOwner;
+}
+
+void ModalBase::onInteractionEnd(const InteractionEvent& /*event*/) {
     endPress(true);
-    m_swallowNextRelease = true;
 }
 
-void ModalBase::cancelGesture() {
+void ModalBase::onInteractionCancel() {
     endPress(false);
 }
 
@@ -169,23 +171,6 @@ void ModalBase::resizeEvent(QResizeEvent* /*event*/) {
     relayout();
 }
 
-void ModalBase::mousePressEvent(QMouseEvent* event) {
-    beginPress(event->pos());
-    QWidget::mousePressEvent(event);
-}
-
-void ModalBase::mouseReleaseEvent(QMouseEvent* event) {
-    m_lastPos = event->pos();
-    if (m_swallowNextRelease) {
-        m_swallowNextRelease = false;
-        QWidget::mouseReleaseEvent(event);
-        return;
-    }
-
-    endPress(true);
-    QWidget::mouseReleaseEvent(event);
-}
-
 void ModalBase::relayout() {
     const int W = width();
     const int H = height();
@@ -235,7 +220,6 @@ ModalBase::PressTarget ModalBase::zoneAt(const QPoint& pos) const {
 }
 
 void ModalBase::beginPress(const QPoint& localPos) {
-    m_swallowNextRelease = false;
     m_lastPos = localPos;
     m_glowPos = localPos;
 

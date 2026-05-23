@@ -5,8 +5,8 @@
 #include <QQueue>
 #include <QPropertyAnimation>
 #include <QTimer>
-#include <QMouseEvent>
 #include "core/types.h"
+#include "ui/interaction_target.h"
 
 /**
  * @brief Global Notification Overlay (Layer 3).
@@ -15,8 +15,9 @@
  * Features a resilient physical interaction model including drag-to-dismiss
  * and rubber-band damping.
  */
-class ToastManager : public QWidget {
+class ToastManager : public QWidget, public InteractionTarget {
     Q_OBJECT
+    Q_INTERFACES(InteractionTarget)
     Q_PROPERTY(int offsetY READ offsetY WRITE setOffsetY)
 
 public:
@@ -43,18 +44,13 @@ public:
 //     */
 //    Q_INVOKABLE void followGesture(int dy);
 
-    /**
-     * @brief 高级交互协议：处理位置更新并始终消费事件。
-     * @param localPos 手指在Toast控件坐标系下的位置。
-     * @return 始终返回 true，因为Toast一旦被抓住，就拥有最高优先级。
-     */
-    Q_INVOKABLE bool handleInteractionUpdate(QPoint localPos);
+    /** @brief InteractionTarget update path; Toast keeps ownership while visible. */
+    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
 
-    /**
-     * @brief Evaluates the final position to trigger dismissal or snap-back.
-     */
-    Q_INVOKABLE void finalizeGesture(int finalDy);
-    Q_INVOKABLE void cancelGesture();
+    /** @brief Completes the interaction and decides dismiss vs snap-back. */
+    void onInteractionEnd(const InteractionEvent& event) override;
+    void onInteractionCancel() override;
+    void onInteractionBegin(const InteractionEvent& event) override;
 
     /* --- Property Accessors --- */
     int offsetY() const { return m_offsetY; }
@@ -68,7 +64,6 @@ public:
 protected:
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
-    void mousePressEvent(QMouseEvent* event) override;
 
 private slots:
     void processQueue();

@@ -32,13 +32,14 @@ public:
     void onExit() override;
     void handleKeyShortPress() override {}
 
-    /* --- Semantic Gesture Dispatchers --- */
-    void onGestureStarted() override;
-    void onGestureUpdate(const QPoint& start, int dx, int dy) override;
-    void onGestureFinished(const QPoint& start, int dx, int dy, float vx, float vy) override;
-    void onPinchUpdate(const QPoint& center, float factor) override;
-    void onTapDetected(const QPoint& pos) override;
-    void onLongPressDetected(const QPoint& start) override;
+    /* --- InteractionTarget Contract --- */
+    void onInteractionBegin(const InteractionEvent& event) override;
+    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
+    void onInteractionEnd(const InteractionEvent& event) override;
+    void onInteractionCancel() override;
+    void onInteractionPinch(const QPoint& centerGlobal, float factor) override;
+    void onInteractionTap(const InteractionEvent& event) override;
+    void onInteractionLongPress(const InteractionEvent& event) override;
 
     /* --- Animation Property Accessors --- */
     qreal activeScroll() const { return m_activeScroll; }

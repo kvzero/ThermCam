@@ -1,7 +1,6 @@
 #include "video_controlbar.h"
 #include <QPainter>
 #include <QPainterPath>
-#include <QMouseEvent>
 #include <QEasingCurve>
 #include <algorithm>
 
@@ -62,13 +61,13 @@ QString VideoControlBar::formatTimeMs(qint64 ms, bool forceHours) const {
     return QString::asprintf("%02lld:%02lld", m, s);
 }
 
-void VideoControlBar::mousePressEvent(QMouseEvent* event) {
-    handleInteractionUpdate(event->pos());
-    QWidget::mousePressEvent(event);
+void VideoControlBar::onInteractionBegin(const InteractionEvent& event) {
+    (void)onInteractionUpdate(event);
 }
 
-bool VideoControlBar::handleInteractionUpdate(QPoint localPos) {
-    if (m_opacity < 0.1) return false;
+InteractionUpdateDecision VideoControlBar::onInteractionUpdate(const InteractionEvent& event) {
+    const QPoint localPos = event.currentLocal;
+    if (m_opacity < 0.1) return InteractionUpdateDecision::ReleaseOwner;
 
     QRectF expandedPlay = m_playHitbox.adjusted(-m_cfg.HIT_EXPANSION_PX, -m_cfg.HIT_EXPANSION_PX,
                                                  m_cfg.HIT_EXPANSION_PX, m_cfg.HIT_EXPANSION_PX);
@@ -92,12 +91,12 @@ bool VideoControlBar::handleInteractionUpdate(QPoint localPos) {
     if (interacting) {
         m_hideTimer->start(m_cfg.FADE_DELAY_MS);
         emit interactionActive();
-        return true;
+        return InteractionUpdateDecision::KeepOwner;
     }
-    return false;
+    return InteractionUpdateDecision::ReleaseOwner;
 }
 
-void VideoControlBar::finalizeGesture(int) {
+void VideoControlBar::onInteractionEnd(const InteractionEvent& /*event*/) {
     if (m_hoverPlay) {
         emit togglePlayRequested();
     }
@@ -112,7 +111,7 @@ void VideoControlBar::finalizeGesture(int) {
     update();
 }
 
-void VideoControlBar::cancelGesture() {
+void VideoControlBar::onInteractionCancel() {
     m_hoverPlay = false;
     if (m_isScrubbing) {
         m_isScrubbing = false;

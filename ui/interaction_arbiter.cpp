@@ -7,9 +7,8 @@
 #include "services/capture_service.h"
 
 #include <QApplication>
-#include <QMouseEvent>
+#include <QDateTime>
 #include <QTimer>
-#include <QMetaObject>
 #include <QDebug>
 
 const char* InteractionArbiter::PROP_ALLOW_SLIDE_TRIGGER = "allowSlideTrigger";
@@ -28,13 +27,13 @@ InteractionArbiter::InteractionArbiter(QObject *parent) : QObject(parent) {
     m_shutdownTimer->setSingleShot(true);
     connect(m_shutdownTimer, &QTimer::timeout, this, &InteractionArbiter::onKeyLongPressTimeout);
 
-    connect(m_recognizer, &GestureRecognizer::touchesStarted,   this, &InteractionArbiter::onTouchesStarted);
-    connect(m_recognizer, &GestureRecognizer::touchesReleased,  this, &InteractionArbiter::onTouchesReleased);
-    connect(m_recognizer, &GestureRecognizer::tapDetected,       this, &InteractionArbiter::onTapDetected);
-    connect(m_recognizer, &GestureRecognizer::doubleTapDetected,this, &InteractionArbiter::onDoubleTapDetected);
-    connect(m_recognizer, &GestureRecognizer::longPressDetected, this, &InteractionArbiter::onLongPressDetected);
-    connect(m_recognizer, &GestureRecognizer::swipeUpdate,       this, &InteractionArbiter::onSwipeUpdate);
-    connect(m_recognizer, &GestureRecognizer::pinchUpdate,       this, &InteractionArbiter::onPinchUpdate);
+    connect(m_recognizer, &GestureRecognizer::touchesStarted, this, &InteractionArbiter::onRecognizerTouchesStarted);
+    connect(m_recognizer, &GestureRecognizer::touchesReleased, this, &InteractionArbiter::onRecognizerTouchesReleased);
+    connect(m_recognizer, &GestureRecognizer::tapDetected, this, &InteractionArbiter::onRecognizerTap);
+    connect(m_recognizer, &GestureRecognizer::doubleTapDetected, this, &InteractionArbiter::onRecognizerDoubleTap);
+    connect(m_recognizer, &GestureRecognizer::longPressDetected, this, &InteractionArbiter::onRecognizerLongPress);
+    connect(m_recognizer, &GestureRecognizer::swipeUpdate, this, &InteractionArbiter::onRecognizerSwipeUpdate);
+    connect(m_recognizer, &GestureRecognizer::pinchUpdate, this, &InteractionArbiter::onRecognizerPinchUpdate);
 }
 
 void InteractionArbiter::init(App* app) {
@@ -45,19 +44,14 @@ void InteractionArbiter::init(App* app) {
 }
 
 void InteractionArbiter::cancelTouchSession() {
-    clearHoverState();
-
-    if (m_pressedWidget) {
-        const QMetaObject* meta = m_pressedWidget->metaObject();
-        if (meta->indexOfMethod("cancelGesture()") != -1) {
-            QMetaObject::invokeMethod(m_pressedWidget, "cancelGesture",
-                                      Qt::DirectConnection);
-        }
-        m_pressedWidget = nullptr;
+    if (m_ownerTarget) {
+        m_ownerTarget->onInteractionCancel();
     }
+    clearOwner();
 
     m_intentLocked = false;
     m_isGlobalGesture = false;
+    m_activePointerCount = 0;
 
     if (m_recognizer) {
         if (m_wasTouching) {
@@ -104,14 +98,12 @@ void InteractionArbiter::onKeyLongPressTimeout() {
 void InteractionArbiter::handleRawTouch(const QList<RawTouchPoint>& points) {
     const bool isTouching = !points.isEmpty();
     const bool isInitialContact = (isTouching && !m_wasTouching);
+    m_activePointerCount = points.size();
 
     if (isInitialContact) {
         const QPoint touchPosition(points.first().x, points.first().y);
 
-        /**
-         * STAGE 1: IDENTIFICATION
-         * Find the most specific (deepest) widget at the contact point.
-         */
+        /* Stage 1: identify the deepest hit target at contact position. */
         QWidget* hitWidget = findTargetWidget(touchPosition);
         if (!hitWidget || !hitWidget->property(PROP_IS_INTERACTABLE).toBool()) {
             if (auto* view = m_app->activeView()) {
@@ -119,16 +111,25 @@ void InteractionArbiter::handleRawTouch(const QList<RawTouchPoint>& points) {
             }
         }
 
-        /**
-         * STAGE 2: PRIMARY INTENT LOCKDOWN
-         * We capture the touch only if the widget identifies as a solid UI entity.
-         * Widgets without 'isInteractable' are treated as transparent background.
+        /*
+         * Stage 2: lock the initial owner.
+         * Non-interactable hits are treated as transparent and routed to view.
          */
         if (hitWidget && hitWidget->property(PROP_IS_INTERACTABLE).toBool()) {
-            injectMouseEvent(hitWidget, QEvent::MouseButtonPress, touchPosition);
-            m_pressedWidget = hitWidget;
+            if (InteractionTarget* target = targetFromWidget(hitWidget)) {
+                setOwner(target, hitWidget, touchPosition);
+            } else if (BaseView* view = activeViewTarget()) {
+                qWarning() << "[Interaction] Interactable widget without InteractionTarget, fallback to view owner.";
+                setOwner(view, view, touchPosition);
+            } else {
+                clearOwner();
+            }
         } else {
-            m_pressedWidget = nullptr;
+            if (BaseView* view = activeViewTarget()) {
+                setOwner(view, view, touchPosition);
+            } else {
+                clearOwner();
+            }
         }
     }
 
@@ -140,146 +141,156 @@ void InteractionArbiter::handleRawTouch(const QList<RawTouchPoint>& points) {
 // GESTURE SESSION ARBITRATION
 // ===================================================================
 
-void InteractionArbiter::onTouchesStarted() {
-    if (m_app && m_app->activeView()) {
-        m_app->activeView()->onGestureStarted();
-    }
-
+void InteractionArbiter::onRecognizerTouchesStarted() {
     m_intentLocked = false;
     m_isGlobalGesture = false;
-    clearHoverState();
 }
 
-void InteractionArbiter::onSwipeUpdate(const QPoint& start, int dx, int dy) {
+void InteractionArbiter::onRecognizerSwipeUpdate(const QPoint& start, int dx, int dy) {
     if (!m_app) return;
     const QPoint currentPos = start + QPoint(dx, dy);
+    BaseView* const activeView = activeViewTarget();
+    const bool hasActiveView = (activeView != nullptr);
+    bool phase1UpdatedCurrentOwner = false;
+    bool phase1OwnerKept = false;
+    bool phase1OwnerWasView = false;
 
-    // ---------------------------------------------------------------
-    // PHASE 1: ACTIVE OWNER DELEGATION
-    // ---------------------------------------------------------------
-    if (m_pressedWidget) {
-        const QMetaObject* meta = m_pressedWidget->metaObject();
-        if (meta->indexOfMethod("handleInteractionUpdate(QPoint)") != -1) {
+    /* Phase 1: update active owner if any. */
+    if (m_ownerTarget) {
+        phase1OwnerWasView = (hasActiveView && m_ownerWidget == activeView);
+        const InteractionEvent event =
+            buildEventFor(m_ownerWidget, m_ownerStartGlobal, m_ownerPrevGlobal, currentPos, QPointF());
+        const InteractionUpdateDecision decision = m_ownerTarget->onInteractionUpdate(event);
+        phase1UpdatedCurrentOwner = true;
+        m_ownerPrevGlobal = currentPos;
 
-            QPoint localPos = m_pressedWidget->mapFromGlobal(currentPos);
-            bool eventConsumed = false;
-
-            QMetaObject::invokeMethod(m_pressedWidget, "handleInteractionUpdate",
-                                      Qt::DirectConnection,
-                                      Q_RETURN_ARG(bool, eventConsumed),
-                                      Q_ARG(QPoint, localPos));
-
-            if (eventConsumed) return; // Locked owner continues to consume the event stream
-
-            // The owner decided to release control
-            injectMouseEvent(m_pressedWidget, QEvent::MouseButtonRelease, currentPos);
-            m_pressedWidget = nullptr;
+        if (decision == InteractionUpdateDecision::KeepOwner) {
+            phase1OwnerKept = true;
+            if (!phase1OwnerWasView) {
+                return;
+            }
+        } else {
+            // Owner released ownership mid-gesture; route switch uses cancel semantics.
+            // End semantics are emitted only on physical touchesReleased().
+            m_ownerTarget->onInteractionCancel();
+            clearOwner();
         }
     }
 
-    // ---------------------------------------------------------------
-    // PHASE 2: SYSTEM GESTURE ARBITRATION
-    // ---------------------------------------------------------------
+    /* Phase 2: decide whether this swipe becomes the global pull-down route. */
     if (!m_intentLocked) {
         const int screenH = GlobalContext::instance().screenSize().height();
         const int triggerZone = qRound(screenH * TOP_EDGE_RATIO);
 
         if (start.y() < triggerZone && dy > 0 && std::abs(dy) > std::abs(dx)) {
             m_isGlobalGesture = true;
-            clearHoverState();
         }
         m_intentLocked = true;
     }
 
-    if (m_isGlobalGesture) return;
-
-    // ---------------------------------------------------------------
-    // PHASE 3: THE SEARCHLIGHT EFFECT
-    // ---------------------------------------------------------------
-    // Detect interceptors that explicitly allow mid-swipe hijacking (e.g. Toasts).
-    QWidget* interceptor = findTargetWidget(currentPos);
-    if (interceptor && interceptor->property(PROP_ALLOW_SLIDE_TRIGGER).toBool()) {
-        if (interceptor != m_pressedWidget) {
-            if (m_pressedWidget) {
-                injectMouseEvent(m_pressedWidget, QEvent::MouseButtonRelease, currentPos);
-            }
-            injectMouseEvent(interceptor, QEvent::MouseButtonPress, currentPos);
-            m_pressedWidget = interceptor;
+    if (m_isGlobalGesture) {
+        if (m_ownerTarget && phase1OwnerWasView) {
+            m_ownerTarget->onInteractionCancel();
+            clearOwner();
         }
         return;
     }
 
-    // ---------------------------------------------------------------
-    // PHASE 4: VIEW-LEVEL FALLBACK
-    // ---------------------------------------------------------------
-    if (auto* activeView = m_app->activeView()) {
-        activeView->onGestureUpdate(start, dx, dy);
+    /* Phase 3: allow interceptors that opt into mid-swipe takeover. */
+    QWidget* interceptor = findTargetWidget(currentPos);
+    if (interceptor && interceptor->property(PROP_ALLOW_SLIDE_TRIGGER).toBool()) {
+        if (interceptor != m_ownerWidget) {
+            if (m_ownerTarget) {
+                m_ownerTarget->onInteractionCancel();
+                clearOwner();
+            }
+            if (InteractionTarget* target = targetFromWidget(interceptor)) {
+                setOwner(target, interceptor, currentPos);
+            }
+        }
+        return;
+    }
+
+    /* Phase 4: fallback to active view owner. */
+    if (!m_ownerTarget) {
+        if (hasActiveView) {
+            // Keep the original session anchor so edge/back thresholds remain continuous
+            // when ownership transfers from a widget back to the view.
+            setOwner(activeView, activeView, start);
+            m_ownerPrevGlobal = currentPos;
+        }
+    }
+
+    if (m_ownerTarget) {
+        if (phase1UpdatedCurrentOwner && phase1OwnerKept &&
+            hasActiveView && m_ownerWidget == activeView) {
+            return;
+        }
+
+        const InteractionEvent event =
+            buildEventFor(m_ownerWidget, m_ownerStartGlobal, m_ownerPrevGlobal, currentPos, QPointF());
+        const InteractionUpdateDecision decision = m_ownerTarget->onInteractionUpdate(event);
+        m_ownerPrevGlobal = currentPos;
+        if (decision == InteractionUpdateDecision::ReleaseOwner) {
+            // Owner released ownership mid-gesture; route switch uses cancel semantics.
+            // End semantics are emitted only on physical touchesReleased().
+            m_ownerTarget->onInteractionCancel();
+            clearOwner();
+        }
     }
 }
 
-void InteractionArbiter::onTouchesReleased(const QPoint& start, int dx, int dy, float vx, float vy) {
+void InteractionArbiter::onRecognizerTouchesReleased(const QPoint& start, int dx, int dy, float vx, float vy) {
     if (!m_app) return;
     const QPoint finalPos = start + QPoint(dx, dy);
-    clearHoverState();
 
-    if (!m_isGlobalGesture) {
-        // Finalize background view physics
-        if (auto* view = m_app->activeView()) {
-            view->onGestureFinished(start, dx, dy, vx, vy);
-        }
-
-        // Finalize interaction for the current owner
-        if (m_pressedWidget) {
-            const QMetaObject* meta = m_pressedWidget->metaObject();
-            if (meta->indexOfMethod("finalizeGesture(int)") != -1) {
-                QMetaObject::invokeMethod(m_pressedWidget, "finalizeGesture",
-                                          Qt::DirectConnection,
-                                          Q_ARG(int, dy));
-            } else {
-                injectMouseEvent(m_pressedWidget, QEvent::MouseButtonRelease, finalPos);
-            }
-            m_pressedWidget = nullptr;
-        }
+    if (!m_isGlobalGesture && m_ownerTarget) {
+        // Physical touch release is the only path that emits end semantics.
+        const InteractionEvent event =
+            buildEventFor(m_ownerWidget, m_ownerStartGlobal, m_ownerPrevGlobal, finalPos, QPointF(vx, vy));
+        m_ownerTarget->onInteractionEnd(event);
     }
+    clearOwner();
+    m_activePointerCount = 0;
 }
 
 // ===================================================================
 // SEMANTIC GESTURE HANDLERS
 // ===================================================================
 
-void InteractionArbiter::onTapDetected(const QPoint& start, int dx, int dy) {
+void InteractionArbiter::onRecognizerTap(const QPoint& start, int dx, int dy) {
     const QPoint tapPos = start + QPoint(dx, dy);
 
     // Only forward Tap to the View when the hit target is not an interactable widget.
     if (isViewInteractionAllowed(tapPos)) {
-        if (m_app && m_app->activeView()) {
-            m_app->activeView()->onTapDetected(tapPos);
+        if (BaseView* view = activeViewTarget()) {
+            view->onInteractionTap(buildSemanticEvent(tapPos));
         }
     }
 }
 
-void InteractionArbiter::onDoubleTapDetected(const QPoint& start, int dx, int dy) {
+void InteractionArbiter::onRecognizerDoubleTap(const QPoint& start, int dx, int dy) {
     const QPoint pos = start + QPoint(dx, dy);
 
     if (isViewInteractionAllowed(pos)) {
-        if (m_app && m_app->activeView()) {
-            m_app->activeView()->onDoubleTapDetected(pos);
+        if (BaseView* view = activeViewTarget()) {
+            view->onInteractionDoubleTap(buildSemanticEvent(pos));
         }
     }
 }
 
-void InteractionArbiter::onLongPressDetected(const QPoint& start) {
+void InteractionArbiter::onRecognizerLongPress(const QPoint& start) {
     if (isViewInteractionAllowed(start)) {
-        if (m_app && m_app->activeView()) {
-            m_app->activeView()->onLongPressDetected(start);
+        if (BaseView* view = activeViewTarget()) {
+            view->onInteractionLongPress(buildSemanticEvent(start));
         }
     }
 }
 
-void InteractionArbiter::onPinchUpdate(const QPoint& center, float factor) {
+void InteractionArbiter::onRecognizerPinchUpdate(const QPoint& center, float factor) {
     if (isViewInteractionAllowed(center)) {
-        if (m_app && m_app->activeView()) {
-            m_app->activeView()->onPinchUpdate(center, factor);
+        if (BaseView* view = activeViewTarget()) {
+            view->onInteractionPinch(center, factor);
         }
     }
 }
@@ -287,6 +298,16 @@ void InteractionArbiter::onPinchUpdate(const QPoint& center, float factor) {
 // ===================================================================
 // UTILITIES
 // ===================================================================
+
+BaseView* InteractionArbiter::activeViewTarget() const {
+    if (!m_app) return nullptr;
+    return m_app->activeView();
+}
+
+InteractionTarget* InteractionArbiter::targetFromWidget(QWidget* widget) const {
+    if (!widget) return nullptr;
+    return qobject_cast<InteractionTarget*>(widget);
+}
 
 QWidget* InteractionArbiter::findTargetWidget(const QPoint& globalPos) {
     if (!m_app) return nullptr;
@@ -307,36 +328,60 @@ QWidget* InteractionArbiter::findTargetWidget(const QPoint& globalPos) {
     return nullptr;
 }
 
-void InteractionArbiter::injectMouseEvent(QWidget* target, QEvent::Type type, const QPoint& globalPos) {
-    if (!target) return;
+void InteractionArbiter::setOwner(InteractionTarget* target,
+                                  QWidget* widget,
+                                  const QPoint& anchorGlobal) {
+    if (!target || !widget) {
+        clearOwner();
+        return;
+    }
 
-    QPoint localPos = target->mapFromGlobal(globalPos);
-    QMouseEvent mouseEvent(type, localPos, globalPos, Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
-    QApplication::sendEvent(target, &mouseEvent);
+    m_ownerTarget = target;
+    m_ownerWidget = widget;
+    m_ownerStartGlobal = anchorGlobal;
+    m_ownerPrevGlobal = anchorGlobal;
+
+    const InteractionEvent event =
+        buildEventFor(m_ownerWidget, m_ownerStartGlobal, m_ownerPrevGlobal, anchorGlobal, QPointF());
+    m_ownerTarget->onInteractionBegin(event);
 }
 
-void InteractionArbiter::updateHoverState(const QPoint& globalPos) {
-    QWidget* target = findTargetWidget(globalPos);
-
-    if (target != m_currentHoveredWidget) {
-        if (m_currentHoveredWidget) {
-            QEvent leave(QEvent::Leave);
-            QApplication::sendEvent(m_currentHoveredWidget, &leave);
-        }
-        if (target) {
-            QEvent enter(QEvent::Enter);
-            QApplication::sendEvent(target, &enter);
-        }
-        m_currentHoveredWidget = target;
-    }
+void InteractionArbiter::clearOwner() {
+    m_ownerTarget = nullptr;
+    m_ownerWidget = nullptr;
+    m_ownerStartGlobal = QPoint();
+    m_ownerPrevGlobal = QPoint();
 }
 
-void InteractionArbiter::clearHoverState() {
-    if (m_currentHoveredWidget) {
-        QEvent leave(QEvent::Leave);
-        QApplication::sendEvent(m_currentHoveredWidget, &leave);
-        m_currentHoveredWidget = nullptr;
-    }
+InteractionEvent InteractionArbiter::buildEventFor(QWidget* widget,
+                                                   const QPoint& startGlobal,
+                                                   const QPoint& previousGlobal,
+                                                   const QPoint& currentGlobal,
+                                                   const QPointF& velocityPxPerMs) const {
+    const auto mapLocal =[widget](const QPoint& globalPoint) {
+        return widget ? widget->mapFromGlobal(globalPoint) : globalPoint;
+    };
+
+    InteractionEvent event;
+    event.startGlobal = startGlobal;
+    event.previousGlobal = previousGlobal;
+    event.currentGlobal = currentGlobal;
+    event.deltaFromStartGlobal = currentGlobal - startGlobal;
+    event.deltaFromPreviousGlobal = currentGlobal - previousGlobal;
+    event.startLocal = mapLocal(startGlobal);
+    event.previousLocal = mapLocal(previousGlobal);
+    event.currentLocal = mapLocal(currentGlobal);
+    event.deltaFromStartLocal = event.currentLocal - event.startLocal;
+    event.deltaFromPreviousLocal = event.currentLocal - event.previousLocal;
+    event.velocityPxPerMs = velocityPxPerMs;
+    event.pointerCount = qMax(1, m_activePointerCount);
+    event.timestampMs = QDateTime::currentMSecsSinceEpoch();
+    return event;
+}
+
+InteractionEvent InteractionArbiter::buildSemanticEvent(const QPoint& globalPos) const {
+    QWidget* viewWidget = activeViewTarget();
+    return buildEventFor(viewWidget, globalPos, globalPos, globalPos, QPointF());
 }
 
 bool InteractionArbiter::isViewInteractionAllowed(const QPoint& globalPos) {

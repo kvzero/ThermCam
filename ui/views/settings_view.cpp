@@ -5,7 +5,6 @@
 #include "core/settings_store.h"
 #include "ui/app.h"
 
-#include <QMouseEvent>
 #include <QPainter>
 #include <QEasingCurve>
 #include <QDebug>
@@ -118,20 +117,20 @@ SettingsTopBar::PressZone SettingsTopBar::zoneAt(const QPoint& pos) const {
     return PressZone::None;
 }
 
-void SettingsTopBar::mousePressEvent(QMouseEvent* event) {
-    m_pressedZone = zoneAt(event->pos());
-    m_lastPos = event->pos();
+void SettingsTopBar::onInteractionBegin(const InteractionEvent& event) {
+    m_pressedZone = zoneAt(event.currentLocal);
+    m_lastPos = event.currentLocal;
     update();
 }
 
-bool SettingsTopBar::handleInteractionUpdate(QPoint localPos) {
-    if (m_pressedZone == PressZone::None) return false;
-    m_lastPos = localPos;
+InteractionUpdateDecision SettingsTopBar::onInteractionUpdate(const InteractionEvent& event) {
+    if (m_pressedZone == PressZone::None) return InteractionUpdateDecision::ReleaseOwner;
+    m_lastPos = event.currentLocal;
     update();
-    return true;
+    return InteractionUpdateDecision::KeepOwner;
 }
 
-void SettingsTopBar::finalizeGesture(int /*dy*/) {
+void SettingsTopBar::onInteractionEnd(const InteractionEvent& /*event*/) {
     if (m_pressedZone == PressZone::Back && zoneAt(m_lastPos) == PressZone::Back) {
         emit backTriggered();
     } else if (m_pressedZone == PressZone::Close && zoneAt(m_lastPos) == PressZone::Close) {
@@ -141,7 +140,7 @@ void SettingsTopBar::finalizeGesture(int /*dy*/) {
     update();
 }
 
-void SettingsTopBar::cancelGesture() {
+void SettingsTopBar::onInteractionCancel() {
     if (m_pressedZone == PressZone::None) return;
     m_pressedZone = PressZone::None;
     update();
@@ -258,7 +257,7 @@ void SettingsView::onExit() {
     m_splitAnim->stop();
 }
 
-void SettingsView::onGestureStarted() {
+void SettingsView::onInteractionBegin(const InteractionEvent& /*event*/) {
     m_lastDx = 0;
     m_lastDy = 0;
     m_swipeAxis = SwipeAxis::None;
@@ -269,7 +268,10 @@ void SettingsView::onGestureStarted() {
     m_rightScrollAnim->stop();
 }
 
-void SettingsView::onGestureUpdate(const QPoint& start, int dx, int dy) {
+InteractionUpdateDecision SettingsView::onInteractionUpdate(const InteractionEvent& event) {
+    const QPoint start = event.startGlobal;
+    const int dx = event.deltaFromStartGlobal.x();
+    const int dy = event.deltaFromStartGlobal.y();
     m_lastDx = dx;
     m_lastDy = dy;
 
@@ -278,7 +280,7 @@ void SettingsView::onGestureUpdate(const QPoint& start, int dx, int dy) {
             m_swipeAxis = (std::abs(dx) > std::abs(dy)) ? SwipeAxis::Horizontal : SwipeAxis::Vertical;
         }
     }
-    if (m_swipeAxis != SwipeAxis::Vertical) return;
+    if (m_swipeAxis != SwipeAxis::Vertical) return InteractionUpdateDecision::KeepOwner;
 
     if (m_mode == PanelMode::Expanded && m_splitProgress > 0.95) {
         m_scrollTarget = (start.x() > leftPanelWidth()) ? ScrollTarget::Right : ScrollTarget::Left;
@@ -293,9 +295,13 @@ void SettingsView::onGestureUpdate(const QPoint& start, int dx, int dy) {
         qreal candidate = m_dragStartRight - dy;
         setRightScroll(applyOverscroll(candidate, rightMaxScroll()));
     }
+    return InteractionUpdateDecision::KeepOwner;
 }
 
-void SettingsView::onGestureFinished(const QPoint& start, int dx, int /*dy*/, float /*vx*/, float vy) {
+void SettingsView::onInteractionEnd(const InteractionEvent& event) {
+    const QPoint start = event.startGlobal;
+    const int dx = event.deltaFromStartGlobal.x();
+    const float vy = event.velocityPxPerMs.y();
     if (m_swipeAxis == SwipeAxis::Horizontal) {
         const int edgeZone = qRound(width() * m_cfg.SWIPE_BACK_EDGE_RATIO);
         if (start.x() < edgeZone && dx > width() * m_cfg.SWIPE_BACK_DIST_RATIO) {
@@ -311,6 +317,10 @@ void SettingsView::onGestureFinished(const QPoint& start, int dx, int /*dy*/, fl
     if (m_swipeAxis == SwipeAxis::Vertical) {
         settleScroll(m_scrollTarget == ScrollTarget::Left, vy);
     }
+}
+
+void SettingsView::onInteractionCancel() {
+    m_swipeAxis = SwipeAxis::None;
 }
 
 void SettingsView::setLeftScroll(qreal v) {

@@ -2,7 +2,6 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QEasingCurve>
-#include <QMouseEvent>
 #include <QFontMetricsF>
 #include <cmath>
 
@@ -97,7 +96,13 @@ void GalleryTopBar::triggerGlowAnimation(QPropertyAnimation* anim, bool active) 
     }
 }
 
-bool GalleryTopBar::handleInteractionUpdate(QPoint localPos) {
+void GalleryTopBar::onInteractionBegin(const InteractionEvent& event) {
+    m_lastGlowPos = event.currentLocal;
+    (void)onInteractionUpdate(event);
+}
+
+InteractionUpdateDecision GalleryTopBar::onInteractionUpdate(const InteractionEvent& event) {
+    const QPoint localPos = event.currentLocal;
     m_lastGlowPos = localPos;
 
     /* Intent: Massively artificially inflate the hitboxes for blind tactile operation */
@@ -120,10 +125,12 @@ bool GalleryTopBar::handleInteractionUpdate(QPoint localPos) {
     update();
 
     /* Intent: Surrender gesture lock if sliding out of the physical button zones */
-    return (m_hoverLeft || m_hoverRightCancel || m_hoverTrash);
+    return (m_hoverLeft || m_hoverRightCancel || m_hoverTrash)
+               ? InteractionUpdateDecision::KeepOwner
+               : InteractionUpdateDecision::ReleaseOwner;
 }
 
-void GalleryTopBar::finalizeGesture(int) {
+void GalleryTopBar::onInteractionEnd(const InteractionEvent& /*event*/) {
     triggerGlowAnimation(m_leftGlowAnim, false);
     triggerGlowAnimation(m_rightGlowAnim, false);
 
@@ -143,16 +150,11 @@ void GalleryTopBar::finalizeGesture(int) {
     update();
 }
 
-void GalleryTopBar::cancelGesture() {
+void GalleryTopBar::onInteractionCancel() {
     triggerGlowAnimation(m_leftGlowAnim, false);
     triggerGlowAnimation(m_rightGlowAnim, false);
     m_hoverLeft = m_hoverRightCancel = m_hoverTrash = false;
     update();
-}
-
-void GalleryTopBar::mousePressEvent(QMouseEvent* event) {
-    handleInteractionUpdate(event->pos());
-    QWidget::mousePressEvent(event);
 }
 
 void GalleryTopBar::paintEvent(QPaintEvent*) {

@@ -272,27 +272,33 @@ void CameraView::resetTransientUi() {
 
 /* --- Gesture Implementations --- */
 
-void CameraView::onGestureStarted() {
+void CameraView::onInteractionBegin(const InteractionEvent& /*event*/) {
     m_swipeAxis = SwipeAxis::None;
 }
 
-void CameraView::onGestureUpdate(const QPoint& /*start*/, int dx, int dy) {
+InteractionUpdateDecision CameraView::onInteractionUpdate(const InteractionEvent& event) {
     if (m_paletteSelector && m_paletteSelector->isPresented()) {
-        return;
+        return InteractionUpdateDecision::KeepOwner;
     }
 
+    const int dx = event.deltaFromStartGlobal.x();
+    const int dy = event.deltaFromStartGlobal.y();
     if (m_swipeAxis == SwipeAxis::None) {
         if (std::abs(dx) > m_hudCfg.SWIPE_DEADZONE_PX || std::abs(dy) > m_hudCfg.SWIPE_DEADZONE_PX) {
             m_swipeAxis = (std::abs(dx) > std::abs(dy)) ? SwipeAxis::Horizontal : SwipeAxis::Vertical;
         }
     }
+    return InteractionUpdateDecision::KeepOwner;
 }
 
-void CameraView::onGestureFinished(const QPoint& start, int dx, int dy, float /*vx*/, float /*vy*/) {
+void CameraView::onInteractionEnd(const InteractionEvent& event) {
     if (m_paletteSelector && m_paletteSelector->isPresented()) {
         return;
     }
 
+    const QPoint start = event.startGlobal;
+    const int dx = event.deltaFromStartGlobal.x();
+    const int dy = event.deltaFromStartGlobal.y();
     if (m_swipeAxis == SwipeAxis::None &&
         (std::abs(dx) > m_hudCfg.SWIPE_DEADZONE_PX || std::abs(dy) > m_hudCfg.SWIPE_DEADZONE_PX)) {
         m_swipeAxis = (std::abs(dx) > std::abs(dy)) ? SwipeAxis::Horizontal : SwipeAxis::Vertical;
@@ -326,24 +332,24 @@ void CameraView::onGestureFinished(const QPoint& start, int dx, int dy, float /*
     }
 }
 
-void CameraView::onTapDetected(const QPoint& /*pos*/) {
+void CameraView::onInteractionCancel() {
+    m_swipeAxis = SwipeAxis::None;
+}
+
+void CameraView::onInteractionTap(const InteractionEvent& /*event*/) {
     if (m_paletteSelector && m_paletteSelector->isPresented()) {
         closePaletteSelector(true);
     }
 }
 
-void CameraView::onLongPressDetected(const QPoint& /*start*/) {
+void CameraView::onInteractionLongPress(const InteractionEvent& /*event*/) {
     // Reserved for future in-view interactions.
 }
 
-/* --- Widget Discovery --- */
+/* --- Transition Anchor --- */
 
 QWidget* CameraView::capsuleWidget() {
     return m_capsuleButton;
-}
-
-QWidget* CameraView::modeSelectorWidget() {
-    return m_modeSelector;
 }
 
 /* --- Rendering & Layout --- */
