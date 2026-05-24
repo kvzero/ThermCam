@@ -13,6 +13,7 @@ enum class SettingID {
     Emissivity,
     TemperatureUnit,
     OSDOverlay,
+    HideMarkerWhenHudHidden,
     StoragePriority,
     SdCardCapacity,
     SdCardFormat,

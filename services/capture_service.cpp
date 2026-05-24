@@ -1,7 +1,7 @@
 #include "capture_service.h"
-#include "core/event_bus.h"
 #include "core/settings_store.h"
 #include "services/capture_worker.h"
+#include "services/settings_service.h"
 #include "hardware/storage/storage_manager.h"
 #include <QDebug>
 
@@ -14,6 +14,15 @@ bool isFahrenheitFromSnapshot(const SettingsSnapshot& snapshot) {
                         .toInt(&ok);
     if (!ok) return false;
     return raw == static_cast<int>(TemperatureUnit::Fahrenheit);
+}
+
+bool boolSettingFromSnapshot(const SettingsSnapshot& snapshot,
+                             SettingKey key,
+                             bool fallback) {
+    const QVariant defaultValue = QVariant(fallback);
+    const QVariant value = snapshot.values.value(key, defaultValue);
+    if (!value.canConvert<bool>()) return fallback;
+    return value.toBool();
 }
 }
 
@@ -40,15 +49,22 @@ CaptureService::CaptureService(QObject *parent) : QObject(parent) {
 
     connect(m_worker, &CaptureWorker::frameProcessed,
             this, &CaptureService::onWorkerFrameProcessed);
-    connect(&EventBus::instance(), &EventBus::temperatureUnitChanged,
+    connect(&SettingsService::instance(), &SettingsService::unitChanged,
             m_worker, &CaptureWorker::setTemperatureUnitFahrenheit);
+    connect(&SettingsService::instance(), &SettingsService::saveMarkerChanged,
+            m_worker, &CaptureWorker::setSaveMarkerInMediaEnabled);
 
     m_workerThread->start();
 
-    const bool initialIsFahrenheit =
-        isFahrenheitFromSnapshot(SettingsStore::instance().current());
+    const SettingsSnapshot snapshot = SettingsStore::instance().current();
+    const bool initialIsFahrenheit = isFahrenheitFromSnapshot(snapshot);
+    const bool initialSaveMarkerInMedia = boolSettingFromSnapshot(
+        snapshot, SettingKey::SaveMarkerInMedia, true);
+
     QMetaObject::invokeMethod(m_worker, "setTemperatureUnitFahrenheit",
                               Qt::QueuedConnection, Q_ARG(bool, initialIsFahrenheit));
+    QMetaObject::invokeMethod(m_worker, "setSaveMarkerInMediaEnabled",
+                              Qt::QueuedConnection, Q_ARG(bool, initialSaveMarkerInMedia));
 }
 
 CaptureService::~CaptureService() {

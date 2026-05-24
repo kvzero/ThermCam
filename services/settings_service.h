@@ -87,6 +87,10 @@ signals:
      * @brief Transaction callback for cross-module diagnostics or deferred UI feedback.
      */
     void applyCompleted(const SettingsService::ApplyResult& result);
+    void paletteChanged(int paletteId);
+    void unitChanged(bool isFahrenheit);
+    void saveMarkerChanged(bool enabled);
+    void hudHideMarkerChanged(bool enabled);
 
 private:
     explicit SettingsService(QObject* parent = nullptr);

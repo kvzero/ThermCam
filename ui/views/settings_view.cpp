@@ -20,15 +20,17 @@ const QVector<PrimaryItemData> kMenuBlueprint = {
     {
         QString(QChar(0xf837)), QColor(72, 104, 255), "Camera",
         {
-            {SettingID::Emissivity, "Emissivity", QColor(255, 255, 255), ActionType::Value},
-            {SettingID::TemperatureUnit, "Temperature Unit", QColor(255, 255, 255), ActionType::Action}
+            {SettingID::Emissivity, "Emissivity", QColor(255, 255, 255), ActionType::Value}
         }
     },
     {
         QString(QChar(0xf02c)), QColor(28, 158, 112), "View",
         {
             {SettingID::Palette, "Palette", QColor(255, 255, 255), ActionType::Action},
-            {SettingID::OSDOverlay, "Save OSD Overlay", QColor(255, 255, 255), ActionType::Toggle}
+            {SettingID::OSDOverlay, "Save Marker Overlay", QColor(255, 255, 255), ActionType::Toggle},
+            {SettingID::HideMarkerWhenHudHidden, "Hide Marker with HUD", QColor(255, 255, 255),
+             ActionType::Toggle},
+            {SettingID::TemperatureUnit, "Temperature Unit", QColor(255, 255, 255), ActionType::Action}
         }
     },
     {
@@ -107,6 +109,12 @@ QString formatStoragePriority(int priorityValue) {
             static_cast<int>(StoragePriority::UsbFirst))
                ? QStringLiteral("USB Disk First")
                : QStringLiteral("SD Card First");
+}
+
+bool boolSettingFromSnapshot(const SettingsSnapshot& snapshot, SettingKey key, bool fallback) {
+    const QVariant value = snapshot.values.value(key, QVariant(fallback));
+    if (!value.canConvert<bool>()) return fallback;
+    return value.toBool();
 }
 
 QString formatStorageCapacityValue(quint64 mb) {
@@ -648,9 +656,23 @@ void SettingsView::onSecondaryRowActivated() {
         app->showRadioListBubble(spec, buildAnchor());
         return;
     }
-    case SettingID::OSDOverlay:
-        row->toggleVisualState();
+    case SettingID::OSDOverlay: {
+        const SettingsSnapshot snapshot = SettingsStore::instance().current();
+        const bool current = boolSettingFromSnapshot(snapshot, SettingKey::SaveMarkerInMedia, true);
+        SettingsPatch patch;
+        patch.values.insert(SettingKey::SaveMarkerInMedia, QVariant(!current));
+        applyPatchFromUi(patch);
         return;
+    }
+    case SettingID::HideMarkerWhenHudHidden: {
+        const SettingsSnapshot snapshot = SettingsStore::instance().current();
+        const bool current =
+            boolSettingFromSnapshot(snapshot, SettingKey::HideMarkerWhenHudHidden, false);
+        SettingsPatch patch;
+        patch.values.insert(SettingKey::HideMarkerWhenHudHidden, QVariant(!current));
+        applyPatchFromUi(patch);
+        return;
+    }
     case SettingID::Palette:
         emit EventBus::instance().cameraRequested(QRect(), TransitionMode::Instant);
         emit EventBus::instance().paletteSelectorRequested();
@@ -893,6 +915,7 @@ void SettingsView::refreshSecondaryRowsFromSnapshot(const SettingsSnapshot& snap
     for (auto* row : m_secondaryRows) {
         const SecondaryItemData item = row->data();
         row->setValueText(QString());
+        row->setToggleOn(false);
 
         switch (item.id) {
         case SettingID::Emissivity: {
@@ -932,9 +955,19 @@ void SettingsView::refreshSecondaryRowsFromSnapshot(const SettingsSnapshot& snap
         case SettingID::UsbDiskCapacity:
             row->setValueText(formatStorageCapacity(usbStatus));
             break;
+        case SettingID::OSDOverlay: {
+            const bool enabled = boolSettingFromSnapshot(snapshot, SettingKey::SaveMarkerInMedia, true);
+            row->setToggleOn(enabled);
+            break;
+        }
+        case SettingID::HideMarkerWhenHudHidden: {
+            const bool enabled =
+                boolSettingFromSnapshot(snapshot, SettingKey::HideMarkerWhenHudHidden, false);
+            row->setToggleOn(enabled);
+            break;
+        }
         case SettingID::SdCardFormat:
         case SettingID::UsbDiskFormat:
-        case SettingID::OSDOverlay:
         case SettingID::Palette:
             break;
         }

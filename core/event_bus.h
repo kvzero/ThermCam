@@ -52,18 +52,6 @@ signals:
     void emissivityChanged(float value);
 
     /**
-     * @brief Fired when temperature display unit changes.
-     * @param isFahrenheit True for Fahrenheit (°F), false for Celsius (°C).
-     */
-    void temperatureUnitChanged(bool isFahrenheit);
-
-    /**
-     * @brief Fired when pseudo-color palette changes in runtime settings.
-     * @param paletteId ThermalPalette::Id serialized as integer.
-     */
-    void paletteChanged(int paletteId);
-
-    /**
      * @brief Global view routing request with optional transition anchor.
      * @param sourceAnchor Optional geometry used as the morph start anchor.
      * @param transitionMode Route-level transition strategy for this request.

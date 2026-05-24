@@ -88,6 +88,7 @@ private:
     ThermalMarker m_coldMarker{ThermalMarker::Cold};
     ThermalMarker m_centerMarker{ThermalMarker::Center};
     bool m_isFahrenheit = false;
+    bool m_hideMarkerWhenHudHidden = false;
 
     /* Layer 2: Interactive HUD (Widgets owned directly by CameraView) */
     StatusBar* m_statusBar = nullptr;

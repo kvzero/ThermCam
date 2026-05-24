@@ -10,6 +10,10 @@ void CaptureWorker::setTemperatureUnitFahrenheit(bool isFahrenheit) {
     m_isFahrenheit = isFahrenheit;
 }
 
+void CaptureWorker::setSaveMarkerInMediaEnabled(bool enabled) {
+    m_saveMarkerInMediaEnabled = enabled;
+}
+
 void CaptureWorker::processPhoto(const VisualFrame& frame, const QString& path) {
     /*
      * Qt Copy-on-Write Detachment:
@@ -60,6 +64,8 @@ void CaptureWorker::processVideoFrame(const VisualFrame& frame) {
 }
 
 void CaptureWorker::applyOsd(QImage& target, const VisualFrame& frame) {
+    if (!m_saveMarkerInMediaEnabled) return;
+
     QPainter p(&target);
 
     m_hotMarker.update(frame.hot_spot);

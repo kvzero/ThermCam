@@ -15,7 +15,9 @@ enum class SettingKey : quint8 {
     Palette = 0,
     Emissivity = 1,
     TemperatureUnit = 2,
-    StoragePriority = 3
+    StoragePriority = 3,
+    SaveMarkerInMedia = 4,
+    HideMarkerWhenHudHidden = 5
 };
 
 /** @brief Typed unit selector used by service-level normalization paths. */
@@ -37,13 +39,15 @@ struct SettingDescriptor {
     QVariant defaultValue;
 };
 
-inline const std::array<SettingDescriptor, 4> kSettingRegistry = {{
+inline const std::array<SettingDescriptor, 6> kSettingRegistry = {{
     {SettingKey::Palette, "palette", QVariant::fromValue(2)},
     {SettingKey::Emissivity, "emissivity", QVariant(0.95f)},
     {SettingKey::TemperatureUnit, "temperature_unit",
      QVariant::fromValue(static_cast<int>(TemperatureUnit::Celsius))},
     {SettingKey::StoragePriority, "storage_priority",
-     QVariant::fromValue(static_cast<int>(StoragePriority::SdFirst))}
+     QVariant::fromValue(static_cast<int>(StoragePriority::SdFirst))},
+    {SettingKey::SaveMarkerInMedia, "save_marker_in_media", QVariant(true)},
+    {SettingKey::HideMarkerWhenHudHidden, "hide_marker_when_hud_hidden", QVariant(false)}
 }};
 
 /** @brief Immutable committed truth snapshot from SettingsStore. */

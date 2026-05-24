@@ -44,6 +44,14 @@ ThermalPalette::Id paletteFromSnapshot(const SettingsSnapshot& snapshot) {
     }
     return static_cast<ThermalPalette::Id>(raw);
 }
+
+bool boolSettingFromSnapshot(const SettingsSnapshot& snapshot,
+                             SettingKey key,
+                             bool fallback) {
+    const QVariant value = snapshot.values.value(key, QVariant(fallback));
+    if (!value.canConvert<bool>()) return fallback;
+    return value.toBool();
+}
 } // namespace
 
 CameraView::CameraView(QWidget* parent) : BaseView(parent) {
@@ -92,14 +100,24 @@ CameraView::CameraView(QWidget* parent) : BaseView(parent) {
 
     /* --- Runtime Event Wiring --- */
     m_isFahrenheit = isFahrenheitFromSnapshot(snapshot);
-    connect(&EventBus::instance(), &EventBus::temperatureUnitChanged, this,
+    m_hideMarkerWhenHudHidden =
+        boolSettingFromSnapshot(snapshot, SettingKey::HideMarkerWhenHudHidden, false);
+
+    connect(&SettingsService::instance(), &SettingsService::unitChanged, this,
             [this](bool isFahrenheit) {
                 if (m_isFahrenheit == isFahrenheit) return;
                 m_isFahrenheit = isFahrenheit;
                 update();
             });
 
-    connect(&EventBus::instance(), &EventBus::paletteChanged, this,
+    connect(&SettingsService::instance(), &SettingsService::hudHideMarkerChanged, this,
+            [this](bool enabled) {
+                if (m_hideMarkerWhenHudHidden == enabled) return;
+                m_hideMarkerWhenHudHidden = enabled;
+                update();
+            });
+
+    connect(&SettingsService::instance(), &SettingsService::paletteChanged, this,
             [this](int paletteId) {
                 if (paletteId < 0 || paletteId >= static_cast<int>(ThermalPalette::Id::Count)) return;
                 applyPalette(static_cast<ThermalPalette::Id>(paletteId), false);
@@ -396,7 +414,8 @@ void CameraView::paintEvent(QPaintEvent*) {
         p.drawText(rect(), Qt::AlignCenter, QString(QChar(0xf83f)));
     }
 
-    if (hasFrame) {
+    const bool shouldDrawMarkers = hasFrame && (!m_hideMarkerWhenHudHidden || m_hudVisible);
+    if (shouldDrawMarkers) {
         const QSize s = size();
         m_hotMarker.paint(p, s, m_isFahrenheit);
         m_coldMarker.paint(p, s, m_isFahrenheit);
@@ -431,6 +450,7 @@ void CameraView::paintEvent(QPaintEvent*) {
 void CameraView::setHudVisible(bool visible, bool animated) {
     if (!m_statusBar || !m_capsuleButton || !m_modeSelector) {
         m_hudVisible = visible;
+        update();
         return;
     }
 
@@ -438,6 +458,7 @@ void CameraView::setHudVisible(bool visible, bool animated) {
     if (!animated) {
         stopHudAnimations();
         applyHudState(visible);
+        update();
         return;
     }
 
@@ -451,6 +472,7 @@ void CameraView::setHudVisible(bool visible, bool animated) {
     m_modeSelectorAnim->setStartValue(m_modeSelector->pos());
     m_modeSelectorAnim->setEndValue(visible ? m_modeSelectorVisiblePos : m_modeSelectorHiddenPos);
     m_hudAnimGroup->start();
+    update();
 }
 
 void CameraView::updateHudLayout() {

@@ -1,6 +1,5 @@
 #include "services/settings_service.h"
 
-#include "core/event_bus.h"
 #include "hardware/hardware_manager.h"
 #include "hardware/imaging/thermal_camera.h"
 #include "hardware/storage/storage_manager.h"
@@ -329,6 +328,24 @@ bool SettingsService::normalizePatch(const SettingsPatch& input,
             outPatch->values.insert(key, QVariant(parsed));
             continue;
         }
+        case SettingKey::SaveMarkerInMedia: {
+            if (!value.canConvert<bool>()) {
+                if (outError) *outError = "Invalid save-marker payload";
+                return false;
+            }
+
+            outPatch->values.insert(key, QVariant(value.toBool()));
+            continue;
+        }
+        case SettingKey::HideMarkerWhenHudHidden: {
+            if (!value.canConvert<bool>()) {
+                if (outError) *outError = "Invalid HUD-marker payload";
+                return false;
+            }
+
+            outPatch->values.insert(key, QVariant(value.toBool()));
+            continue;
+        }
         }
 
         if (outError) *outError = "Unsupported setting key";
@@ -353,7 +370,7 @@ bool SettingsService::applyRuntimeEffects(const SettingsChangeEvent& change, QSt
             errors << "Committed palette id is unsupported";
             allSuccess = false;
         } else {
-            emit EventBus::instance().paletteChanged(paletteId);
+            emit paletteChanged(paletteId);
         }
     }
 
@@ -390,7 +407,7 @@ bool SettingsService::applyRuntimeEffects(const SettingsChangeEvent& change, QSt
         } else {
             const bool isFahrenheit =
                 (unitValue == static_cast<int>(TemperatureUnit::Fahrenheit));
-            emit EventBus::instance().temperatureUnitChanged(isFahrenheit);
+            emit unitChanged(isFahrenheit);
         }
     }
 
@@ -421,6 +438,26 @@ bool SettingsService::applyRuntimeEffects(const SettingsChangeEvent& change, QSt
                 errors << "StorageManager is unavailable";
                 allSuccess = false;
             }
+        }
+    }
+
+    if (change.changedKeys.contains(SettingKey::SaveMarkerInMedia)) {
+        const QVariant payload = change.snapshot.values.value(SettingKey::SaveMarkerInMedia);
+        if (!payload.canConvert<bool>()) {
+            errors << "Committed save-marker value is invalid";
+            allSuccess = false;
+        } else {
+            emit saveMarkerChanged(payload.toBool());
+        }
+    }
+
+    if (change.changedKeys.contains(SettingKey::HideMarkerWhenHudHidden)) {
+        const QVariant payload = change.snapshot.values.value(SettingKey::HideMarkerWhenHudHidden);
+        if (!payload.canConvert<bool>()) {
+            errors << "Committed HUD-marker value is invalid";
+            allSuccess = false;
+        } else {
+            emit hudHideMarkerChanged(payload.toBool());
         }
     }
 
