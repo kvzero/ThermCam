@@ -10,6 +10,15 @@
 #include <QPainterPath>
 #include <QRadialGradient>
 #include <QEasingCurve>
+#include <QStringList>
+
+namespace {
+constexpr qreal kTextModalLineGapRatio = 0.20; // Extra gap between wrapped lines.
+
+QStringList splitModalTextLines(const QString& text) {
+    return text.split(QLatin1Char('\n'), Qt::KeepEmptyParts);
+}
+} // namespace
 
 ModalBase::ModalBase(QWidget* parent) : QWidget(parent) {
     hide();
@@ -378,9 +387,9 @@ ModalBase::ContentLayout TextModal::contentLayoutHint(const QSize& maxContentSiz
     font.setPixelSize(fontPx);
 
     QFontMetrics fm(font);
-    QRect wrapped = fm.boundingRect(QRect(0, 0, maxContentSize.width(), 10000),
-                                    Qt::AlignCenter | Qt::TextWordWrap,
-                                    m_message);
+    const QRect wrapped = fm.boundingRect(QRect(0, 0, maxContentSize.width(), 10000),
+                                          Qt::AlignCenter | Qt::TextWordWrap,
+                                          m_message);
 
     ContentLayout out;
     out.heightRatio = 0.55;
@@ -398,5 +407,45 @@ void TextModal::paintContent(QPainter& p, const QRect& contentRect) {
     font.setPixelSize(fontPx);
     p.setFont(font);
     p.setPen(Qt::white);
-    p.drawText(contentRect, Qt::AlignCenter | Qt::TextWordWrap, m_message);
+
+    const QStringList logicalLines = splitModalTextLines(m_message);
+    if (logicalLines.size() <= 1) {
+        p.drawText(contentRect, Qt::AlignCenter | Qt::TextWordWrap, m_message);
+        return;
+    }
+
+    QFontMetrics fm(font);
+    const int maxW = contentRect.width();
+
+    QVector<int> paragraphHeights;
+    paragraphHeights.reserve(logicalLines.size());
+    int textHNoGap = 0;
+    for (int i = 0; i < logicalLines.size(); ++i) {
+        const QString& textLine = logicalLines[i];
+        const QRect wrapped = fm.boundingRect(QRect(0, 0, maxW, 10000),
+                                              Qt::AlignHCenter | Qt::TextWordWrap,
+                                              textLine);
+        const int paraH = qMax(fm.height(), wrapped.height());
+        paragraphHeights.push_back(paraH);
+        textHNoGap += paraH;
+    }
+
+    const int lineCount = logicalLines.size();
+    const int desiredGap = qRound(fm.height() * kTextModalLineGapRatio);
+    const int maxGapBudget = qMax(0, contentRect.height() - textHNoGap);
+    const int lineGap = (lineCount > 1)
+                            ? qMin(desiredGap, maxGapBudget / (lineCount - 1))
+                            : 0;
+    const int totalH = textHNoGap + (lineCount - 1) * lineGap;
+
+    int y = contentRect.top() + (contentRect.height() - totalH) / 2;
+    for (int i = 0; i < lineCount; ++i) {
+        const int paraH = paragraphHeights[i];
+        if (!logicalLines[i].isEmpty()) {
+            p.drawText(QRect(contentRect.left(), y, maxW, paraH),
+                       Qt::AlignHCenter | Qt::TextWordWrap,
+                       logicalLines[i]);
+        }
+        y += paraH + lineGap;
+    }
 }

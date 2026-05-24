@@ -3,6 +3,8 @@
 #include "ui/widgets/scroll_indicator.h"
 #include "core/event_bus.h"
 #include "core/settings_store.h"
+#include "hardware/hardware_manager.h"
+#include "hardware/storage/storage_manager.h"
 #include "ui/app.h"
 
 #include <QPainter>
@@ -13,25 +15,35 @@
 #include <memory>
 
 namespace {
+    
 const QVector<PrimaryItemData> kMenuBlueprint = {
     {
-        0, QString(QChar(0xf837)), QColor(72, 104, 255), "Camera",
+        QString(QChar(0xf837)), QColor(72, 104, 255), "Camera",
         {
-            {SettingID::Emissivity, "Emissivity", ActionType::Value},
-            {SettingID::TemperatureUnit, "Temperature Unit", ActionType::Action}
+            {SettingID::Emissivity, "Emissivity", QColor(255, 255, 255), ActionType::Value},
+            {SettingID::TemperatureUnit, "Temperature Unit", QColor(255, 255, 255), ActionType::Action}
         }
     },
     {
-        1, QString(QChar(0xf02c)), QColor(28, 158, 112), "View",
+        QString(QChar(0xf02c)), QColor(28, 158, 112), "View",
         {
-            {SettingID::Palette, "Palette", ActionType::Action},
-            {SettingID::OSDOverlay, "Save OSD Overlay", ActionType::Toggle}
+            {SettingID::Palette, "Palette", QColor(255, 255, 255), ActionType::Action},
+            {SettingID::OSDOverlay, "Save OSD Overlay", QColor(255, 255, 255), ActionType::Toggle}
         }
     },
     {
-        2, QString(QChar(0xea03)), QColor(182, 102, 45), "System",
+        QString(QChar(0xfaf7)), QColor(84, 132, 214), "Storage",
         {
-
+            {SettingID::StoragePriority, "Priority", QColor(255, 255, 255), ActionType::Action, SecondaryVisibility::Always},
+            {SettingID::SdCardCapacity, "SD Card", QColor(255, 255, 255), ActionType::Value, SecondaryVisibility::RequiresSdCard},
+            {SettingID::SdCardFormat, "Format SD Card", QColor(228, 72, 72), ActionType::Action, SecondaryVisibility::RequiresSdCard},
+            {SettingID::UsbDiskCapacity, "USB Disk", QColor(255, 255, 255), ActionType::Value, SecondaryVisibility::RequiresUsbDisk},
+            {SettingID::UsbDiskFormat, "Format USB Disk", QColor(228, 72, 72), ActionType::Action, SecondaryVisibility::RequiresUsbDisk}
+        }
+    },
+    {
+        QString(QChar(0xea03)), QColor(182, 102, 45), "System",
+        {
         }
     }
 };
@@ -82,6 +94,83 @@ QString formatTemperatureUnit(int unitValue) {
                     static_cast<int>(TemperatureUnit::Fahrenheit))
                        ? QLatin1Char('F')
                        : QLatin1Char('C'));
+}
+
+int normalizeStoragePriorityInt(int value) {
+    const int sd = static_cast<int>(StoragePriority::SdFirst);
+    const int usb = static_cast<int>(StoragePriority::UsbFirst);
+    return (value == usb) ? usb : sd;
+}
+
+QString formatStoragePriority(int priorityValue) {
+    return (normalizeStoragePriorityInt(priorityValue) ==
+            static_cast<int>(StoragePriority::UsbFirst))
+               ? QStringLiteral("USB Disk First")
+               : QStringLiteral("SD Card First");
+}
+
+QString formatStorageCapacityValue(quint64 mb) {
+    if (mb >= 1024) {
+        return QString("%1 GB").arg(QString::number(static_cast<double>(mb) / 1024.0, 'f', 1));
+    }
+    return QString("%1 MB").arg(mb);
+}
+
+QString formatStorageCapacity(const StorageVolumeStatus& status) {
+    if (!status.ready || status.totalMB == 0) return "--";
+    const quint64 usedMB =
+        (status.totalMB >= status.availableMB) ? (status.totalMB - status.availableMB) : 0;
+    return QString("%1 / %2")
+        .arg(formatStorageCapacityValue(usedMB))
+        .arg(formatStorageCapacityValue(status.totalMB));
+}
+
+std::vector<SecondaryItemData> visibleSecondaryItems(int primaryIndex) {
+    if (primaryIndex < 0 || primaryIndex >= kMenuBlueprint.size()) {
+        return {};
+    }
+
+    const auto& full = kMenuBlueprint[primaryIndex].subItems;
+    std::vector<SecondaryItemData> visible;
+    if (full.empty()) return visible;
+
+    auto* storage = HardwareManager::instance().storage();
+    const bool sdReady = storage && storage->isSdCardReady();
+    const bool usbReady = storage && storage->isUsbDiskReady();
+
+    for (const auto& item : full) {
+        bool show = false;
+        switch (item.visibility) {
+        case SecondaryVisibility::Always:
+            show = true;
+            break;
+        case SecondaryVisibility::RequiresSdCard:
+            show = sdReady;
+            break;
+        case SecondaryVisibility::RequiresUsbDisk:
+            show = usbReady;
+            break;
+        }
+
+        if (show) {
+            visible.push_back(item);
+        }
+    }
+
+    return visible;
+}
+
+bool primaryHasDynamicSecondaryItems(int primaryIndex) {
+    if (primaryIndex < 0 || primaryIndex >= kMenuBlueprint.size()) return false;
+
+    const auto& items = kMenuBlueprint[primaryIndex].subItems;
+    for (const auto& item : items) {
+        if (item.visibility != SecondaryVisibility::Always) {
+            return true;
+        }
+    }
+
+    return false;
 }
 } // namespace
 
@@ -226,6 +315,21 @@ SettingsView::SettingsView(QWidget* parent) : BaseView(parent) {
             [this](const SettingsChangeEvent& change) {
                 refreshSecondaryRowsFromSnapshot(change.snapshot);
             });
+
+    if (auto* storage = HardwareManager::instance().storage()) {
+        auto refreshStorageRows = [this]() {
+            if (m_mode != PanelMode::Expanded) return;
+            if (!primaryHasDynamicSecondaryItems(m_activePrimary)) return;
+            rebuildSecondaryRows(m_activePrimary);
+            m_rightScroll = qBound<qreal>(0.0, m_rightScroll, rightMaxScroll());
+            relayoutRows();
+        };
+
+        connect(storage, &StorageManager::sdCardStateChanged, this,
+                [refreshStorageRows](bool /*ready*/) { refreshStorageRows(); });
+        connect(storage, &StorageManager::usbDiskStateChanged, this,
+                [refreshStorageRows](bool /*ready*/) { refreshStorageRows(); });
+    }
 
     buildPrimaryRows();
     rebuildSecondaryRows(0);
@@ -399,12 +503,8 @@ void SettingsView::onPrimaryRowActivated() {
 
 void SettingsView::onSecondaryRowActivated() {
     auto* row = qobject_cast<SettingsSecondaryRow*>(sender());
-    const int index = m_secondaryRows.indexOf(row);
-    if (index < 0 || m_activePrimary < 0 || m_activePrimary >= kMenuBlueprint.size()) return;
-
-    const auto& sub = kMenuBlueprint[m_activePrimary].subItems;
-    if (index < 0 || index >= static_cast<int>(sub.size())) return;
-    const SecondaryItemData& item = sub[index];
+    if (!row) return;
+    const SecondaryItemData item = row->data();
 
     auto buildAnchor = [this, row]() {
         BubbleAnchorContext anchor;
@@ -518,12 +618,82 @@ void SettingsView::onSecondaryRowActivated() {
         app->showRadioListBubble(spec, buildAnchor());
         return;
     }
+    case SettingID::StoragePriority: {
+        const SettingsSnapshot snapshot = SettingsStore::instance().current();
+        bool ok = false;
+        const int parsed = snapshot.values
+                               .value(SettingKey::StoragePriority,
+                                      defaultValueForKey(SettingKey::StoragePriority))
+                               .toInt(&ok);
+        const int priorityValue = normalizeStoragePriorityInt(
+            ok ? parsed : static_cast<int>(StoragePriority::SdFirst));
+
+        RadioListBubble::Spec spec;
+        spec.items = {
+            {"sd_first", "SD Card First"},
+            {"usb_first", "USB Disk First"}
+        };
+        spec.selectedIndex =
+            (priorityValue == static_cast<int>(StoragePriority::UsbFirst)) ? 1 : 0;
+        spec.dismissOnSelection = true;
+        spec.onSelected = [this](int selectedIndex, const QString& /*id*/) {
+            const int priority = (selectedIndex == 1)
+                                     ? static_cast<int>(StoragePriority::UsbFirst)
+                                     : static_cast<int>(StoragePriority::SdFirst);
+            SettingsPatch patch;
+            patch.values.insert(SettingKey::StoragePriority, QVariant(priority));
+            applyPatchFromUi(patch);
+        };
+
+        app->showRadioListBubble(spec, buildAnchor());
+        return;
+    }
     case SettingID::OSDOverlay:
         row->toggleVisualState();
         return;
     case SettingID::Palette:
         emit EventBus::instance().cameraRequested(QRect(), TransitionMode::Instant);
         emit EventBus::instance().paletteSelectorRequested();
+        return;
+    case SettingID::SdCardFormat:
+    case SettingID::UsbDiskFormat: {
+        const bool sdCard = (item.id == SettingID::SdCardFormat);
+        const QString targetName = sdCard ? QStringLiteral("SD Card")
+                                          : QStringLiteral("USB Disk");
+        app->showTextModal(QString("Format %1?\nAll files will be erased.").arg(targetName),
+                           [this, app, targetName, sdCard]() {
+                               auto* storage = HardwareManager::instance().storage();
+                               if (!storage) {
+                                   app->showToast("STORAGE UNAVAILABLE", ToastLevel::Warning);
+                                   return;
+                               }
+
+                               QString error;
+                               const StorageVolume targetVolume = sdCard
+                                                                      ? StorageVolume::SdCard
+                                                                      : StorageVolume::UsbDisk;
+                               const bool ok = storage->formatVolume(targetVolume, &error);
+
+                               if (!ok) {
+                                   qWarning() << "[Settings] Format failed:" << targetName
+                                              << "reason:" << error;
+                                   app->showToast(targetName + " format failed", ToastLevel::Warning);
+                               } else {
+                                   app->showToast(targetName + " formatted", ToastLevel::Info);
+                               }
+
+                               if (m_mode == PanelMode::Expanded &&
+                                   primaryHasDynamicSecondaryItems(m_activePrimary)) {
+                                   rebuildSecondaryRows(m_activePrimary);
+                                   m_rightScroll = qBound<qreal>(0.0, m_rightScroll, rightMaxScroll());
+                                   relayoutRows();
+                               }
+                           },
+                           ModalLevel::Critical);
+        return;
+    }
+    case SettingID::SdCardCapacity:
+    case SettingID::UsbDiskCapacity:
         return;
     }
 }
@@ -558,7 +728,8 @@ void SettingsView::rebuildSecondaryRows(int primaryIndex) {
 
     if (primaryIndex < 0 || primaryIndex >= kMenuBlueprint.size()) return;
 
-    for (const auto& item : kMenuBlueprint[primaryIndex].subItems) {
+    const auto items = visibleSecondaryItems(primaryIndex);
+    for (const auto& item : items) {
         auto* row = new SettingsSecondaryRow(this);
         row->setData(item);
         connect(row, &SettingsSecondaryRow::activated, this, &SettingsView::onSecondaryRowActivated);
@@ -712,16 +883,15 @@ void SettingsView::triggerExitToCamera() {
 }
 
 void SettingsView::refreshSecondaryRowsFromSnapshot(const SettingsSnapshot& snapshot) {
-    const int primaryIndex =
-        (m_activePrimary >= 0 && m_activePrimary < kMenuBlueprint.size()) ? m_activePrimary : 0;
-    if (primaryIndex < 0 || primaryIndex >= kMenuBlueprint.size()) return;
+    StorageVolumeStatus sdStatus;
+    StorageVolumeStatus usbStatus;
+    if (auto* storage = HardwareManager::instance().storage()) {
+        sdStatus = storage->volumeStatus(StorageVolume::SdCard);
+        usbStatus = storage->volumeStatus(StorageVolume::UsbDisk);
+    }
 
-    const auto& sub = kMenuBlueprint[primaryIndex].subItems;
-    const int rowCount = qMin(m_secondaryRows.size(), static_cast<int>(sub.size()));
-
-    for (int i = 0; i < rowCount; ++i) {
-        auto* row = m_secondaryRows[i];
-        const SecondaryItemData& item = sub[i];
+    for (auto* row : m_secondaryRows) {
+        const SecondaryItemData item = row->data();
         row->setValueText(QString());
 
         switch (item.id) {
@@ -745,6 +915,25 @@ void SettingsView::refreshSecondaryRowsFromSnapshot(const SettingsSnapshot& snap
             row->setValueText(formatTemperatureUnit(unit));
             break;
         }
+        case SettingID::StoragePriority: {
+            bool ok = false;
+            const int parsed = snapshot.values
+                                   .value(SettingKey::StoragePriority,
+                                          defaultValueForKey(SettingKey::StoragePriority))
+                                   .toInt(&ok);
+            const int priority = normalizeStoragePriorityInt(
+                ok ? parsed : static_cast<int>(StoragePriority::SdFirst));
+            row->setValueText(formatStoragePriority(priority));
+            break;
+        }
+        case SettingID::SdCardCapacity:
+            row->setValueText(formatStorageCapacity(sdStatus));
+            break;
+        case SettingID::UsbDiskCapacity:
+            row->setValueText(formatStorageCapacity(usbStatus));
+            break;
+        case SettingID::SdCardFormat:
+        case SettingID::UsbDiskFormat:
         case SettingID::OSDOverlay:
         case SettingID::Palette:
             break;

@@ -3,6 +3,7 @@
 #include "core/event_bus.h"
 #include "hardware/hardware_manager.h"
 #include "hardware/imaging/thermal_camera.h"
+#include "hardware/storage/storage_manager.h"
 #include "processing/thermal_palette.h"
 #include <QDebug>
 #include <QStringList>
@@ -34,6 +35,18 @@ QVariant fallbackValueForKey(SettingKey key) {
         }
     }
     return QVariant();
+}
+
+int normalizeStoragePriorityInt(int value) {
+    const int sdFirst = static_cast<int>(StoragePriority::SdFirst);
+    const int usbFirst = static_cast<int>(StoragePriority::UsbFirst);
+    return (value == usbFirst) ? usbFirst : sdFirst;
+}
+
+RemovableStoragePriority toRemovablePriority(int value) {
+    return (normalizeStoragePriorityInt(value) == static_cast<int>(StoragePriority::UsbFirst))
+               ? RemovableStoragePriority::UsbFirst
+               : RemovableStoragePriority::SdFirst;
 }
 }
 
@@ -294,6 +307,28 @@ bool SettingsService::normalizePatch(const SettingsPatch& input,
             outPatch->values.insert(key, QVariant(unitValue));
             continue;
         }
+        case SettingKey::StoragePriority: {
+            if (!value.canConvert<int>()) {
+                if (outError) *outError = "Invalid storage priority payload";
+                return false;
+            }
+
+            bool ok = false;
+            const int parsed = value.toInt(&ok);
+            if (!ok) {
+                if (outError) *outError = "Invalid storage priority payload";
+                return false;
+            }
+
+            if (parsed != static_cast<int>(StoragePriority::SdFirst) &&
+                parsed != static_cast<int>(StoragePriority::UsbFirst)) {
+                if (outError) *outError = "Unsupported storage priority";
+                return false;
+            }
+
+            outPatch->values.insert(key, QVariant(parsed));
+            continue;
+        }
         }
 
         if (outError) *outError = "Unsupported setting key";
@@ -356,6 +391,36 @@ bool SettingsService::applyRuntimeEffects(const SettingsChangeEvent& change, QSt
             const bool isFahrenheit =
                 (unitValue == static_cast<int>(TemperatureUnit::Fahrenheit));
             emit EventBus::instance().temperatureUnitChanged(isFahrenheit);
+        }
+    }
+
+    if (change.changedKeys.contains(SettingKey::StoragePriority)) {
+        const QVariant payload = change.snapshot.values.value(SettingKey::StoragePriority);
+        bool ok = false;
+        const int priorityValue = payload.toInt(&ok);
+        if (!ok) {
+            errors << "Committed storage priority value is invalid";
+            allSuccess = false;
+        } else if (priorityValue != static_cast<int>(StoragePriority::SdFirst) &&
+                   priorityValue != static_cast<int>(StoragePriority::UsbFirst)) {
+            errors << "Committed storage priority is unsupported";
+            allSuccess = false;
+        } else {
+            if (auto* storage = HardwareManager::instance().storage()) {
+                StorageRoutingPolicy policy = storage->routingPolicy();
+                const RemovableStoragePriority resolved = toRemovablePriority(priorityValue);
+                policy.photoPriority = resolved;
+                policy.videoPriority = resolved;
+
+                QString policyError;
+                if (!storage->setRoutingPolicy(policy, &policyError)) {
+                    errors << QString("Failed to apply storage policy: %1").arg(policyError);
+                    allSuccess = false;
+                }
+            } else {
+                errors << "StorageManager is unavailable";
+                allSuccess = false;
+            }
         }
     }
 

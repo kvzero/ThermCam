@@ -286,7 +286,7 @@ void SettingsSecondaryRow::paintEvent(QPaintEvent* /*event*/) {
     textFont.setPixelSize(qRound(h * 0.30));
     textFont.setBold(true);
     p.setFont(textFont);
-    p.setPen(Qt::white);
+    p.setPen(m_data.titleColor);
     p.drawText(QRect(margin, 0, w - margin * 2, h), Qt::AlignVCenter | Qt::AlignLeft, m_data.title);
 
     QString tail = m_valueText;
