@@ -4,7 +4,7 @@
 #include <QDebug>
 #include <QDir>
 #include <QFile>
-#include <QSet>
+#include <QProcess>
 #include <QSocketNotifier>
 
 /* Low-level Linux headers for Netlink and VFS stats */
@@ -15,19 +15,16 @@
 #include <unistd.h>
 
 const QString StorageManager::kSdCardMountPoint = "/mnt/sdcard";
+const QString StorageManager::kUsbDiskMountPoint = "/mnt/udisk";
 const QString StorageManager::kNandFallbackBase = "/root";
 const QString StorageManager::kDcimSubdir       = "DCIM/ThermalCam";
-const QStringList StorageManager::kUsbMountPointCandidates = {
-    "/mnt/udisk",
-    "/mnt/usb",
-    "/mnt/usb0",
-    "/mnt/usb1",
-    "/media/udisk",
-    "/media/usb",
-    "/run/media/udisk"
-};
 
+/* ========================= File-Local Constants ========================= */
 namespace {
+constexpr quint64 kFat32BoundaryMB = 32ull * 1024ull;
+constexpr int kFormatCommandTimeoutMs = 180000;
+const QString kRemovableMountOptions = "noexec,nodev,noatime,nodiratime";
+
 QString volumeName(StorageVolume volume) {
     switch (volume) {
     case StorageVolume::SdCard:
@@ -41,6 +38,7 @@ QString volumeName(StorageVolume volume) {
 }
 }
 
+/* ========================= Lifecycle / Bootstrap ========================= */
 StorageManager& StorageManager::instance() {
     static StorageManager inst;
     return inst;
@@ -82,6 +80,7 @@ bool StorageManager::init() {
     return true;
 }
 
+/* ========================= Public Status API ========================= */
 bool StorageManager::isSdCardReady() const {
     return m_sdCardStatus.ready;
 }
@@ -90,6 +89,112 @@ bool StorageManager::isUsbDiskReady() const {
     return m_usbDiskStatus.ready;
 }
 
+/**
+ * @brief Format one removable medium according to capacity policy and remount it.
+ *
+ * Policy:
+ * - <= 32 GiB -> FAT32
+ * - >  32 GiB -> exFAT
+ */
+bool StorageManager::formatVolume(StorageVolume volume, QString* outError) {
+    if (volume == StorageVolume::Nand) {
+        if (outError) *outError = "NAND format is not supported";
+        return false;
+    }
+
+    if (m_recordingQuotaActive) {
+        if (outError) *outError = "Formatting is blocked while recording";
+        return false;
+    }
+
+    evaluateStorageState();
+
+    const QString mountPoint =
+        (volume == StorageVolume::SdCard) ? kSdCardMountPoint : kUsbDiskMountPoint;
+    const StorageVolumeStatus status = statusForVolume(volume);
+    if (!status.ready) {
+        if (outError) *outError = QString("%1 is not mounted").arg(volumeName(volume));
+        return false;
+    }
+
+    const QString deviceNode = mountedDeviceForPath(mountPoint);
+    if (deviceNode.isEmpty()) {
+        if (outError) *outError = QString("Cannot resolve block device for %1").arg(mountPoint);
+        return false;
+    }
+
+    if (!deviceNode.startsWith("/dev/")) {
+        if (outError) *outError = QString("Resolved device is invalid: %1").arg(deviceNode);
+        return false;
+    }
+
+    if (volume == StorageVolume::SdCard && !deviceNode.startsWith("/dev/mmcblk")) {
+        if (outError) *outError = QString("Unexpected SD device node: %1").arg(deviceNode);
+        return false;
+    }
+
+    if (volume == StorageVolume::UsbDisk && !deviceNode.startsWith("/dev/sd")) {
+        if (outError) *outError = QString("Unexpected USB device node: %1").arg(deviceNode);
+        return false;
+    }
+
+    quint64 totalMB = status.totalMB;
+    if (totalMB == 0) {
+        totalMB = getTotalSpaceMB(mountPoint);
+    }
+    if (totalMB == 0) {
+        if (outError) *outError = QString("Cannot detect capacity for %1").arg(volumeName(volume));
+        return false;
+    }
+
+    const bool useFat32 = (totalMB <= kFat32BoundaryMB);
+    const QString fsType = useFat32 ? "vfat" : "exfat";
+    const QString mkfsProgram = useFat32 ? "/usr/sbin/mkfs.vfat" : "/usr/sbin/mkfs.exfat";
+    const QStringList mkfsArgs = useFat32
+                                     ? QStringList({"-F", "32", deviceNode})
+                                     : QStringList({deviceNode});
+
+    qInfo() << "[Storage] Formatting" << volumeName(volume)
+            << "mountPoint:" << mountPoint
+            << "device:" << deviceNode
+            << "sizeMB:" << totalMB
+            << "targetFs:" << fsType;
+
+    ::sync();
+
+    QString commandError;
+    if (!runCommand("/usr/bin/umount", {"-l", mountPoint}, &commandError, kFormatCommandTimeoutMs)) {
+        evaluateStorageState();
+        if (outError) *outError = QString("umount failed: %1").arg(commandError);
+        return false;
+    }
+
+    if (!runCommand(mkfsProgram, mkfsArgs, &commandError, kFormatCommandTimeoutMs)) {
+        evaluateStorageState();
+        if (outError) *outError = QString("mkfs failed: %1").arg(commandError);
+        return false;
+    }
+
+    if (!ensureDirectoryExists(mountPoint)) {
+        if (outError) *outError = QString("Mount point missing: %1").arg(mountPoint);
+        return false;
+    }
+
+    if (!runCommand("/usr/bin/mount",
+                    {"-t", fsType, "-o", kRemovableMountOptions, deviceNode, mountPoint},
+                    &commandError,
+                    kFormatCommandTimeoutMs)) {
+        evaluateStorageState();
+        if (outError) *outError = QString("mount failed: %1").arg(commandError);
+        return false;
+    }
+
+    ::sync();
+    evaluateStorageState();
+    return true;
+}
+
+/* ========================= Routing / Policy API ========================= */
 StorageVolumeStatus StorageManager::volumeStatus(StorageVolume volume) const {
     return statusForVolume(volume);
 }
@@ -115,6 +220,7 @@ bool StorageManager::setRoutingPolicy(const StorageRoutingPolicy& policy, QStrin
     return true;
 }
 
+/* ========================= Capture Session Hooks ========================= */
 void StorageManager::setRecordingActive(bool active) {
     m_recordingQuotaActive = active;
 
@@ -126,6 +232,7 @@ void StorageManager::setRecordingActive(bool active) {
     }
 }
 
+/* ========================= Capture / Gallery Path API ========================= */
 QString StorageManager::requestMediaFilePath(CaptureMode mode) {
     evaluateStorageState();
 
@@ -206,6 +313,7 @@ QStringList StorageManager::getAvailableMediaDirectories() {
     return directories;
 }
 
+/* ========================= Netlink + State Refresh ========================= */
 void StorageManager::processNetlinkEvent() {
     char buffer[4096];
     const int len = ::recv(m_netlinkFd, buffer, sizeof(buffer), MSG_DONTWAIT);
@@ -222,25 +330,21 @@ void StorageManager::processNetlinkEvent() {
     }
 }
 
+/**
+ * @brief Refreshes SD/USB mounted status and emits transition signals.
+ */
 void StorageManager::evaluateStorageState() {
     const bool previousSdReady = m_sdCardStatus.ready;
     const bool previousUsbReady = m_usbDiskStatus.ready;
-    const QString previousUsbMountPoint = m_usbDiskStatus.mountPoint;
 
     m_sdCardStatus = buildMountedVolumeStatus(kSdCardMountPoint);
-
-    const QString usbMountPoint = resolveUsbMountPoint();
-    if (usbMountPoint.isEmpty()) {
-        m_usbDiskStatus = StorageVolumeStatus();
-    } else {
-        m_usbDiskStatus = buildMountedVolumeStatus(usbMountPoint);
-    }
+    m_usbDiskStatus = buildMountedVolumeStatus(kUsbDiskMountPoint);
 
     if (m_sdCardStatus.ready && !previousSdReady) {
         ensureDirectoryExists(m_sdCardStatus.mountPoint + "/" + kDcimSubdir);
     }
 
-    if (m_usbDiskStatus.ready && (!previousUsbReady || previousUsbMountPoint != m_usbDiskStatus.mountPoint)) {
+    if (m_usbDiskStatus.ready && !previousUsbReady) {
         ensureDirectoryExists(m_usbDiskStatus.mountPoint + "/" + kDcimSubdir);
     }
 
@@ -257,6 +361,7 @@ void StorageManager::evaluateStorageState() {
     }
 }
 
+/* ========================= Quota Enforcement ========================= */
 void StorageManager::enforceActiveQuota() {
     if (!m_recordingQuotaActive) return;
 
@@ -282,16 +387,111 @@ void StorageManager::enforceActiveQuota() {
     }
 }
 
+/* ========================= Mount Table Helpers ========================= */
+/**
+ * @brief Checks whether @p targetPath is an active mount point in /proc/mounts.
+ */
 bool StorageManager::isMounted(const QString& targetPath) const {
     QFile file("/proc/mounts");
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         return false;
     }
 
-    const QString content = QString::fromUtf8(file.readAll());
-    return content.contains(targetPath);
+    // !!! Do not use QFile::atEnd() as loop condition for procfs streams.
+    // On this target, /proc/mounts may report EOF before the first read.
+    // Read line-by-line until readLine() returns a null QByteArray instead.
+    while (true) {
+        const QByteArray rawLine = file.readLine();
+        if (rawLine.isNull()) {
+            break; // EOF on procfs stream
+        }
+
+        const QString line = QString::fromUtf8(rawLine).trimmed();
+        if (line.isEmpty()) continue;
+
+        const QStringList fields = line.split(' ', Qt::SkipEmptyParts);
+        if (fields.size() >= 2 && fields.at(1) == targetPath) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
+/**
+ * @brief Resolves mounted source device node for @p targetPath from /proc/self/mounts.
+ */
+QString StorageManager::mountedDeviceForPath(const QString& targetPath) const {
+    QFile file("/proc/self/mounts");
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return QString();
+    }
+
+    while (true) {
+        const QByteArray rawLine = file.readLine();
+        if (rawLine.isNull()) {
+            break;
+        }
+
+        const QString line = QString::fromUtf8(rawLine).trimmed();
+        if (line.isEmpty()) continue;
+
+        const QStringList fields = line.split(' ', Qt::SkipEmptyParts);
+        if (fields.size() >= 2 && fields.at(1) == targetPath) {
+            return fields.at(0);
+        }
+    }
+
+    return QString();
+}
+
+/* ========================= Process Execution Helper ========================= */
+/**
+ * @brief Executes one external command with timeout/error handling.
+ */
+bool StorageManager::runCommand(const QString& program,
+                                const QStringList& args,
+                                QString* outError,
+                                int timeoutMs) const {
+    QProcess process;
+    process.start(program, args, QIODevice::ReadOnly);
+
+    if (!process.waitForStarted(5000)) {
+        if (outError) {
+            *outError = QString("failed to start %1").arg(program);
+        }
+        return false;
+    }
+
+    if (!process.waitForFinished(timeoutMs)) {
+        process.kill();
+        process.waitForFinished();
+        if (outError) {
+            *outError = QString("%1 timed out").arg(program);
+        }
+        return false;
+    }
+
+    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+        const QString stderrText = QString::fromUtf8(process.readAllStandardError()).trimmed();
+        const QString stdoutText = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+
+        if (outError) {
+            if (!stderrText.isEmpty()) {
+                *outError = stderrText;
+            } else if (!stdoutText.isEmpty()) {
+                *outError = stdoutText;
+            } else {
+                *outError = QString("%1 exited with code %2").arg(program).arg(process.exitCode());
+            }
+        }
+        return false;
+    }
+
+    return true;
+}
+
+/* ========================= Capacity + Path Helpers ========================= */
 quint64 StorageManager::getAvailableSpaceMB(const QString& path) const {
     struct statvfs stat;
     if (statvfs(path.toLocal8Bit().constData(), &stat) != 0) {
@@ -326,6 +526,7 @@ QString StorageManager::generateTimestampFilename(CaptureMode mode) const {
     return prefix + stamp + ext;
 }
 
+/* ========================= Internal Status Builders ========================= */
 StorageVolumeStatus StorageManager::buildMountedVolumeStatus(const QString& mountPoint) const {
     StorageVolumeStatus status;
     status.mountPoint = mountPoint;
@@ -354,53 +555,7 @@ StorageVolumeStatus StorageManager::buildNandStatus() const {
     return status;
 }
 
-QString StorageManager::resolveUsbMountPoint() const {
-    QSet<QString> candidateMounts;
-    for (const QString& mountPoint : kUsbMountPointCandidates) {
-        candidateMounts.insert(mountPoint);
-    }
-
-    QFile mounts("/proc/mounts");
-    if (mounts.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        while (!mounts.atEnd()) {
-            const QString line = QString::fromUtf8(mounts.readLine()).trimmed();
-            if (line.isEmpty()) continue;
-
-            const QStringList fields = line.split(' ', Qt::SkipEmptyParts);
-            if (fields.size() < 2) continue;
-
-            const QString device = fields.at(0);
-            const QString mountPoint = fields.at(1);
-
-            if (!device.startsWith("/dev/sd")) continue;
-            if (mountPoint == "/") continue;
-            if (mountPoint.startsWith("/boot")) continue;
-            if (mountPoint == kSdCardMountPoint) continue;
-
-            candidateMounts.insert(mountPoint);
-        }
-    }
-
-    QString bestMountPoint;
-    quint64 bestAvailableMB = 0;
-    for (const QString& mountPoint : candidateMounts) {
-        const StorageVolumeStatus status = buildMountedVolumeStatus(mountPoint);
-        if (!status.ready) continue;
-
-        if (bestMountPoint.isEmpty()) {
-            bestMountPoint = status.mountPoint;
-            bestAvailableMB = status.availableMB;
-            continue;
-        }
-
-        if (status.availableMB > bestAvailableMB) {
-            bestAvailableMB = status.availableMB;
-            bestMountPoint = status.mountPoint;
-        }
-    }
-    return bestMountPoint;
-}
-
+/* ========================= Internal Routing Helpers ========================= */
 QVector<StorageVolume> StorageManager::removableOrderForMode(CaptureMode mode) const {
     const RemovableStoragePriority priority =
         (mode == CaptureMode::Photo) ? m_routingPolicy.photoPriority : m_routingPolicy.videoPriority;
@@ -461,7 +616,7 @@ QString StorageManager::basePathForVolume(StorageVolume volume) const {
     case StorageVolume::SdCard:
         return m_sdCardStatus.mountPoint.isEmpty() ? kSdCardMountPoint : m_sdCardStatus.mountPoint;
     case StorageVolume::UsbDisk:
-        return m_usbDiskStatus.mountPoint;
+        return m_usbDiskStatus.mountPoint.isEmpty() ? kUsbDiskMountPoint : m_usbDiskStatus.mountPoint;
     case StorageVolume::Nand:
         return kNandFallbackBase;
     }

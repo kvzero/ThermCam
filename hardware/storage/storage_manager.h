@@ -46,6 +46,7 @@ struct StorageRoutingPolicy {
 class StorageManager : public QObject {
     Q_OBJECT
 public:
+    /* --- Lifecycle --- */
     static StorageManager& instance();
 
     /**
@@ -54,6 +55,43 @@ public:
      */
     bool init();
 
+    /* --- Runtime Status API --- */
+    /**
+     * @brief Checks if the external SD card is mounted and discoverable.
+     */
+    bool isSdCardReady() const;
+
+    /**
+     * @brief Checks if an external USB disk is mounted and discoverable.
+     */
+    bool isUsbDiskReady() const;
+
+    /**
+     * @brief Formats one removable volume and remounts it at the canonical mount point.
+     *
+     * Filesystem policy:
+     * - <= 32 GiB  -> FAT32
+     * - >  32 GiB  -> exFAT
+     */
+    bool formatVolume(StorageVolume volume, QString* outError = nullptr);
+
+    /**
+     * @brief Read-only status snapshot for one physical volume.
+     */
+    StorageVolumeStatus volumeStatus(StorageVolume volume) const;
+
+    /**
+     * @brief Current write-routing policy used by requestMediaFilePath().
+     */
+    StorageRoutingPolicy routingPolicy() const;
+
+    /**
+     * @brief Updates runtime routing order for SD/USB without touching UI code.
+     * @return true if accepted; false when policy is semantically invalid.
+     */
+    bool setRoutingPolicy(const StorageRoutingPolicy& policy, QString* outError = nullptr);
+
+    /* --- Capture / Gallery API --- */
     /**
      * @brief Requests a writable path for a new media session.
      *
@@ -73,33 +111,8 @@ public:
      */
     QStringList getAvailableMediaDirectories();
 
-    /**
-     * @brief Checks if the external SD card is mounted and discoverable.
-     */
-    bool isSdCardReady() const;
-
-    /**
-     * @brief Checks if an external USB disk is mounted and discoverable.
-     */
-    bool isUsbDiskReady() const;
-
-    /**
-     * @brief Read-only status snapshot for one physical volume.
-     */
-    StorageVolumeStatus volumeStatus(StorageVolume volume) const;
-
-    /**
-     * @brief Current write-routing policy used by requestMediaFilePath().
-     */
-    StorageRoutingPolicy routingPolicy() const;
-
-    /**
-     * @brief Updates runtime routing order for SD/USB without touching UI code.
-     * @return true if accepted; false when policy is semantically invalid.
-     */
-    bool setRoutingPolicy(const StorageRoutingPolicy& policy, QString* outError = nullptr);
-
 public slots:
+    /* --- Runtime Session Hooks --- */
     /**
      * @brief Engages or disengages the active capacity monitoring.
      * Should be called by CaptureService when recording starts/stops.
@@ -109,6 +122,7 @@ public slots:
     void setRecordingActive(bool active);
 
 signals:
+    /* --- Reactive Notifications --- */
     /**
      * @brief Fired when the SD card is physically inserted or removed.
      * Used by StatusBar to toggle the SD icon.
@@ -128,32 +142,64 @@ signals:
     void storageSpaceCritical();
 
 private slots:
+    /**
+     * @brief Handles kernel block-device UEVENTs from Netlink.
+     */
     void processNetlinkEvent();
+
+    /**
+     * @brief Rebuilds SD/USB readiness snapshot from current mount table.
+     */
     void evaluateStorageState();
+
+    /**
+     * @brief Enforces recording-time minimum-space safety threshold.
+     */
     void enforceActiveQuota();
 
 private:
+    /* --- Construction / Ownership --- */
     explicit StorageManager(QObject* parent = nullptr);
     ~StorageManager();
 
     StorageManager(const StorageManager&) = delete;
     StorageManager& operator=(const StorageManager&) = delete;
 
-    /* Internal Helpers */
+    /* --- Mount / Device Helpers --- */
+    /**
+     * @brief Returns true when @p targetPath exists as a mounted destination in /proc/mounts.
+     */
     bool isMounted(const QString& targetPath) const;
+
+    /**
+     * @brief Resolves mounted source device node for @p targetPath from /proc/self/mounts.
+     * @return e.g. "/dev/mmcblk0p1" or empty string if not found.
+     */
+    QString mountedDeviceForPath(const QString& targetPath) const;
+
+    /**
+     * @brief Runs one external command and collects a concise error message on failure.
+     */
+    bool runCommand(const QString& program,
+                    const QStringList& args,
+                    QString* outError,
+                    int timeoutMs = 120000) const;
+
+    /* --- Filesystem / Capacity Helpers --- */
     quint64 getAvailableSpaceMB(const QString& path) const;
     quint64 getTotalSpaceMB(const QString& path) const;
     bool ensureDirectoryExists(const QString& path) const;
     QString generateTimestampFilename(CaptureMode mode) const;
     StorageVolumeStatus buildMountedVolumeStatus(const QString& mountPoint) const;
     StorageVolumeStatus buildNandStatus() const;
-    QString resolveUsbMountPoint() const;
+
+    /* --- Routing / Policy Helpers --- */
     QVector<StorageVolume> removableOrderForMode(CaptureMode mode) const;
     StorageVolumeStatus statusForVolume(StorageVolume volume) const;
     bool isVolumeWritableForMode(StorageVolume volume, CaptureMode mode, quint64* outAvailableMB = nullptr) const;
     QString basePathForVolume(StorageVolume volume) const;
 
-    /* Hardware Resources */
+    /* --- Runtime Resources --- */
     int m_netlinkFd = -1;
     QSocketNotifier* m_netlinkNotifier = nullptr;
     QTimer* m_quotaTimer = nullptr;
@@ -165,12 +211,13 @@ private:
     bool m_hasActiveRecordingVolume = false;
     StorageVolume m_activeRecordingVolume = StorageVolume::SdCard;
 
-    /* Configuration Constants */
+    /* --- Canonical Mount Constants --- */
     static const QString kSdCardMountPoint;
+    static const QString kUsbDiskMountPoint;
     static const QString kNandFallbackBase;
     static const QString kDcimSubdir;
-    static const QStringList kUsbMountPointCandidates;
 
+    /* --- Space / Timing Thresholds --- */
     static constexpr quint64 kMinRecordSpaceMB = 200; /**< Refuse new video if below this */
     static constexpr quint64 kMinPhotoSpaceMB  = 50;  /**< Refuse new photo if below this */
     static constexpr quint64 kCriticalSpaceMB  = 100; /**< Force stop recording if below this */
