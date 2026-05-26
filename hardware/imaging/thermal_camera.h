@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QtGlobal>
+#include <QString>
 
 #include "core/types.h"
 
@@ -26,13 +27,33 @@ public:
         SeekVision = 2
     };
 
+    enum class ShutterMode : quint8 {
+        Auto = 0,
+        Manual = 1
+    };
+
+    enum class AgcMode : quint8 {
+        HistEq = 0,
+        Linear = 1
+    };
+
     explicit ThermalCamera(QObject *parent = nullptr);
     ~ThermalCamera() override;
 
-    void setPipelineMode(PipelineMode mode);
+    bool setPipelineMode(PipelineMode mode, QString* outError = nullptr);
     void setEmissivity(float value);
     float getEmissivity() const;
+
+    bool setShutterMode(ShutterMode mode, QString* outError = nullptr);
+    bool setThermographyOffsetCelsius(float offset, QString* outError = nullptr);
+    bool setSharpenFilterEnabled(bool enabled, QString* outError = nullptr);
+    bool setAgcMode(AgcMode mode, QString* outError = nullptr);
+    bool setLinearAgcManualRangeCelsius(float minCelsius,
+                                        float maxCelsius,
+                                        QString* outError = nullptr);
+
     void triggerShutter();
+    bool triggerFlatSceneCorrection(QString* outError = nullptr);
 
 signals:
     void cameraConnected(const QString& serial);
