@@ -4,6 +4,7 @@
 #include "core/event_bus.h"
 #include "core/settings_store.h"
 #include "hardware/hardware_manager.h"
+#include "hardware/imaging/thermal_camera.h"
 #include "hardware/storage/storage_manager.h"
 #include "ui/app.h"
 
@@ -15,12 +16,20 @@
 #include <memory>
 
 namespace {
-    
+
 const QVector<PrimaryItemData> kMenuBlueprint = {
     {
         QString(QChar(0xf837)), QColor(72, 104, 255), "Camera",
         {
-            {SettingID::Emissivity, "Emissivity", QColor(255, 255, 255), ActionType::Value}
+            {SettingID::Emissivity, "Emissivity", QColor(255, 255, 255), ActionType::Value},
+            {SettingID::ShutterAutoEnabled, "Auto Shutter", QColor(255, 255, 255), ActionType::Toggle},
+            {SettingID::SeekVisionEnabled, "Auto SeekVision", QColor(255, 255, 255), ActionType::Toggle},
+            {SettingID::LegacySharpenEnabled, "Sharpen Filter", QColor(255, 255, 255), ActionType::Toggle, SecondaryVisibility::RequiresLegacyMode},
+            {SettingID::AgcMode, "AGC Mode", QColor(255, 255, 255), ActionType::Action, SecondaryVisibility::RequiresLegacyMode},
+            {SettingID::LinearAgcMin, "- Linear AGC Min", QColor(255, 255, 255), ActionType::Action, SecondaryVisibility::RequiresLegacyLinearAgc},
+            {SettingID::LinearAgcMax, "- Linear AGC Max", QColor(255, 255, 255), ActionType::Action, SecondaryVisibility::RequiresLegacyLinearAgc},
+            {SettingID::ThermographyOffset, "Temperature Offset", QColor(255, 255, 255), ActionType::Action},
+            {SettingID::TriggerFlatSceneCorrection, "Flat-Scene Correction", QColor(255, 255, 255), ActionType::Action}
         }
     },
     {
@@ -28,8 +37,7 @@ const QVector<PrimaryItemData> kMenuBlueprint = {
         {
             {SettingID::Palette, "Palette", QColor(255, 255, 255), ActionType::Action},
             {SettingID::OSDOverlay, "Save Marker Overlay", QColor(255, 255, 255), ActionType::Toggle},
-            {SettingID::HideMarkerWhenHudHidden, "Hide Marker with HUD", QColor(255, 255, 255),
-             ActionType::Toggle},
+            {SettingID::HideMarkerWhenHudHidden, "Hide Marker with HUD", QColor(255, 255, 255), ActionType::Toggle},
             {SettingID::TemperatureUnit, "Temperature Unit", QColor(255, 255, 255), ActionType::Action}
         }
     },
@@ -59,6 +67,12 @@ constexpr int kEmissivitySliderMin = 1;
 constexpr int kEmissivitySliderMax = 100;
 constexpr int kEmissivitySliderStep = 1;
 constexpr int kPreviewThrottleMs = 50;
+constexpr int kThermographyOffsetTenthsMin = -100;
+constexpr int kThermographyOffsetTenthsMax = 100;
+constexpr int kThermographyOffsetTenthsStep = 1;
+constexpr float kLinearAgcCelsiusMin = -40.0f;
+constexpr float kLinearAgcCelsiusMax = 600.0f;
+constexpr int kLinearAgcStep = 1;
 
 float clampEmissivity(float value) {
     return qBound(kEmissivityMin, value, kEmissivityMax);
@@ -74,6 +88,19 @@ int emissivityToSliderValue(float value) {
 float sliderValueToEmissivity(int value) {
     const int clamped = qBound(kEmissivitySliderMin, value, kEmissivitySliderMax);
     return clampEmissivity(static_cast<float>(clamped) / 100.0f);
+}
+
+int thermographyOffsetToTenths(float value) {
+    return qBound(kThermographyOffsetTenthsMin,
+                  qRound(value * 10.0f),
+                  kThermographyOffsetTenthsMax);
+}
+
+float thermographyTenthsToCelsius(int value) {
+    const int clamped = qBound(kThermographyOffsetTenthsMin,
+                               value,
+                               kThermographyOffsetTenthsMax);
+    return static_cast<float>(clamped) / 10.0f;
 }
 
 QVariant defaultValueForKey(SettingKey key) {
@@ -117,6 +144,86 @@ bool boolSettingFromSnapshot(const SettingsSnapshot& snapshot, SettingKey key, b
     return value.toBool();
 }
 
+float floatSettingFromSnapshot(const SettingsSnapshot& snapshot, SettingKey key, float fallback) {
+    bool ok = false;
+    const float value = snapshot.values.value(key, QVariant(fallback)).toFloat(&ok);
+    return ok ? value : fallback;
+}
+
+int normalizeAgcModeInt(int value) {
+    const int linear = static_cast<int>(AgcMode::LinearManual);
+    return (value == linear) ? linear : static_cast<int>(AgcMode::HistEqAuto);
+}
+
+bool seekVisionEnabledFromSnapshot(const SettingsSnapshot& snapshot) {
+    return boolSettingFromSnapshot(snapshot, SettingKey::SeekVisionEnabled, true);
+}
+
+bool linearAgcSelectedFromSnapshot(const SettingsSnapshot& snapshot) {
+    bool ok = false;
+    const int parsed = snapshot.values
+                           .value(SettingKey::AgcMode, defaultValueForKey(SettingKey::AgcMode))
+                           .toInt(&ok);
+    const int mode = normalizeAgcModeInt(ok ? parsed : static_cast<int>(AgcMode::HistEqAuto));
+    return (mode == static_cast<int>(AgcMode::LinearManual));
+}
+
+bool visibilityDependsOnSettings(SecondaryVisibility visibility) {
+    return visibility == SecondaryVisibility::RequiresLegacyMode ||
+           visibility == SecondaryVisibility::RequiresLegacyLinearAgc;
+}
+
+bool visibilityDependsOnStorage(SecondaryVisibility visibility) {
+    return visibility == SecondaryVisibility::RequiresSdCard ||
+           visibility == SecondaryVisibility::RequiresUsbDisk;
+}
+
+bool primaryHasVisibilityDependency(int primaryIndex,
+                                    bool includeSettingsDependency,
+                                    bool includeStorageDependency) {
+    if (primaryIndex < 0 || primaryIndex >= kMenuBlueprint.size()) return false;
+
+    const auto& items = kMenuBlueprint[primaryIndex].subItems;
+    for (const auto& item : items) {
+        const bool settingsDependency = visibilityDependsOnSettings(item.visibility);
+        const bool storageDependency = visibilityDependsOnStorage(item.visibility);
+        if ((includeSettingsDependency && settingsDependency) ||
+            (includeStorageDependency && storageDependency)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool primaryVisibilityAffectedBySettingsChange(int primaryIndex,
+                                               const QSet<SettingKey>& changedKeys) {
+    if (!changedKeys.contains(SettingKey::SeekVisionEnabled) &&
+        !changedKeys.contains(SettingKey::AgcMode)) {
+        return false;
+    }
+    return primaryHasVisibilityDependency(primaryIndex, true, false);
+}
+
+bool primaryVisibilityAffectedByStorageState(int primaryIndex) {
+    return primaryHasVisibilityDependency(primaryIndex, false, true);
+}
+
+QString formatAgcMode(int modeValue) {
+    return (normalizeAgcModeInt(modeValue) == static_cast<int>(AgcMode::LinearManual))
+               ? QStringLiteral("Linear")
+               : QStringLiteral("Auto (HistEQ)");
+}
+
+QString formatSignedCelsius(float value, int precision) {
+    const QChar degree(0x00B0);
+    const QString sign = (value > 0.0001f) ? QStringLiteral("+") : QString();
+    return QStringLiteral("%1%2%3C")
+        .arg(sign)
+        .arg(QString::number(value, 'f', precision))
+        .arg(QString(degree));
+}
+
 QString formatStorageCapacityValue(quint64 mb) {
     if (mb >= 1024) {
         return QString("%1 GB").arg(QString::number(static_cast<double>(mb) / 1024.0, 'f', 1));
@@ -133,7 +240,8 @@ QString formatStorageCapacity(const StorageVolumeStatus& status) {
         .arg(formatStorageCapacityValue(status.totalMB));
 }
 
-std::vector<SecondaryItemData> visibleSecondaryItems(int primaryIndex) {
+std::vector<SecondaryItemData> visibleSecondaryItems(int primaryIndex,
+                                                     const SettingsSnapshot& snapshot) {
     if (primaryIndex < 0 || primaryIndex >= kMenuBlueprint.size()) {
         return {};
     }
@@ -145,6 +253,8 @@ std::vector<SecondaryItemData> visibleSecondaryItems(int primaryIndex) {
     auto* storage = HardwareManager::instance().storage();
     const bool sdReady = storage && storage->isSdCardReady();
     const bool usbReady = storage && storage->isUsbDiskReady();
+    const bool legacyMode = !seekVisionEnabledFromSnapshot(snapshot);
+    const bool linearAgcMode = linearAgcSelectedFromSnapshot(snapshot);
 
     for (const auto& item : full) {
         bool show = false;
@@ -158,6 +268,12 @@ std::vector<SecondaryItemData> visibleSecondaryItems(int primaryIndex) {
         case SecondaryVisibility::RequiresUsbDisk:
             show = usbReady;
             break;
+        case SecondaryVisibility::RequiresLegacyMode:
+            show = legacyMode;
+            break;
+        case SecondaryVisibility::RequiresLegacyLinearAgc:
+            show = legacyMode && linearAgcMode;
+            break;
         }
 
         if (show) {
@@ -168,18 +284,6 @@ std::vector<SecondaryItemData> visibleSecondaryItems(int primaryIndex) {
     return visible;
 }
 
-bool primaryHasDynamicSecondaryItems(int primaryIndex) {
-    if (primaryIndex < 0 || primaryIndex >= kMenuBlueprint.size()) return false;
-
-    const auto& items = kMenuBlueprint[primaryIndex].subItems;
-    for (const auto& item : items) {
-        if (item.visibility != SecondaryVisibility::Always) {
-            return true;
-        }
-    }
-
-    return false;
-}
 } // namespace
 
 // ============================================================
@@ -321,13 +425,21 @@ SettingsView::SettingsView(QWidget* parent) : BaseView(parent) {
             this, &SettingsView::onSettingsApplyCompleted);
     connect(&SettingsStore::instance(), &SettingsStore::settingsChanged, this,
             [this](const SettingsChangeEvent& change) {
+                if (m_mode == PanelMode::Expanded &&
+                    primaryVisibilityAffectedBySettingsChange(m_activePrimary,
+                                                              change.changedKeys)) {
+                    rebuildSecondaryRows(m_activePrimary);
+                    m_rightScroll = qBound<qreal>(0.0, m_rightScroll, rightMaxScroll());
+                    relayoutRows();
+                    return;
+                }
                 refreshSecondaryRowsFromSnapshot(change.snapshot);
             });
 
     if (auto* storage = HardwareManager::instance().storage()) {
         auto refreshStorageRows = [this]() {
             if (m_mode != PanelMode::Expanded) return;
-            if (!primaryHasDynamicSecondaryItems(m_activePrimary)) return;
+            if (!primaryVisibilityAffectedByStorageState(m_activePrimary)) return;
             rebuildSecondaryRows(m_activePrimary);
             m_rightScroll = qBound<qreal>(0.0, m_rightScroll, rightMaxScroll());
             relayoutRows();
@@ -597,6 +709,181 @@ void SettingsView::onSecondaryRowActivated() {
         app->showSliderBubble(spec, buildAnchor());
         return;
     }
+    case SettingID::SeekVisionEnabled: {
+        const SettingsSnapshot snapshot = SettingsStore::instance().current();
+        const bool current = boolSettingFromSnapshot(snapshot, SettingKey::SeekVisionEnabled, true);
+        SettingsPatch patch;
+        patch.values.insert(SettingKey::SeekVisionEnabled, QVariant(!current));
+        applyPatchFromUi(patch);
+        return;
+    }
+    case SettingID::LegacySharpenEnabled: {
+        const SettingsSnapshot snapshot = SettingsStore::instance().current();
+        const bool current =
+            boolSettingFromSnapshot(snapshot, SettingKey::LegacySharpenEnabled, false);
+        SettingsPatch patch;
+        patch.values.insert(SettingKey::LegacySharpenEnabled, QVariant(!current));
+        applyPatchFromUi(patch);
+        return;
+    }
+    case SettingID::AgcMode: {
+        const SettingsSnapshot snapshot = SettingsStore::instance().current();
+        bool ok = false;
+        const int parsed = snapshot.values
+                               .value(SettingKey::AgcMode, defaultValueForKey(SettingKey::AgcMode))
+                               .toInt(&ok);
+        const int mode = normalizeAgcModeInt(ok ? parsed : static_cast<int>(AgcMode::HistEqAuto));
+
+        RadioListBubble::Spec spec;
+        spec.items = {
+            {"auto_histeq", "Auto (HistEQ AGC)"},
+            {"linear_manual", "Linear"}
+        };
+        spec.selectedIndex = (mode == static_cast<int>(AgcMode::LinearManual)) ? 1 : 0;
+        spec.dismissOnSelection = true;
+        spec.onSelected = [this](int selectedIndex, const QString& /*id*/) {
+            const int modeValue = (selectedIndex == 1)
+                                      ? static_cast<int>(AgcMode::LinearManual)
+                                      : static_cast<int>(AgcMode::HistEqAuto);
+            SettingsPatch patch;
+            patch.values.insert(SettingKey::AgcMode, QVariant(modeValue));
+            applyPatchFromUi(patch);
+        };
+
+        app->showRadioListBubble(spec, buildAnchor());
+        return;
+    }
+    case SettingID::LinearAgcMin: {
+        const SettingsSnapshot snapshot = SettingsStore::instance().current();
+        const float currentMin = qBound(
+            kLinearAgcCelsiusMin,
+            floatSettingFromSnapshot(snapshot, SettingKey::LinearAgcMinCelsius, 20.0f),
+            kLinearAgcCelsiusMax);
+        const float currentMax = qBound(
+            kLinearAgcCelsiusMin,
+            floatSettingFromSnapshot(snapshot, SettingKey::LinearAgcMaxCelsius, 80.0f),
+            kLinearAgcCelsiusMax);
+
+        StepperBubble::Spec spec;
+        spec.minValue = static_cast<int>(kLinearAgcCelsiusMin);
+        spec.maxValue =
+            qMax(spec.minValue, qRound(currentMax) - kLinearAgcStep);
+        spec.step = kLinearAgcStep;
+        spec.value = qBound(spec.minValue, qRound(currentMin), spec.maxValue);
+        spec.dismissOnCommit = false;
+        spec.valueTextFormatter = [](int value) {
+            return formatSignedCelsius(static_cast<float>(value), 0);
+        };
+        spec.onValueChanging = [row](int value) {
+            row->setValueText(formatSignedCelsius(static_cast<float>(value), 0));
+            SettingsPatch previewPatch;
+            previewPatch.values.insert(SettingKey::LinearAgcMinCelsius,
+                                       QVariant(static_cast<float>(value)));
+            SettingsService::instance().preview(previewPatch);
+        };
+        spec.onValueCommitted = [this](int value) {
+            SettingsPatch patch;
+            patch.values.insert(SettingKey::LinearAgcMinCelsius,
+                                QVariant(static_cast<float>(value)));
+            applyPatchFromUi(patch);
+        };
+
+        app->showStepperBubble(spec, buildAnchor());
+        return;
+    }
+    case SettingID::LinearAgcMax: {
+        const SettingsSnapshot snapshot = SettingsStore::instance().current();
+        const float currentMin = qBound(
+            kLinearAgcCelsiusMin,
+            floatSettingFromSnapshot(snapshot, SettingKey::LinearAgcMinCelsius, 20.0f),
+            kLinearAgcCelsiusMax);
+        const float currentMax = qBound(
+            kLinearAgcCelsiusMin,
+            floatSettingFromSnapshot(snapshot, SettingKey::LinearAgcMaxCelsius, 80.0f),
+            kLinearAgcCelsiusMax);
+
+        StepperBubble::Spec spec;
+        spec.minValue =
+            qMin(static_cast<int>(kLinearAgcCelsiusMax), qRound(currentMin) + kLinearAgcStep);
+        spec.maxValue = static_cast<int>(kLinearAgcCelsiusMax);
+        spec.step = kLinearAgcStep;
+        spec.value = qBound(spec.minValue, qRound(currentMax), spec.maxValue);
+        spec.dismissOnCommit = false;
+        spec.valueTextFormatter = [](int value) {
+            return formatSignedCelsius(static_cast<float>(value), 0);
+        };
+        spec.onValueChanging = [row](int value) {
+            row->setValueText(formatSignedCelsius(static_cast<float>(value), 0));
+            SettingsPatch previewPatch;
+            previewPatch.values.insert(SettingKey::LinearAgcMaxCelsius,
+                                       QVariant(static_cast<float>(value)));
+            SettingsService::instance().preview(previewPatch);
+        };
+        spec.onValueCommitted = [this](int value) {
+            SettingsPatch patch;
+            patch.values.insert(SettingKey::LinearAgcMaxCelsius,
+                                QVariant(static_cast<float>(value)));
+            applyPatchFromUi(patch);
+        };
+
+        app->showStepperBubble(spec, buildAnchor());
+        return;
+    }
+    case SettingID::ShutterAutoEnabled: {
+        const SettingsSnapshot snapshot = SettingsStore::instance().current();
+        const bool current = boolSettingFromSnapshot(snapshot, SettingKey::ShutterAutoEnabled, true);
+        SettingsPatch patch;
+        patch.values.insert(SettingKey::ShutterAutoEnabled, QVariant(!current));
+        applyPatchFromUi(patch);
+        return;
+    }
+    case SettingID::TriggerFlatSceneCorrection: {
+        app->showTextModal(
+            QStringLiteral("WARNING: Risk of image ghosting!\n"
+                        "Fully cover lens with a flat object before continuing."),
+            [app]() {
+                QString error;
+                if (!SettingsService::instance().triggerFlatSceneCorrection(&error)) {
+                    qWarning() << "[Settings] Flat-scene correction failed:" << error;
+                    app->showToast("FLAT-SCENE CORRECTION FAILED", ToastLevel::Warning);
+                    return;
+                }
+                app->showToast("FLAT-SCENE CORRECTION TRIGGERED", ToastLevel::Info);
+            },
+            ModalLevel::Critical);
+        return;
+    }
+    case SettingID::ThermographyOffset: {
+        const SettingsSnapshot snapshot = SettingsStore::instance().current();
+        const float currentOffset = floatSettingFromSnapshot(
+            snapshot, SettingKey::ThermographyOffsetCelsius, 0.0f);
+
+        StepperBubble::Spec spec;
+        spec.minValue = kThermographyOffsetTenthsMin;
+        spec.maxValue = kThermographyOffsetTenthsMax;
+        spec.step = kThermographyOffsetTenthsStep;
+        spec.value = thermographyOffsetToTenths(currentOffset);
+        spec.dismissOnCommit = false;
+        spec.valueTextFormatter = [](int value) {
+            return formatSignedCelsius(thermographyTenthsToCelsius(value), 1);
+        };
+        spec.onValueChanging = [row](int value) {
+            const float offset = thermographyTenthsToCelsius(value);
+            row->setValueText(formatSignedCelsius(offset, 1));
+            SettingsPatch previewPatch;
+            previewPatch.values.insert(SettingKey::ThermographyOffsetCelsius, QVariant(offset));
+            SettingsService::instance().preview(previewPatch);
+        };
+        spec.onValueCommitted = [this](int value) {
+            SettingsPatch patch;
+            patch.values.insert(SettingKey::ThermographyOffsetCelsius,
+                                QVariant(thermographyTenthsToCelsius(value)));
+            applyPatchFromUi(patch);
+        };
+
+        app->showStepperBubble(spec, buildAnchor());
+        return;
+    }
     case SettingID::TemperatureUnit: {
         const SettingsSnapshot snapshot = SettingsStore::instance().current();
         bool ok = false;
@@ -705,7 +992,7 @@ void SettingsView::onSecondaryRowActivated() {
                                }
 
                                if (m_mode == PanelMode::Expanded &&
-                                   primaryHasDynamicSecondaryItems(m_activePrimary)) {
+                                   primaryVisibilityAffectedByStorageState(m_activePrimary)) {
                                    rebuildSecondaryRows(m_activePrimary);
                                    m_rightScroll = qBound<qreal>(0.0, m_rightScroll, rightMaxScroll());
                                    relayoutRows();
@@ -750,7 +1037,7 @@ void SettingsView::rebuildSecondaryRows(int primaryIndex) {
 
     if (primaryIndex < 0 || primaryIndex >= kMenuBlueprint.size()) return;
 
-    const auto items = visibleSecondaryItems(primaryIndex);
+    const auto items = visibleSecondaryItems(primaryIndex, SettingsStore::instance().current());
     for (const auto& item : items) {
         auto* row = new SettingsSecondaryRow(this);
         row->setData(item);
@@ -927,6 +1214,50 @@ void SettingsView::refreshSecondaryRowsFromSnapshot(const SettingsSnapshot& snap
             row->setValueText(QString::number(value, 'f', 2));
             break;
         }
+        case SettingID::SeekVisionEnabled: {
+            const bool enabled = boolSettingFromSnapshot(snapshot, SettingKey::SeekVisionEnabled, true);
+            row->setToggleOn(enabled);
+            break;
+        }
+        case SettingID::LegacySharpenEnabled: {
+            const bool enabled =
+                boolSettingFromSnapshot(snapshot, SettingKey::LegacySharpenEnabled, false);
+            row->setToggleOn(enabled);
+            break;
+        }
+        case SettingID::AgcMode: {
+            bool ok = false;
+            const int parsed = snapshot.values
+                                   .value(SettingKey::AgcMode, defaultValueForKey(SettingKey::AgcMode))
+                                   .toInt(&ok);
+            const int mode = normalizeAgcModeInt(
+                ok ? parsed : static_cast<int>(AgcMode::HistEqAuto));
+            row->setValueText(formatAgcMode(mode));
+            break;
+        }
+        case SettingID::LinearAgcMin: {
+            const float value =
+                floatSettingFromSnapshot(snapshot, SettingKey::LinearAgcMinCelsius, 20.0f);
+            row->setValueText(formatSignedCelsius(value, 0));
+            break;
+        }
+        case SettingID::LinearAgcMax: {
+            const float value =
+                floatSettingFromSnapshot(snapshot, SettingKey::LinearAgcMaxCelsius, 80.0f);
+            row->setValueText(formatSignedCelsius(value, 0));
+            break;
+        }
+        case SettingID::ShutterAutoEnabled: {
+            const bool enabled = boolSettingFromSnapshot(snapshot, SettingKey::ShutterAutoEnabled, true);
+            row->setToggleOn(enabled);
+            break;
+        }
+        case SettingID::ThermographyOffset: {
+            const float value =
+                floatSettingFromSnapshot(snapshot, SettingKey::ThermographyOffsetCelsius, 0.0f);
+            row->setValueText(formatSignedCelsius(value, 1));
+            break;
+        }
         case SettingID::TemperatureUnit: {
             bool ok = false;
             const int parsed = snapshot.values
@@ -966,6 +1297,7 @@ void SettingsView::refreshSecondaryRowsFromSnapshot(const SettingsSnapshot& snap
             row->setToggleOn(enabled);
             break;
         }
+        case SettingID::TriggerFlatSceneCorrection:
         case SettingID::SdCardFormat:
         case SettingID::UsbDiskFormat:
         case SettingID::Palette:

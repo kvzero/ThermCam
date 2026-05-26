@@ -17,7 +17,14 @@ enum class SettingKey : quint8 {
     TemperatureUnit = 2,
     StoragePriority = 3,
     SaveMarkerInMedia = 4,
-    HideMarkerWhenHudHidden = 5
+    HideMarkerWhenHudHidden = 5,
+    ShutterAutoEnabled = 6,
+    ThermographyOffsetCelsius = 7,
+    SeekVisionEnabled = 8,
+    LegacySharpenEnabled = 9,
+    AgcMode = 10,
+    LinearAgcMinCelsius = 11,
+    LinearAgcMaxCelsius = 12
 };
 
 /** @brief Typed unit selector used by service-level normalization paths. */
@@ -32,6 +39,12 @@ enum class StoragePriority : quint8 {
     UsbFirst = 1
 };
 
+/** @brief Runtime AGC control mode for camera-side contrast mapping. */
+enum class AgcMode : quint8 {
+    HistEqAuto = 0,
+    LinearManual = 1
+};
+
 /** @brief Static metadata descriptor for one persisted setting domain entry. */
 struct SettingDescriptor {
     SettingKey key;
@@ -39,7 +52,7 @@ struct SettingDescriptor {
     QVariant defaultValue;
 };
 
-inline const std::array<SettingDescriptor, 6> kSettingRegistry = {{
+inline const std::array<SettingDescriptor, 13> kSettingRegistry = {{
     {SettingKey::Palette, "palette", QVariant::fromValue(2)},
     {SettingKey::Emissivity, "emissivity", QVariant(0.95f)},
     {SettingKey::TemperatureUnit, "temperature_unit",
@@ -47,7 +60,15 @@ inline const std::array<SettingDescriptor, 6> kSettingRegistry = {{
     {SettingKey::StoragePriority, "storage_priority",
      QVariant::fromValue(static_cast<int>(StoragePriority::SdFirst))},
     {SettingKey::SaveMarkerInMedia, "save_marker_in_media", QVariant(true)},
-    {SettingKey::HideMarkerWhenHudHidden, "hide_marker_when_hud_hidden", QVariant(false)}
+    {SettingKey::HideMarkerWhenHudHidden, "hide_marker_when_hud_hidden", QVariant(false)},
+    {SettingKey::ShutterAutoEnabled, "shutter_auto_enabled", QVariant(true)},
+    {SettingKey::ThermographyOffsetCelsius, "thermography_offset_celsius", QVariant(0.0f)},
+    {SettingKey::SeekVisionEnabled, "seekvision_enabled", QVariant(true)},
+    {SettingKey::LegacySharpenEnabled, "legacy_sharpen_enabled", QVariant(false)},
+    {SettingKey::AgcMode, "agc_mode",
+     QVariant::fromValue(static_cast<int>(AgcMode::HistEqAuto))},
+    {SettingKey::LinearAgcMinCelsius, "linear_agc_min_celsius", QVariant(20.0f)},
+    {SettingKey::LinearAgcMaxCelsius, "linear_agc_max_celsius", QVariant(80.0f)}
 }};
 
 /** @brief Immutable committed truth snapshot from SettingsStore. */
@@ -76,6 +97,7 @@ inline uint qHash(SettingKey key, uint seed = 0) {
 Q_DECLARE_METATYPE(SettingKey)
 Q_DECLARE_METATYPE(TemperatureUnit)
 Q_DECLARE_METATYPE(StoragePriority)
+Q_DECLARE_METATYPE(AgcMode)
 Q_DECLARE_METATYPE(SettingsSnapshot)
 Q_DECLARE_METATYPE(SettingsPatch)
 Q_DECLARE_METATYPE(SettingsChangeEvent)

@@ -11,6 +11,14 @@
 enum class SettingID {
     Palette,
     Emissivity,
+    SeekVisionEnabled,
+    LegacySharpenEnabled,
+    AgcMode,
+    LinearAgcMin,
+    LinearAgcMax,
+    ShutterAutoEnabled,
+    TriggerFlatSceneCorrection,
+    ThermographyOffset,
     TemperatureUnit,
     OSDOverlay,
     HideMarkerWhenHudHidden,
@@ -32,7 +40,9 @@ enum class ActionType {
 enum class SecondaryVisibility {
     Always,
     RequiresSdCard,
-    RequiresUsbDisk
+    RequiresUsbDisk,
+    RequiresLegacyMode,
+    RequiresLegacyLinearAgc
 };
 
 /** @brief Immutable descriptor for one secondary row item in the right panel. */

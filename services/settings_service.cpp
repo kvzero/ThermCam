@@ -10,6 +10,12 @@
 namespace {
 constexpr float kEmissivityMin = 0.01f;
 constexpr float kEmissivityMax = 1.0f;
+constexpr float kThermographyOffsetMin = -10.0f;
+constexpr float kThermographyOffsetMax = 10.0f;
+constexpr float kLinearAgcMinCelsiusMin = -40.0f;
+constexpr float kLinearAgcMinCelsiusMax = 600.0f;
+constexpr float kLinearAgcMaxCelsiusMin = -40.0f;
+constexpr float kLinearAgcMaxCelsiusMax = 600.0f;
 
 QString keyToDebugName(SettingKey key) {
     for (const auto& descriptor : kSettingRegistry) {
@@ -46,6 +52,29 @@ RemovableStoragePriority toRemovablePriority(int value) {
     return (normalizeStoragePriorityInt(value) == static_cast<int>(StoragePriority::UsbFirst))
                ? RemovableStoragePriority::UsbFirst
                : RemovableStoragePriority::SdFirst;
+}
+
+int normalizeAgcModeInt(int value) {
+    const int linear = static_cast<int>(AgcMode::LinearManual);
+    return (value == linear) ? linear : static_cast<int>(AgcMode::HistEqAuto);
+}
+
+bool boolSettingFromSnapshot(const SettingsSnapshot& snapshot, SettingKey key, bool fallback) {
+    const QVariant payload = snapshot.values.value(key, QVariant(fallback));
+    if (!payload.canConvert<bool>()) return fallback;
+    return payload.toBool();
+}
+
+float floatSettingFromSnapshot(const SettingsSnapshot& snapshot, SettingKey key, float fallback) {
+    bool ok = false;
+    const float value = snapshot.values.value(key, QVariant(fallback)).toFloat(&ok);
+    return ok ? value : fallback;
+}
+
+int intSettingFromSnapshot(const SettingsSnapshot& snapshot, SettingKey key, int fallback) {
+    bool ok = false;
+    const int value = snapshot.values.value(key, QVariant(fallback)).toInt(&ok);
+    return ok ? value : fallback;
 }
 }
 
@@ -230,6 +259,21 @@ SettingsService::PreviewResult SettingsService::preview(const SettingsPatch& pat
     return result;
 }
 
+bool SettingsService::triggerFlatSceneCorrection(QString* outError) {
+    if (!m_isInitialized) {
+        if (outError) *outError = "SettingsService is not initialized";
+        return false;
+    }
+
+    auto* camera = HardwareManager::instance().camera();
+    if (!camera) {
+        if (outError) *outError = "ThermalCamera is unavailable";
+        return false;
+    }
+
+    return camera->triggerFlatSceneCorrection(outError);
+}
+
 bool SettingsService::normalizePatch(const SettingsPatch& input,
                                      SettingsPatch* outPatch,
                                      QString* outError) const {
@@ -346,6 +390,85 @@ bool SettingsService::normalizePatch(const SettingsPatch& input,
             outPatch->values.insert(key, QVariant(value.toBool()));
             continue;
         }
+        case SettingKey::ShutterAutoEnabled: {
+            if (!value.canConvert<bool>()) {
+                if (outError) *outError = "Invalid shutter-auto payload";
+                return false;
+            }
+
+            outPatch->values.insert(key, QVariant(value.toBool()));
+            continue;
+        }
+        case SettingKey::ThermographyOffsetCelsius: {
+            bool ok = false;
+            float offset = value.toFloat(&ok);
+            if (!ok) {
+                if (outError) *outError = "Invalid thermography-offset payload";
+                return false;
+            }
+
+            offset = qBound(kThermographyOffsetMin, offset, kThermographyOffsetMax);
+            outPatch->values.insert(key, QVariant(offset));
+            continue;
+        }
+        case SettingKey::SeekVisionEnabled: {
+            if (!value.canConvert<bool>()) {
+                if (outError) *outError = "Invalid seekvision payload";
+                return false;
+            }
+
+            outPatch->values.insert(key, QVariant(value.toBool()));
+            continue;
+        }
+        case SettingKey::LegacySharpenEnabled: {
+            if (!value.canConvert<bool>()) {
+                if (outError) *outError = "Invalid sharpen payload";
+                return false;
+            }
+
+            outPatch->values.insert(key, QVariant(value.toBool()));
+            continue;
+        }
+        case SettingKey::AgcMode: {
+            if (!value.canConvert<int>()) {
+                if (outError) *outError = "Invalid AGC mode payload";
+                return false;
+            }
+
+            bool ok = false;
+            const int parsed = value.toInt(&ok);
+            if (!ok) {
+                if (outError) *outError = "Invalid AGC mode payload";
+                return false;
+            }
+
+            const int normalized = normalizeAgcModeInt(parsed);
+            if (parsed != normalized) {
+                if (outError) *outError = "Unsupported AGC mode";
+                return false;
+            }
+
+            outPatch->values.insert(key, QVariant(normalized));
+            continue;
+        }
+        case SettingKey::LinearAgcMinCelsius:
+        case SettingKey::LinearAgcMaxCelsius: {
+            bool ok = false;
+            float valueC = value.toFloat(&ok);
+            if (!ok) {
+                if (outError) *outError = "Invalid Linear AGC payload";
+                return false;
+            }
+
+            if (key == SettingKey::LinearAgcMinCelsius) {
+                valueC = qBound(kLinearAgcMinCelsiusMin, valueC, kLinearAgcMinCelsiusMax);
+            } else {
+                valueC = qBound(kLinearAgcMaxCelsiusMin, valueC, kLinearAgcMaxCelsiusMax);
+            }
+
+            outPatch->values.insert(key, QVariant(valueC));
+            continue;
+        }
         }
 
         if (outError) *outError = "Unsupported setting key";
@@ -374,22 +497,132 @@ bool SettingsService::applyRuntimeEffects(const SettingsChangeEvent& change, QSt
         }
     }
 
-    if (change.changedKeys.contains(SettingKey::Emissivity)) {
-        const QVariant payload = change.snapshot.values.value(SettingKey::Emissivity);
-        bool ok = false;
-        const float emissivity = payload.toFloat(&ok);
-        if (!ok) {
-            errors << "Committed emissivity value is invalid";
-            allSuccess = false;
-        }
+    const bool hasCameraSettingDelta =
+        change.changedKeys.contains(SettingKey::Emissivity) ||
+        change.changedKeys.contains(SettingKey::ShutterAutoEnabled) ||
+        change.changedKeys.contains(SettingKey::ThermographyOffsetCelsius) ||
+        change.changedKeys.contains(SettingKey::SeekVisionEnabled) ||
+        change.changedKeys.contains(SettingKey::LegacySharpenEnabled) ||
+        change.changedKeys.contains(SettingKey::AgcMode) ||
+        change.changedKeys.contains(SettingKey::LinearAgcMinCelsius) ||
+        change.changedKeys.contains(SettingKey::LinearAgcMaxCelsius);
 
-        if (auto* camera = HardwareManager::instance().camera()) {
-            if (ok) {
-                camera->setEmissivity(emissivity);
-            }
-        } else {
+    if (hasCameraSettingDelta) {
+        auto* camera = HardwareManager::instance().camera();
+        if (!camera) {
             errors << "ThermalCamera is unavailable";
             allSuccess = false;
+        } else {
+            auto applyOrCollect = [&errors, &allSuccess](const char* label,
+                                                         bool ok,
+                                                         const QString& detail) {
+                if (ok) return;
+                errors << QString("%1: %2").arg(QString::fromLatin1(label), detail);
+                allSuccess = false;
+            };
+
+            const float emissivity = qBound(
+                kEmissivityMin,
+                floatSettingFromSnapshot(change.snapshot, SettingKey::Emissivity, 0.95f),
+                kEmissivityMax);
+            const bool seekVisionEnabled = boolSettingFromSnapshot(
+                change.snapshot, SettingKey::SeekVisionEnabled, true);
+            const bool shutterAutoEnabled = boolSettingFromSnapshot(
+                change.snapshot, SettingKey::ShutterAutoEnabled, true);
+            const float thermographyOffset = qBound(
+                kThermographyOffsetMin,
+                floatSettingFromSnapshot(change.snapshot,
+                                         SettingKey::ThermographyOffsetCelsius,
+                                         0.0f),
+                kThermographyOffsetMax);
+            const bool legacySharpenEnabled = boolSettingFromSnapshot(
+                change.snapshot, SettingKey::LegacySharpenEnabled, false);
+            const int agcModeValue = normalizeAgcModeInt(intSettingFromSnapshot(
+                change.snapshot,
+                SettingKey::AgcMode,
+                static_cast<int>(AgcMode::HistEqAuto)));
+            const float linearMinCelsius = qBound(
+                kLinearAgcMinCelsiusMin,
+                floatSettingFromSnapshot(change.snapshot,
+                                         SettingKey::LinearAgcMinCelsius,
+                                         20.0f),
+                kLinearAgcMinCelsiusMax);
+            const float linearMaxCelsius = qBound(
+                kLinearAgcMaxCelsiusMin,
+                floatSettingFromSnapshot(change.snapshot,
+                                         SettingKey::LinearAgcMaxCelsius,
+                                         80.0f),
+                kLinearAgcMaxCelsiusMax);
+
+            if (change.changedKeys.contains(SettingKey::Emissivity)) {
+                camera->setEmissivity(emissivity);
+            }
+
+            const bool pipelineChanged = change.changedKeys.contains(SettingKey::SeekVisionEnabled);
+            const bool shutterChanged = change.changedKeys.contains(SettingKey::ShutterAutoEnabled);
+            const bool offsetChanged =
+                change.changedKeys.contains(SettingKey::ThermographyOffsetCelsius);
+            const bool sharpenChanged =
+                change.changedKeys.contains(SettingKey::LegacySharpenEnabled);
+            const bool agcModeChanged = change.changedKeys.contains(SettingKey::AgcMode);
+            const bool linearRangeChanged =
+                change.changedKeys.contains(SettingKey::LinearAgcMinCelsius) ||
+                change.changedKeys.contains(SettingKey::LinearAgcMaxCelsius);
+
+            QString cameraError;
+            if (pipelineChanged) {
+                applyOrCollect("Pipeline", camera->setPipelineMode(
+                                               seekVisionEnabled
+                                                   ? ThermalCamera::PipelineMode::SeekVision
+                                                   : ThermalCamera::PipelineMode::Legacy,
+                                               &cameraError),
+                               cameraError);
+            }
+
+            if (shutterChanged) {
+                cameraError.clear();
+                applyOrCollect("Shutter mode", camera->setShutterMode(
+                                                   shutterAutoEnabled
+                                                       ? ThermalCamera::ShutterMode::Auto
+                                                       : ThermalCamera::ShutterMode::Manual,
+                                                   &cameraError),
+                               cameraError);
+            }
+
+            if (offsetChanged) {
+                cameraError.clear();
+                applyOrCollect("Thermography offset",
+                               camera->setThermographyOffsetCelsius(thermographyOffset,
+                                                                    &cameraError),
+                               cameraError);
+            }
+
+            if (sharpenChanged || pipelineChanged) {
+                cameraError.clear();
+                applyOrCollect("Sharpen filter", camera->setSharpenFilterEnabled(
+                                                      legacySharpenEnabled, &cameraError),
+                               cameraError);
+            }
+
+            const ThermalCamera::AgcMode agcMode =
+                (agcModeValue == static_cast<int>(AgcMode::LinearManual))
+                    ? ThermalCamera::AgcMode::Linear
+                    : ThermalCamera::AgcMode::HistEq;
+
+            if (agcModeChanged || pipelineChanged) {
+                cameraError.clear();
+                applyOrCollect("AGC mode", camera->setAgcMode(agcMode, &cameraError),
+                               cameraError);
+            }
+
+            if (agcMode == ThermalCamera::AgcMode::Linear &&
+                (linearRangeChanged || agcModeChanged || pipelineChanged)) {
+                cameraError.clear();
+                applyOrCollect("Linear AGC range",
+                               camera->setLinearAgcManualRangeCelsius(
+                                   linearMinCelsius, linearMaxCelsius, &cameraError),
+                               cameraError);
+            }
         }
     }
 

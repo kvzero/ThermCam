@@ -82,6 +82,13 @@ public:
      */
     PreviewResult preview(const SettingsPatch& patch);
 
+    /**
+     * @brief Triggers one immediate flat-scene correction cycle on the camera.
+     *
+     * This is a runtime action and does not mutate persisted settings.
+     */
+    bool triggerFlatSceneCorrection(QString* outError = nullptr);
+
 signals:
     /**
      * @brief Transaction callback for cross-module diagnostics or deferred UI feedback.
