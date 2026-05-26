@@ -111,7 +111,6 @@ private:
         const qreal MAX_W_RATIO = 0.90;
         const qreal MAX_H_RATIO = 0.86;
         const int CONTENT_PAD_X = 30;
-        const int CONTENT_PAD_TOP = 30;
         const qreal CONTENT_H_RATIO = 0.55;
         const qreal BTN_W_RATIO = 0.42;
         const qreal BTN_H_RATIO = 0.22;

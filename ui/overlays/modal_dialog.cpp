@@ -215,10 +215,17 @@ void ModalBase::relayout() {
     m_secondaryRect = QRect(m_panelRect.left() + hMargin, btnY, btnW, btnH);
     m_primaryRect = QRect(m_panelRect.right() - hMargin - btnW + 1, btnY, btnW, btnH);
 
+    const int desiredContentH = qRound(panelH * contentRatio);
+    const int contentAreaTop = m_panelRect.top();
+    const int contentAreaBottom = btnY - 1;
+    const int contentAreaH = qMax(1, contentAreaBottom - contentAreaTop + 1);
+    const int contentH = qMin(desiredContentH, contentAreaH);
+    const int contentTop = contentAreaTop + ((contentAreaH - contentH) / 2);
+
     m_contentRect = QRect(m_panelRect.left() + m_cfg.CONTENT_PAD_X,
-                          m_panelRect.top() + m_cfg.CONTENT_PAD_TOP,
+                          contentTop,
                           panelW - (m_cfg.CONTENT_PAD_X * 2),
-                          qRound(panelH * contentRatio));
+                          contentH);
 }
 
 ModalBase::PressTarget ModalBase::zoneAt(const QPoint& pos) const {

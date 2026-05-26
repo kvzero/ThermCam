@@ -6,6 +6,7 @@
 #include <QPropertyAnimation>
 #include <QRect>
 #include <QString>
+#include <QElapsedTimer>
 #include <QVector>
 #include <QWidget>
 #include "ui/interaction_target.h"
@@ -13,6 +14,7 @@
 #include <functional>
 
 class QPainter;
+class QTimer;
 
 /**
  * @brief Placement context owned by the caller at presentation time.
@@ -326,6 +328,95 @@ private:
         const QColor ICON_COLOR = Qt::white;
         const QColor TRACK_BG = QColor(255, 255, 255, 72);
         const QColor HANDLE_COLOR = Qt::white;
+    } m_cfg;
+};
+
+/**
+ * @brief BubbleBase payload for +/- step controls with hold-to-repeat acceleration.
+ *
+ * Owns increment/decrement button hit-testing, hold repeat timing, value clamping,
+ * and commit callbacks while BubbleBase keeps shell lifecycle behavior.
+ */
+class StepperBubble : public BubbleBase {
+    Q_OBJECT
+
+public:
+    struct Spec {
+        int minValue = 0;
+        int maxValue = 100;
+        int step = 1;
+        int value = 0;
+        bool dismissOnCommit = false;
+        QString minusGlyph = QString(QChar(0xfb40));
+        QString plusGlyph = QString(QChar(0xf6e8));
+        std::function<QString(int value)> valueTextFormatter;
+        std::function<void(int value)> onValueChanging;
+        std::function<void(int value)> onValueCommitted;
+        std::function<void()> onDismissed;
+    };
+
+    explicit StepperBubble(QWidget* parent = nullptr);
+    ~StepperBubble() override = default;
+
+    void present(const Spec& spec, const BubbleAnchorContext& anchor);
+
+protected:
+    ContentLayout contentLayoutHint(const QSize& maxContentSize,
+                                    const QSize& viewportSize) const override;
+    void paintContent(QPainter& p, const QRect& contentRect) override;
+    bool contentPress(const QPoint& contentPos) override;
+    bool contentMove(const QPoint& contentPos) override;
+    bool contentRelease(const QPoint& contentPos) override;
+    void contentCancel() override;
+    void onBubbleDismissed() override;
+
+private:
+    enum class Zone {
+        None,
+        Minus,
+        Plus
+    };
+
+    int normalizeValue(int value) const;
+    void recalcGeometry(const QRect& contentRect);
+    Zone zoneAt(const QPoint& contentPos) const;
+    void applyStep(int direction, bool notifyChanging);
+    void startRepeat();
+    void stopRepeat();
+    int repeatIntervalMs() const;
+    void commitIfDirty();
+    QString formattedValueText() const;
+
+    Spec m_spec;
+
+    int m_value = 0;
+    int m_committedValue = 0;
+    bool m_dirtyFromCommitted = false;
+    Zone m_activeZone = Zone::None;
+
+    QTimer* m_repeatStartTimer = nullptr;
+    QTimer* m_repeatTimer = nullptr;
+    QElapsedTimer m_holdElapsed;
+
+    QRect m_minusRect;
+    QRect m_plusRect;
+    QRect m_valueRect;
+
+    struct Config {
+        const qreal HEIGHT_REF_RATIO = 0.92;
+        const qreal BUTTON_SIZE_RATIO = 0.86;
+        const qreal SIDE_PAD_RATIO = 0.02;
+        const qreal GAP_RATIO = 0.04;
+        const qreal ICON_SIZE_RATIO = 0.84;
+        const qreal VALUE_FONT_RATIO = 0.42;
+
+        const int REPEAT_START_DELAY_MS = 380;
+        const int REPEAT_SLOW_INTERVAL_MS = 150;
+        const int REPEAT_FAST_INTERVAL_MS = 65;
+        const int REPEAT_FAST_AFTER_MS = 1800;
+
+        const QColor BTN_ICON = Qt::white;
+        const QColor VALUE_TEXT = Qt::white;
     } m_cfg;
 };
 

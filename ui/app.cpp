@@ -89,6 +89,9 @@ void App::initLayer_Overlays() {
     m_sliderBubble = new SliderBubble(this);
     m_sliderBubble->hide();
 
+    m_stepperBubble = new StepperBubble(this);
+    m_stepperBubble->hide();
+
     // Toast Notifications
     m_toastManager = new ToastManager(this);
     m_toastManager->hide();
@@ -129,6 +132,9 @@ void App::showRadioListBubble(const RadioListBubble::Spec& spec,
     if (m_sliderBubble && m_sliderBubble->isVisible()) {
         m_sliderBubble->dismissImmediately();
     }
+    if (m_stepperBubble && m_stepperBubble->isVisible()) {
+        m_stepperBubble->dismissImmediately();
+    }
     m_radioListBubble->raise();
     m_radioListBubble->present(spec, anchor);
 
@@ -143,8 +149,28 @@ void App::showSliderBubble(const SliderBubble::Spec& spec,
     if (m_radioListBubble && m_radioListBubble->isVisible()) {
         m_radioListBubble->dismissImmediately();
     }
+    if (m_stepperBubble && m_stepperBubble->isVisible()) {
+        m_stepperBubble->dismissImmediately();
+    }
     m_sliderBubble->raise();
     m_sliderBubble->present(spec, anchor);
+
+    if (m_toastManager && m_toastManager->isVisible()) {
+        m_toastManager->raise();
+    }
+}
+
+void App::showStepperBubble(const StepperBubble::Spec& spec,
+                            const BubbleAnchorContext& anchor) {
+    if (!m_stepperBubble) return;
+    if (m_radioListBubble && m_radioListBubble->isVisible()) {
+        m_radioListBubble->dismissImmediately();
+    }
+    if (m_sliderBubble && m_sliderBubble->isVisible()) {
+        m_sliderBubble->dismissImmediately();
+    }
+    m_stepperBubble->raise();
+    m_stepperBubble->present(spec, anchor);
 
     if (m_toastManager && m_toastManager->isVisible()) {
         m_toastManager->raise();
@@ -157,6 +183,9 @@ void App::dismissBubble() {
     }
     if (m_sliderBubble && m_sliderBubble->isVisible()) {
         m_sliderBubble->dismiss();
+    }
+    if (m_stepperBubble && m_stepperBubble->isVisible()) {
+        m_stepperBubble->dismiss();
     }
 }
 
@@ -287,5 +316,6 @@ void App::resizeEvent(QResizeEvent* event) {
     if (m_textModal) m_textModal->resize(s);
     if (m_radioListBubble) m_radioListBubble->resize(s);
     if (m_sliderBubble) m_sliderBubble->resize(s);
+    if (m_stepperBubble) m_stepperBubble->resize(s);
     if (m_toastManager) m_toastManager->resize(s.width(), qRound(s.height() * 0.2));
 }

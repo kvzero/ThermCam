@@ -70,6 +70,8 @@ public:
                              const BubbleAnchorContext& anchor);
     void showSliderBubble(const SliderBubble::Spec& spec,
                           const BubbleAnchorContext& anchor);
+    void showStepperBubble(const StepperBubble::Spec& spec,
+                           const BubbleAnchorContext& anchor);
     void dismissBubble();
     void showToast(const QString& message, ToastLevel level);
 
@@ -98,6 +100,7 @@ private:
     TextModal* m_textModal = nullptr;
     RadioListBubble* m_radioListBubble = nullptr;
     SliderBubble* m_sliderBubble = nullptr;
+    StepperBubble* m_stepperBubble = nullptr;
     ToastManager* m_toastManager = nullptr;
 };
 

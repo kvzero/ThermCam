@@ -8,6 +8,7 @@
 #include <QPainterPath>
 #include <QRadialGradient>
 #include <QEasingCurve>
+#include <QTimer>
 
 #include <algorithm>
 #include <cmath>
@@ -794,4 +795,221 @@ void SliderBubble::updateValueByPointer(const QPoint& contentPos, bool notifyCha
         m_spec.onValueChanging(m_value);
     }
     update();
+}
+
+// ============================================================
+// StepperBubble
+// ============================================================
+
+StepperBubble::StepperBubble(QWidget* parent) : BubbleBase(parent) {
+    m_repeatStartTimer = new QTimer(this);
+    m_repeatStartTimer->setSingleShot(true);
+    connect(m_repeatStartTimer, &QTimer::timeout, this, [this]() {
+        if (m_activeZone == Zone::None) return;
+        m_holdElapsed.restart();
+        m_repeatTimer->setInterval(m_cfg.REPEAT_SLOW_INTERVAL_MS);
+        m_repeatTimer->start();
+    });
+
+    m_repeatTimer = new QTimer(this);
+    connect(m_repeatTimer, &QTimer::timeout, this, [this]() {
+        if (m_activeZone == Zone::None) {
+            stopRepeat();
+            return;
+        }
+
+        const int targetInterval = repeatIntervalMs();
+        if (m_repeatTimer->interval() != targetInterval) {
+            m_repeatTimer->setInterval(targetInterval);
+        }
+
+        const int direction = (m_activeZone == Zone::Plus) ? 1 : -1;
+        applyStep(direction, true);
+    });
+}
+
+void StepperBubble::present(const Spec& spec, const BubbleAnchorContext& anchor) {
+    m_spec = spec;
+    m_value = normalizeValue(m_spec.value);
+    m_committedValue = m_value;
+    m_dirtyFromCommitted = false;
+    m_activeZone = Zone::None;
+    stopRepeat();
+    BubbleBase::present(anchor);
+}
+
+BubbleBase::ContentLayout StepperBubble::contentLayoutHint(const QSize& maxContentSize,
+                                                           const QSize& /*viewportSize*/) const {
+    ContentLayout out;
+    const int preferredH = qMax(40, qRound(referenceRowHeight() * m_cfg.HEIGHT_REF_RATIO));
+    out.preferred = QSize(maxContentSize.width(), qMin(preferredH, maxContentSize.height()));
+    return out;
+}
+
+void StepperBubble::paintContent(QPainter& p, const QRect& contentRect) {
+    recalcGeometry(contentRect);
+
+    auto drawButton = [&](const QRect& r, bool pressed, const QString& glyph) {
+        QFont iconFont("tabler-icons");
+        iconFont.setPixelSize(qRound(r.height() * m_cfg.ICON_SIZE_RATIO));
+        p.setFont(iconFont);
+        QColor iconColor = m_cfg.BTN_ICON;
+        iconColor.setAlpha(pressed ? 255 : 232);
+        p.setPen(iconColor);
+        p.drawText(r, Qt::AlignCenter, glyph);
+    };
+
+    drawButton(m_minusRect, m_activeZone == Zone::Minus, m_spec.minusGlyph);
+    drawButton(m_plusRect, m_activeZone == Zone::Plus, m_spec.plusGlyph);
+
+    QFont valueFont("Roboto");
+    valueFont.setBold(true);
+    valueFont.setPixelSize(qRound(contentRect.height() * m_cfg.VALUE_FONT_RATIO));
+    p.setFont(valueFont);
+    p.setPen(m_cfg.VALUE_TEXT);
+    p.drawText(m_valueRect, Qt::AlignCenter, formattedValueText());
+}
+
+bool StepperBubble::contentPress(const QPoint& contentPos) {
+    recalcGeometry(contentRect());
+    m_activeZone = zoneAt(contentPos);
+    if (m_activeZone == Zone::None) {
+        update();
+        return true;
+    }
+
+    const int direction = (m_activeZone == Zone::Plus) ? 1 : -1;
+    applyStep(direction, true);
+    startRepeat();
+    update();
+    return true;
+}
+
+bool StepperBubble::contentMove(const QPoint& contentPos) {
+    recalcGeometry(contentRect());
+    if (m_activeZone == Zone::None) return true;
+
+    const Zone underFinger = zoneAt(contentPos);
+    if (underFinger != m_activeZone) {
+        m_activeZone = Zone::None;
+        stopRepeat();
+        update();
+    }
+    return true;
+}
+
+bool StepperBubble::contentRelease(const QPoint& /*contentPos*/) {
+    m_activeZone = Zone::None;
+    stopRepeat();
+    commitIfDirty();
+    update();
+
+    if (m_spec.dismissOnCommit) {
+        dismiss();
+    }
+    return true;
+}
+
+void StepperBubble::contentCancel() {
+    m_activeZone = Zone::None;
+    stopRepeat();
+    commitIfDirty();
+    update();
+}
+
+void StepperBubble::onBubbleDismissed() {
+    stopRepeat();
+    commitIfDirty();
+    if (m_spec.onDismissed) m_spec.onDismissed();
+}
+
+int StepperBubble::normalizeValue(int value) const {
+    if (m_spec.maxValue <= m_spec.minValue) return m_spec.minValue;
+
+    const int clamped = qBound(m_spec.minValue, value, m_spec.maxValue);
+    const int step = qMax(1, m_spec.step);
+    const int span = clamped - m_spec.minValue;
+    const int snapped = m_spec.minValue + qRound(static_cast<qreal>(span) / step) * step;
+    return qBound(m_spec.minValue, snapped, m_spec.maxValue);
+}
+
+void StepperBubble::recalcGeometry(const QRect& contentRect) {
+    const int w = contentRect.width();
+    const int h = contentRect.height();
+
+    const int sidePad = qMax(2, qRound(w * m_cfg.SIDE_PAD_RATIO));
+    const int gap = qMax(2, qRound(w * m_cfg.GAP_RATIO));
+    const int btnSize = qBound(24, qRound(h * m_cfg.BUTTON_SIZE_RATIO), h);
+
+    const int leftX = contentRect.left() + sidePad;
+    const int topY = contentRect.center().y() - (btnSize / 2);
+    m_minusRect = QRect(leftX, topY, btnSize, btnSize);
+
+    const int rightX = contentRect.right() - sidePad - btnSize + 1;
+    m_plusRect = QRect(rightX, topY, btnSize, btnSize);
+
+    const int valueLeft = m_minusRect.right() + 1 + gap;
+    const int valueRight = m_plusRect.left() - 1 - gap;
+    const int valueW = qMax(1, valueRight - valueLeft + 1);
+    m_valueRect = QRect(valueLeft, contentRect.top(), valueW, contentRect.height());
+}
+
+StepperBubble::Zone StepperBubble::zoneAt(const QPoint& contentPos) const {
+    const QPoint widgetPos = contentPos + contentRect().topLeft();
+    if (m_minusRect.contains(widgetPos)) return Zone::Minus;
+    if (m_plusRect.contains(widgetPos)) return Zone::Plus;
+    return Zone::None;
+}
+
+void StepperBubble::applyStep(int direction, bool notifyChanging) {
+    const int step = qMax(1, m_spec.step);
+    const int raw = m_value + (direction * step);
+    const int next = normalizeValue(raw);
+    if (next == m_value) return;
+
+    m_value = next;
+    m_dirtyFromCommitted = (m_value != m_committedValue);
+
+    if (notifyChanging && m_spec.onValueChanging) {
+        m_spec.onValueChanging(m_value);
+    }
+    update();
+}
+
+void StepperBubble::startRepeat() {
+    stopRepeat();
+    m_repeatStartTimer->start(m_cfg.REPEAT_START_DELAY_MS);
+}
+
+void StepperBubble::stopRepeat() {
+    if (m_repeatStartTimer && m_repeatStartTimer->isActive()) {
+        m_repeatStartTimer->stop();
+    }
+    if (m_repeatTimer && m_repeatTimer->isActive()) {
+        m_repeatTimer->stop();
+    }
+}
+
+int StepperBubble::repeatIntervalMs() const {
+    if (!m_holdElapsed.isValid()) return m_cfg.REPEAT_SLOW_INTERVAL_MS;
+    if (m_holdElapsed.elapsed() >= m_cfg.REPEAT_FAST_AFTER_MS) {
+        return m_cfg.REPEAT_FAST_INTERVAL_MS;
+    }
+    return m_cfg.REPEAT_SLOW_INTERVAL_MS;
+}
+
+void StepperBubble::commitIfDirty() {
+    if (!m_dirtyFromCommitted) return;
+    if (m_spec.onValueCommitted) {
+        m_spec.onValueCommitted(m_value);
+    }
+    m_committedValue = m_value;
+    m_dirtyFromCommitted = false;
+}
+
+QString StepperBubble::formattedValueText() const {
+    if (m_spec.valueTextFormatter) {
+        return m_spec.valueTextFormatter(m_value);
+    }
+    return QString::number(m_value);
 }
