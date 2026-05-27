@@ -42,6 +42,7 @@ public:
     void onInteractionEnd(const InteractionEvent& event) override;
     void onInteractionCancel() override;
     void onInteractionTap(const InteractionEvent& event) override;
+    void onInteractionDoubleTap(const InteractionEvent& event) override;
     void onInteractionLongPress(const InteractionEvent& event) override;
 
     /* --- Transition Anchor Hook --- */

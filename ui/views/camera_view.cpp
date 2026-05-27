@@ -360,6 +360,16 @@ void CameraView::onInteractionTap(const InteractionEvent& /*event*/) {
     }
 }
 
+void CameraView::onInteractionDoubleTap(const InteractionEvent& /*event*/) {
+    if (m_paletteSelector && m_paletteSelector->isPresented()) {
+        return;
+    }
+
+    auto* camera = HardwareManager::instance().camera();
+    if (!camera) return;
+    camera->triggerShutter();
+}
+
 void CameraView::onInteractionLongPress(const InteractionEvent& /*event*/) {
     // Reserved for future in-view interactions.
 }
