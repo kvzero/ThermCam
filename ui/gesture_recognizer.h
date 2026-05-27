@@ -29,7 +29,8 @@ public:
         int tapMaxTimeMs;        /**< Max duration for a valid tap */
         int doubleTapIntervalMs; /**< Max time between two taps */
         int longPressTimeMs;     /**< Threshold for long press */
-        int deadzone;            /**< Jitter suppression */
+        int doubleTapMaxDistancePx; /**< Max start-point distance between two taps */
+        int pinchMinBaseDistancePx; /**< Min initial two-finger distance for pinch scaling */
         float velocityWeight;    /**< IIR filter weight for velocity (0.0-1.0) */
 
         /**
@@ -41,7 +42,8 @@ public:
             , tapMaxTimeMs(250)
             , doubleTapIntervalMs(300)
             , longPressTimeMs(1500)
-            , deadzone(10)
+            , doubleTapMaxDistancePx(40)
+            , pinchMinBaseDistancePx(40)
             , velocityWeight(0.3f) {}
     };
 

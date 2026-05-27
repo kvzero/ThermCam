@@ -63,7 +63,7 @@ void GestureRecognizer::update(const QList<RawTouchPoint>& points) {
         if (m_state == State_Pending && m_timer.elapsed() < m_cfg.tapMaxTimeMs) {
             if (m_doubleTapTimer.isValid() &&
                 m_doubleTapTimer.elapsed() < m_cfg.doubleTapIntervalMs &&
-                calculateDistance(m_startPos, m_lastTapPos) < m_cfg.deadzone) {
+                calculateDistance(m_startPos, m_lastTapPos) < m_cfg.doubleTapMaxDistancePx) {
                 emit doubleTapDetected(m_startPos, finalDx, finalDy);
                 m_doubleTapTimer.invalidate();
             } else {
@@ -161,7 +161,7 @@ void GestureRecognizer::handleMultiTouch(const QList<RawTouchPoint>& points) {
         return;
     }
 
-    if (m_vx > m_cfg.deadzone) {
+    if (m_vx > m_cfg.pinchMinBaseDistancePx) {
         float factor = currentDist / m_vx;
         emit pinchUpdate(center, factor);
     }

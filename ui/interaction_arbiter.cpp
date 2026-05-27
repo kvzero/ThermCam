@@ -48,6 +48,7 @@ void InteractionArbiter::cancelTouchSession() {
         m_ownerTarget->onInteractionCancel();
     }
     clearOwner();
+    m_releasedSemanticRoute = ReleasedSemanticRoute::None;
 
     m_intentLocked = false;
     m_isGlobalGesture = false;
@@ -125,10 +126,18 @@ void InteractionArbiter::handleRawTouch(const QList<RawTouchPoint>& points) {
                 clearOwner();
             }
         } else {
+            if (!m_ownerTarget) {
+                if (BaseView* view = activeViewTarget()) {
+                    setOwner(view, view, touchPosition);
+                }
+            }
+        }
+
+        // Give the newly captured widget one immediate chance to reject this contact.
+        probeInitialOwnerIntent(touchPosition);
+        if (!m_ownerTarget) {
             if (BaseView* view = activeViewTarget()) {
                 setOwner(view, view, touchPosition);
-            } else {
-                clearOwner();
             }
         }
     }
@@ -144,6 +153,7 @@ void InteractionArbiter::handleRawTouch(const QList<RawTouchPoint>& points) {
 void InteractionArbiter::onRecognizerTouchesStarted() {
     m_intentLocked = false;
     m_isGlobalGesture = false;
+    m_releasedSemanticRoute = ReleasedSemanticRoute::None;
 }
 
 void InteractionArbiter::onRecognizerSwipeUpdate(const QPoint& start, int dx, int dy) {
@@ -250,6 +260,9 @@ void InteractionArbiter::onRecognizerTouchesReleased(const QPoint& start, int dx
             buildEventFor(m_ownerWidget, m_ownerStartGlobal, m_ownerPrevGlobal, finalPos, QPointF(vx, vy));
         m_ownerTarget->onInteractionEnd(event);
     }
+    m_releasedSemanticRoute = (!m_isGlobalGesture && m_ownerTarget && ownerIsActiveView())
+                                  ? ReleasedSemanticRoute::View
+                                  : ReleasedSemanticRoute::None;
     clearOwner();
     m_activePointerCount = 0;
 }
@@ -260,38 +273,29 @@ void InteractionArbiter::onRecognizerTouchesReleased(const QPoint& start, int dx
 
 void InteractionArbiter::onRecognizerTap(const QPoint& start, int dx, int dy) {
     const QPoint tapPos = start + QPoint(dx, dy);
-
-    // Only forward Tap to the View when the hit target is not an interactable widget.
-    if (isViewInteractionAllowed(tapPos)) {
-        if (BaseView* view = activeViewTarget()) {
-            view->onInteractionTap(buildSemanticEvent(tapPos));
-        }
+    if (BaseView* view = releasedSemanticViewTarget()) {
+        view->onInteractionTap(buildSemanticEvent(tapPos));
     }
 }
 
 void InteractionArbiter::onRecognizerDoubleTap(const QPoint& start, int dx, int dy) {
     const QPoint pos = start + QPoint(dx, dy);
-
-    if (isViewInteractionAllowed(pos)) {
-        if (BaseView* view = activeViewTarget()) {
-            view->onInteractionDoubleTap(buildSemanticEvent(pos));
-        }
+    if (BaseView* view = releasedSemanticViewTarget()) {
+        view->onInteractionDoubleTap(buildSemanticEvent(pos));
     }
 }
 
 void InteractionArbiter::onRecognizerLongPress(const QPoint& start) {
-    if (isViewInteractionAllowed(start)) {
-        if (BaseView* view = activeViewTarget()) {
-            view->onInteractionLongPress(buildSemanticEvent(start));
-        }
+    if (!ownerIsActiveView()) return;
+    if (BaseView* view = activeViewTarget()) {
+        view->onInteractionLongPress(buildSemanticEvent(start));
     }
 }
 
 void InteractionArbiter::onRecognizerPinchUpdate(const QPoint& center, float factor) {
-    if (isViewInteractionAllowed(center)) {
-        if (BaseView* view = activeViewTarget()) {
-            view->onInteractionPinch(center, factor);
-        }
+    if (!ownerIsActiveView()) return;
+    if (BaseView* view = activeViewTarget()) {
+        view->onInteractionPinch(center, factor);
     }
 }
 
@@ -302,6 +306,11 @@ void InteractionArbiter::onRecognizerPinchUpdate(const QPoint& center, float fac
 BaseView* InteractionArbiter::activeViewTarget() const {
     if (!m_app) return nullptr;
     return m_app->activeView();
+}
+
+bool InteractionArbiter::ownerIsActiveView() const {
+    BaseView* view = activeViewTarget();
+    return view && m_ownerWidget == view;
 }
 
 InteractionTarget* InteractionArbiter::targetFromWidget(QWidget* widget) const {
@@ -326,6 +335,26 @@ QWidget* InteractionArbiter::findTargetWidget(const QPoint& globalPos) {
         if (target) return target;
     }
     return nullptr;
+}
+
+void InteractionArbiter::probeInitialOwnerIntent(const QPoint& anchorGlobal) {
+    if (!m_ownerTarget) return;
+    if (ownerIsActiveView()) return;
+
+    const InteractionEvent event =
+        buildEventFor(m_ownerWidget, m_ownerStartGlobal, m_ownerPrevGlobal, anchorGlobal, QPointF());
+    const InteractionUpdateDecision decision = m_ownerTarget->onInteractionUpdate(event);
+    if (decision == InteractionUpdateDecision::ReleaseOwner) {
+        m_ownerTarget->onInteractionCancel();
+        clearOwner();
+    }
+}
+
+BaseView* InteractionArbiter::releasedSemanticViewTarget() const {
+    if (m_releasedSemanticRoute != ReleasedSemanticRoute::View) {
+        return nullptr;
+    }
+    return activeViewTarget();
 }
 
 void InteractionArbiter::setOwner(InteractionTarget* target,
@@ -382,15 +411,4 @@ InteractionEvent InteractionArbiter::buildEventFor(QWidget* widget,
 InteractionEvent InteractionArbiter::buildSemanticEvent(const QPoint& globalPos) const {
     QWidget* viewWidget = activeViewTarget();
     return buildEventFor(viewWidget, globalPos, globalPos, globalPos, QPointF());
-}
-
-bool InteractionArbiter::isViewInteractionAllowed(const QPoint& globalPos) {
-    // Interactive Guard: If the touch is on a primary control (isInteractable),
-    // we block the view fallback to prevent "Ghost Clicks" or accidental background scrolling.
-    QWidget* target = findTargetWidget(globalPos);
-    if (target && target->property(PROP_IS_INTERACTABLE).toBool()) {
-        return false;
-    }
-
-    return true;
 }

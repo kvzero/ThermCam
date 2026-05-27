@@ -60,6 +60,11 @@ private slots:
 private:
     explicit InteractionArbiter(QObject *parent = nullptr);
 
+    enum class ReleasedSemanticRoute : quint8 {
+        None = 0,
+        View
+    };
+
     App* m_app = nullptr;
     GestureRecognizer* m_recognizer = nullptr;
     QTimer* m_shutdownTimer = nullptr;
@@ -75,6 +80,7 @@ private:
     QWidget* m_ownerWidget = nullptr;
     QPoint m_ownerStartGlobal;
     QPoint m_ownerPrevGlobal;
+    ReleasedSemanticRoute m_releasedSemanticRoute = ReleasedSemanticRoute::None;
 
     /* --- Constants --- */
     static constexpr int SHUTDOWN_HOLD_MS = 3000;
@@ -85,8 +91,11 @@ private:
 
     /* --- Internal Helpers --- */
     BaseView* activeViewTarget() const;
+    bool ownerIsActiveView() const;
     InteractionTarget* targetFromWidget(QWidget* widget) const;
     QWidget* findTargetWidget(const QPoint& globalPos);
+    void probeInitialOwnerIntent(const QPoint& anchorGlobal);
+    BaseView* releasedSemanticViewTarget() const;
     void setOwner(InteractionTarget* target, QWidget* widget, const QPoint& anchorGlobal);
     void clearOwner();
     InteractionEvent buildEventFor(QWidget* widget,
@@ -95,7 +104,6 @@ private:
                                    const QPoint& currentGlobal,
                                    const QPointF& velocityPxPerMs) const;
     InteractionEvent buildSemanticEvent(const QPoint& globalPos) const;
-    bool isViewInteractionAllowed(const QPoint& globalPos);
 };
 
 #endif // INTERACTION_ARBITER_H
