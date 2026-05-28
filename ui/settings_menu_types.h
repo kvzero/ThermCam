@@ -24,8 +24,10 @@ enum class SettingID {
     HideMarkerWhenHudHidden,
     StoragePriority,
     SdCardCapacity,
+    SdCardSafeEject,
     SdCardFormat,
     UsbDiskCapacity,
+    UsbDiskSafeEject,
     UsbDiskFormat,
     ScreenBrightness,
     AudioVolume

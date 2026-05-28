@@ -29,6 +29,8 @@ public slots:
 signals:
     /** @brief Acknowledges completion to decrement the backpressure counter. */
     void frameProcessed();
+    void photoSaved(const QString& path, bool success);
+    void videoStopped(const QString& path);
 
 private:
     void applyOsd(QImage& target, const VisualFrame& frame);

@@ -19,6 +19,7 @@ public:
     bool open(const QString& filePath, int width, int height);
     bool writeFrame(const QImage& frame);
     void close();
+    QString currentPath() const { return m_currentPath; }
 
 private:
     void cleanup();

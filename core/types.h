@@ -142,7 +142,8 @@ Q_DECLARE_METATYPE(CaptureMode)
 enum class RecordingState {
     Idle,       /**< Ready to record, no file open */
     Recording,  /**< Active encoder session, writing to disk */
-    Paused      /**< Encoder session active, frame writing suspended */
+    Paused,     /**< Encoder session active, frame writing suspended */
+    Stopping    /**< Stop requested, waiting for encoder close + storage flush */
 };
 
 /**

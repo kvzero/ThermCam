@@ -49,10 +49,16 @@ CaptureService::CaptureService(QObject *parent) : QObject(parent) {
 
     connect(m_worker, &CaptureWorker::frameProcessed,
             this, &CaptureService::onWorkerFrameProcessed);
+    connect(m_worker, &CaptureWorker::photoSaved,
+            this, &CaptureService::onPhotoSaved);
+    connect(m_worker, &CaptureWorker::videoStopped,
+            this, &CaptureService::onVideoStopped);
     connect(&SettingsService::instance(), &SettingsService::unitChanged,
             m_worker, &CaptureWorker::setTemperatureUnitFahrenheit);
     connect(&SettingsService::instance(), &SettingsService::saveMarkerChanged,
             m_worker, &CaptureWorker::setSaveMarkerInMediaEnabled);
+    connect(&StorageManager::instance(), &StorageManager::storageSpaceCritical,
+            this, &CaptureService::onStorageSpaceCritical);
 
     m_workerThread->start();
 
@@ -114,14 +120,15 @@ void CaptureService::handlePhysicalTrigger() {
         // Physical key acts as a Master Start/Stop switch (no pause)
         if (m_state == RecordingState::Idle) {
             startRecording();
-        } else {
+        } else if (m_state == RecordingState::Recording ||
+                   m_state == RecordingState::Paused) {
             stopRecording();
         }
     }
 }
 
 void CaptureService::togglePause() {
-    if (m_mode != CaptureMode::Video || m_state == RecordingState::Idle) return;
+    if (m_mode != CaptureMode::Video) return;
 
     if (m_state == RecordingState::Recording) {
         // Suspend: Save current progress to accumulator
@@ -132,7 +139,10 @@ void CaptureService::togglePause() {
         emit blinkTick(true); // Red dot stays solid during pause
         emit recordingPaused(true);
         qInfo() << "[Capture] Recording suspended";
-    } else {
+        return;
+    }
+
+    if (m_state == RecordingState::Paused) {
         // Resume: Restart the precision timer
         m_elapsed.restart();
         m_state = RecordingState::Recording;
@@ -141,6 +151,7 @@ void CaptureService::togglePause() {
         m_blinkTimer->start(500);
         emit recordingPaused(false);
         qInfo() << "[Capture] Recording resumed";
+        return;
     }
 }
 
@@ -152,6 +163,8 @@ void CaptureService::doPhotoCapture() {
 }
 
 void CaptureService::startRecording() {
+    if (m_state != RecordingState::Idle) return;
+
     QString videoPath = StorageManager::instance().requestMediaFilePath(CaptureMode::Video);
     if (videoPath.isEmpty()) return;
 
@@ -173,14 +186,17 @@ void CaptureService::startRecording() {
 }
 
 void CaptureService::stopRecording() {
+    if (m_state != RecordingState::Recording && m_state != RecordingState::Paused) {
+        return;
+    }
+
     StorageManager::instance().setRecordingActive(false);
 
     QMetaObject::invokeMethod(m_worker, "stopVideo", Qt::QueuedConnection);
 
-    m_state = RecordingState::Idle;
+    m_state = RecordingState::Stopping;
     m_blinkTimer->stop();
-
-    emit recordingStopped();
+    emit blinkTick(false);
 }
 
 void CaptureService::onFrameReady(const VisualFrame& frame) {
@@ -206,4 +222,41 @@ void CaptureService::onFrameReady(const VisualFrame& frame) {
 
 void CaptureService::onWorkerFrameProcessed() {
     m_pendingFrames.fetchAndSubRelease(1);
+}
+
+void CaptureService::onPhotoSaved(const QString& path, bool success) {
+    if (!success) {
+        qWarning() << "[Capture] Photo save failed:" << path;
+        return;
+    }
+
+    QString flushError;
+    if (!StorageManager::instance().flushMediaPath(path, &flushError)) {
+        qWarning() << "[Capture] Photo flush failed:" << path << "reason:" << flushError;
+    }
+}
+
+void CaptureService::onVideoStopped(const QString& path) {
+    if (m_state != RecordingState::Stopping) {
+        return;
+    }
+
+    if (!path.isEmpty()) {
+        QString flushError;
+        if (!StorageManager::instance().flushMediaPath(path, &flushError)) {
+            qWarning() << "[Capture] Video flush failed:" << path << "reason:" << flushError;
+        }
+    }
+
+    m_state = RecordingState::Idle;
+    emit recordingStopped();
+}
+
+void CaptureService::onStorageSpaceCritical() {
+    if (m_state != RecordingState::Recording && m_state != RecordingState::Paused) {
+        return;
+    }
+
+    qWarning() << "[Capture] Storage critical; stopping recording.";
+    stopRecording();
 }

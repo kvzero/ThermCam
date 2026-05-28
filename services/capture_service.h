@@ -60,6 +60,9 @@ signals:
 private slots:
     /** @brief Acknowledgment from worker to release backpressure. */
     void onWorkerFrameProcessed();
+    void onPhotoSaved(const QString& path, bool success);
+    void onVideoStopped(const QString& path);
+    void onStorageSpaceCritical();
 
 private:
     explicit CaptureService(QObject *parent = nullptr);

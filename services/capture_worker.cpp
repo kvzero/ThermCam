@@ -23,8 +23,9 @@ void CaptureWorker::processPhoto(const VisualFrame& frame, const QString& path) 
     QImage safeImg = frame.image.copy();
 
     applyOsd(safeImg, frame);
-    ImageEncoder::save(safeImg, path, frame);
+    const bool success = ImageEncoder::save(safeImg, path, frame);
 
+    emit photoSaved(path, success);
     emit frameProcessed();
 }
 
@@ -44,8 +45,12 @@ void CaptureWorker::startVideo(const QString& path) {
 
 void CaptureWorker::stopVideo() {
     if (m_isRecording) {
+        const QString path = m_videoEncoder.currentPath();
         m_videoEncoder.close();
         m_isRecording = false;
+        emit videoStopped(path);
+    } else {
+        emit videoStopped(QString());
     }
 }
 

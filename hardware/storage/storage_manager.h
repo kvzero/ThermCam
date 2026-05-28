@@ -91,6 +91,17 @@ public:
      */
     bool setRoutingPolicy(const StorageRoutingPolicy& policy, QString* outError = nullptr);
 
+    /**
+     * @brief Forces kernel write-back for the mounted filesystem owning @p absolutePath.
+     * @return true when syncfs succeeded on the owning mountpoint.
+     */
+    bool flushMediaPath(const QString& absolutePath, QString* outError = nullptr) const;
+
+    /**
+     * @brief Flushes and unmounts one removable volume for physical unplug.
+     */
+    bool safeEjectVolume(StorageVolume volume, QString* outError = nullptr);
+
     /* --- Capture / Gallery API --- */
     /**
      * @brief Requests a writable path for a new media session.
@@ -184,6 +195,9 @@ private:
                     const QStringList& args,
                     QString* outError,
                     int timeoutMs = 120000) const;
+
+    bool flushMountedPath(const QString& mountPoint, QString* outError) const;
+    QString mountedTargetForPath(const QString& absolutePath) const;
 
     /* --- Filesystem / Capacity Helpers --- */
     quint64 getAvailableSpaceMB(const QString& path) const;

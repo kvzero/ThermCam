@@ -4,11 +4,14 @@
 #include <QDebug>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QProcess>
 #include <QSocketNotifier>
 
 /* Low-level Linux headers for Netlink and VFS stats */
+#include <cerrno>
 #include <cstring>
+#include <fcntl.h>
 #include <linux/netlink.h>
 #include <sys/socket.h>
 #include <sys/statvfs.h>
@@ -217,6 +220,57 @@ bool StorageManager::setRoutingPolicy(const StorageRoutingPolicy& policy, QStrin
     }
 
     m_routingPolicy = policy;
+    return true;
+}
+
+bool StorageManager::flushMediaPath(const QString& absolutePath, QString* outError) const {
+    if (absolutePath.isEmpty()) {
+        if (outError) *outError = "Path is empty";
+        return false;
+    }
+
+    const QString mountPoint = mountedTargetForPath(absolutePath);
+    if (mountPoint.isEmpty()) {
+        if (outError) {
+            *outError = QString("No mounted target found for %1").arg(absolutePath);
+        }
+        return false;
+    }
+
+    return flushMountedPath(mountPoint, outError);
+}
+
+bool StorageManager::safeEjectVolume(StorageVolume volume, QString* outError) {
+    if (volume == StorageVolume::Nand) {
+        if (outError) *outError = "NAND safe eject is not supported";
+        return false;
+    }
+
+    if (m_recordingQuotaActive) {
+        if (outError) *outError = "Safe eject is blocked while recording";
+        return false;
+    }
+
+    evaluateStorageState();
+
+    const StorageVolumeStatus status = statusForVolume(volume);
+    if (!status.ready) {
+        if (outError) *outError = QString("%1 is not mounted").arg(volumeName(volume));
+        return false;
+    }
+
+    if (!flushMountedPath(status.mountPoint, outError)) {
+        return false;
+    }
+
+    QString commandError;
+    if (!runCommand("/usr/bin/umount", {status.mountPoint}, &commandError, 30000)) {
+        if (outError) *outError = QString("umount failed: %1").arg(commandError);
+        evaluateStorageState();
+        return false;
+    }
+
+    evaluateStorageState();
     return true;
 }
 
@@ -489,6 +543,78 @@ bool StorageManager::runCommand(const QString& program,
     }
 
     return true;
+}
+
+bool StorageManager::flushMountedPath(const QString& mountPoint, QString* outError) const {
+    if (mountPoint.isEmpty()) {
+        if (outError) *outError = "Mount point is empty";
+        return false;
+    }
+
+    if (!isMounted(mountPoint)) {
+        if (outError) *outError = QString("%1 is not mounted").arg(mountPoint);
+        return false;
+    }
+
+    const QByteArray mountPointBytes = mountPoint.toLocal8Bit();
+    const int fd = ::open(mountPointBytes.constData(), O_RDONLY | O_DIRECTORY);
+    if (fd < 0) {
+        if (outError) {
+            *outError = QString("open(%1) failed: %2")
+                            .arg(mountPoint, QString::fromLocal8Bit(std::strerror(errno)));
+        }
+        return false;
+    }
+
+    const int syncResult = ::syncfs(fd);
+    const int syncErrno = errno;
+    ::close(fd);
+
+    if (syncResult != 0) {
+        if (outError) {
+            *outError = QString("syncfs(%1) failed: %2")
+                            .arg(mountPoint, QString::fromLocal8Bit(std::strerror(syncErrno)));
+        }
+        return false;
+    }
+
+    return true;
+}
+
+QString StorageManager::mountedTargetForPath(const QString& absolutePath) const {
+    if (absolutePath.isEmpty()) return QString();
+
+    const QString normalizedPath = QDir::cleanPath(QFileInfo(absolutePath).absoluteFilePath());
+
+    QFile file("/proc/self/mounts");
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return QString();
+    }
+
+    QString bestTarget;
+    while (true) {
+        const QByteArray rawLine = file.readLine();
+        if (rawLine.isNull()) {
+            break;
+        }
+
+        const QString line = QString::fromUtf8(rawLine).trimmed();
+        if (line.isEmpty()) continue;
+
+        const QStringList fields = line.split(' ', Qt::SkipEmptyParts);
+        if (fields.size() < 2) continue;
+
+        const QString target = fields.at(1);
+        const bool pathMatchesTarget =
+            (normalizedPath == target) || normalizedPath.startsWith(target + "/");
+        if (!pathMatchesTarget) continue;
+
+        if (target.size() > bestTarget.size()) {
+            bestTarget = target;
+        }
+    }
+
+    return bestTarget;
 }
 
 /* ========================= Capacity + Path Helpers ========================= */

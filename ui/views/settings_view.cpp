@@ -46,8 +46,10 @@ const QVector<PrimaryItemData> kMenuBlueprint = {
         {
             {SettingID::StoragePriority, "Priority", QColor(255, 255, 255), ActionType::Action, SecondaryVisibility::Always},
             {SettingID::SdCardCapacity, "SD Card", QColor(255, 255, 255), ActionType::Value, SecondaryVisibility::RequiresSdCard},
+            {SettingID::SdCardSafeEject, "Eject SD Card", QColor(255, 210, 120), ActionType::Action, SecondaryVisibility::RequiresSdCard},
             {SettingID::SdCardFormat, "Format SD Card", QColor(228, 72, 72), ActionType::Action, SecondaryVisibility::RequiresSdCard},
             {SettingID::UsbDiskCapacity, "USB Disk", QColor(255, 255, 255), ActionType::Value, SecondaryVisibility::RequiresUsbDisk},
+            {SettingID::UsbDiskSafeEject, "Eject USB Disk", QColor(255, 210, 120), ActionType::Action, SecondaryVisibility::RequiresUsbDisk},
             {SettingID::UsbDiskFormat, "Format USB Disk", QColor(228, 72, 72), ActionType::Action, SecondaryVisibility::RequiresUsbDisk}
         }
     },
@@ -1121,6 +1123,44 @@ void SettingsView::onSecondaryRowActivated() {
         emit EventBus::instance().cameraRequested(QRect(), TransitionMode::Instant);
         emit EventBus::instance().paletteSelectorRequested();
         return;
+    case SettingID::SdCardSafeEject:
+    case SettingID::UsbDiskSafeEject: {
+        const bool sdCard = (item.id == SettingID::SdCardSafeEject);
+        const QString targetName = sdCard ? QStringLiteral("SD Card")
+                                          : QStringLiteral("USB Disk");
+        app->showTextModal(
+            QString("Safely eject %1?\nWait for completion before unplugging.").arg(targetName),
+            [this, app, targetName, sdCard]() {
+                auto* storage = HardwareManager::instance().storage();
+                if (!storage) {
+                    app->showToast("STORAGE UNAVAILABLE", ToastLevel::Warning);
+                    return;
+                }
+
+                QString error;
+                const StorageVolume targetVolume = sdCard
+                                                       ? StorageVolume::SdCard
+                                                       : StorageVolume::UsbDisk;
+                const bool ok = storage->safeEjectVolume(targetVolume, &error);
+
+                if (!ok) {
+                    qWarning() << "[Settings] Safe eject failed:" << targetName
+                               << "reason:" << error;
+                    app->showToast(targetName + " eject failed", ToastLevel::Warning);
+                } else {
+                    app->showToast(targetName + " can be removed", ToastLevel::Info);
+                }
+
+                if (m_mode == PanelMode::Expanded &&
+                    primaryVisibilityAffectedByStorageState(m_activePrimary)) {
+                    rebuildSecondaryRows(m_activePrimary);
+                    m_rightScroll = qBound<qreal>(0.0, m_rightScroll, rightMaxScroll());
+                    relayoutRows();
+                }
+            },
+            ModalLevel::Normal);
+        return;
+    }
     case SettingID::SdCardFormat:
     case SettingID::UsbDiskFormat: {
         const bool sdCard = (item.id == SettingID::SdCardFormat);
@@ -1440,8 +1480,12 @@ void SettingsView::refreshSecondaryRowsFromSnapshot(const SettingsSnapshot& snap
         case SettingID::SdCardCapacity:
             row->setValueText(formatStorageCapacity(sdStatus));
             break;
+        case SettingID::SdCardSafeEject:
+            break;
         case SettingID::UsbDiskCapacity:
             row->setValueText(formatStorageCapacity(usbStatus));
+            break;
+        case SettingID::UsbDiskSafeEject:
             break;
         case SettingID::OSDOverlay: {
             const bool enabled = boolSettingFromSnapshot(snapshot, SettingKey::SaveMarkerInMedia, true);
