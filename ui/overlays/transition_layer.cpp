@@ -2,6 +2,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QEasingCurve>
+#include <QTimer>
 
 TransitionLayer::TransitionLayer(QWidget* parent) : QWidget(parent) {
     hide();
@@ -16,7 +17,16 @@ TransitionLayer::TransitionLayer(QWidget* parent) : QWidget(parent) {
     m_animFade->setEasingCurve(QEasingCurve::Linear);
 
     connect(m_animMorph, &QPropertyAnimation::finished, this, [this]() {
-        if (m_morphCallback) m_morphCallback();
+        // Animation "finished" means timeline end, not guaranteed on-screen flush.
+        // If route switching runs immediately, the UI thread can skip presenting
+        // the terminal full-cover frame and reveal 1~N px edge seams.
+        // We first force and flush the terminal frame, then defer heavy callbacks
+        // to the next event-loop turn.
+        repaint();
+        const std::function<void()> callback = m_morphCallback;
+        QTimer::singleShot(0, this, [callback]() {
+            if (callback) callback();
+        });
     });
 
     connect(m_animFade, &QPropertyAnimation::finished, this, [this]() {
