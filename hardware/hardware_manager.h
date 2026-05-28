@@ -7,6 +7,7 @@
 class ThermalCamera;
 class InputManager;
 class HapticProvider;
+class SystemControl;
 class BatteryMonitor;
 class StorageManager;
 
@@ -28,6 +29,7 @@ public:
     ThermalCamera* camera() const { return m_camera; }
     InputManager* input()   const { return m_input; }
     HapticProvider* haptic() const { return m_haptic; }
+    SystemControl* systemControl() const { return m_systemControl; }
     BatteryMonitor* battery() const { return m_battery; }
     StorageManager* storage() const { return m_storage; }
 
@@ -41,6 +43,7 @@ private:
     ThermalCamera*  m_camera = nullptr;
     InputManager*   m_input  = nullptr;
     HapticProvider* m_haptic = nullptr;
+    SystemControl* m_systemControl = nullptr;
     BatteryMonitor* m_battery = nullptr;
     StorageManager* m_storage = nullptr;
 };

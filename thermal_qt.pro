@@ -23,6 +23,7 @@ SOURCES     +=  main.cpp \
                 hardware/imaging/thermal_camera.cpp \
                 hardware/rga/rga_image.cpp \
                 hardware/hmi/haptic_provider.cpp \
+                hardware/hmi/system_control.cpp \
                 hardware/hmi/input_manager.cpp \
                 hardware/sensor/battery_monitor.cpp \
                 hardware/storage/storage_manager.cpp \
@@ -68,6 +69,7 @@ HEADERS     +=  core/global_context.h \
                 hardware/rga/rga_buffer.h \
                 hardware/rga/rga_image.h \
                 hardware/hmi/haptic_provider.h \
+                hardware/hmi/system_control.h \
                 hardware/hmi/input_manager.h \
                 hardware/sensor/battery_monitor.h \
                 hardware/storage/storage_manager.h \
@@ -115,7 +117,8 @@ INCLUDEPATH += . \
 
 LIBS        +=  -L$$PWD/hardware/imaging/seekcam/lib -lseekcamera \
                 -lrga -ldrm \
-                -lavformat -lavcodec -lavutil -lswscale
+                -lavformat -lavcodec -lavutil -lswscale \
+                -lasound
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

@@ -4,6 +4,7 @@
 #include "imaging/thermal_camera.h"
 #include "hardware/hmi/input_manager.h"
 #include "hardware/hmi/haptic_provider.h"
+#include "hardware/hmi/system_control.h"
 #include "hardware/sensor/battery_monitor.h"
 #include "hardware/storage/storage_manager.h"
 #include <QDebug>
@@ -28,6 +29,11 @@ bool HardwareManager::init() {
     m_haptic = &HapticProvider::instance();
     if (!m_haptic->init()) {
         qWarning() << "HardwareManager: HapticProvider failed";
+    }
+
+    m_systemControl = new SystemControl(this);
+    if (!m_systemControl->init()) {
+        qWarning() << "HardwareManager: SystemControl init failed";
     }
 
     m_battery = new BatteryMonitor(this);
