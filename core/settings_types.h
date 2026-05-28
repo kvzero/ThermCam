@@ -24,7 +24,9 @@ enum class SettingKey : quint8 {
     LegacySharpenEnabled = 9,
     AgcMode = 10,
     LinearAgcMinCelsius = 11,
-    LinearAgcMaxCelsius = 12
+    LinearAgcMaxCelsius = 12,
+    ScreenBrightnessPercent = 13,
+    AudioVolumePercent = 14
 };
 
 /** @brief Typed unit selector used by service-level normalization paths. */
@@ -52,7 +54,7 @@ struct SettingDescriptor {
     QVariant defaultValue;
 };
 
-inline const std::array<SettingDescriptor, 13> kSettingRegistry = {{
+inline const std::array<SettingDescriptor, 15> kSettingRegistry = {{
     {SettingKey::Palette, "palette", QVariant::fromValue(2)},
     {SettingKey::Emissivity, "emissivity", QVariant(0.95f)},
     {SettingKey::TemperatureUnit, "temperature_unit",
@@ -68,7 +70,9 @@ inline const std::array<SettingDescriptor, 13> kSettingRegistry = {{
     {SettingKey::AgcMode, "agc_mode",
      QVariant::fromValue(static_cast<int>(AgcMode::HistEqAuto))},
     {SettingKey::LinearAgcMinCelsius, "linear_agc_min_celsius", QVariant(20.0f)},
-    {SettingKey::LinearAgcMaxCelsius, "linear_agc_max_celsius", QVariant(80.0f)}
+    {SettingKey::LinearAgcMaxCelsius, "linear_agc_max_celsius", QVariant(80.0f)},
+    {SettingKey::ScreenBrightnessPercent, "screen_brightness_percent", QVariant(80)},
+    {SettingKey::AudioVolumePercent, "audio_volume_percent", QVariant(50)}
 }};
 
 /** @brief Immutable committed truth snapshot from SettingsStore. */

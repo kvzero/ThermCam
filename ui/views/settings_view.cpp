@@ -54,6 +54,8 @@ const QVector<PrimaryItemData> kMenuBlueprint = {
     {
         QString(QChar(0xea03)), QColor(182, 102, 45), "System",
         {
+            {SettingID::ScreenBrightness, "Screen Brightness", QColor(255, 255, 255), ActionType::Value},
+            {SettingID::AudioVolume, "Audio Volume", QColor(255, 255, 255), ActionType::Value}
         }
     }
 };
@@ -73,6 +75,13 @@ constexpr int kThermographyOffsetTenthsStep = 1;
 constexpr float kLinearAgcCelsiusMin = -40.0f;
 constexpr float kLinearAgcCelsiusMax = 600.0f;
 constexpr int kLinearAgcStep = 1;
+constexpr int kScreenBrightnessPercentMin = 1;
+constexpr int kScreenBrightnessPercentMax = 100;
+constexpr int kAudioVolumePercentMin = 0;
+constexpr int kAudioVolumePercentMax = 100;
+const uint kScreenBrightnessIconCodepoint[] = {0x10108};
+const QString kScreenBrightnessIconGlyph = QString::fromUcs4(kScreenBrightnessIconCodepoint, 1);
+const QString kAudioVolumeIconGlyph = QString(QChar(0xeb51));
 
 float clampEmissivity(float value) {
     return qBound(kEmissivityMin, value, kEmissivityMax);
@@ -138,6 +147,14 @@ QString formatStoragePriority(int priorityValue) {
                : QStringLiteral("SD Card First");
 }
 
+int clampPercentInt(int value, int minValue, int maxValue) {
+    return qBound(minValue, value, maxValue);
+}
+
+QString formatPercent(int value, int minValue, int maxValue) {
+    return QStringLiteral("%1%").arg(clampPercentInt(value, minValue, maxValue));
+}
+
 bool boolSettingFromSnapshot(const SettingsSnapshot& snapshot, SettingKey key, bool fallback) {
     const QVariant value = snapshot.values.value(key, QVariant(fallback));
     if (!value.canConvert<bool>()) return fallback;
@@ -147,6 +164,12 @@ bool boolSettingFromSnapshot(const SettingsSnapshot& snapshot, SettingKey key, b
 float floatSettingFromSnapshot(const SettingsSnapshot& snapshot, SettingKey key, float fallback) {
     bool ok = false;
     const float value = snapshot.values.value(key, QVariant(fallback)).toFloat(&ok);
+    return ok ? value : fallback;
+}
+
+int intSettingFromSnapshot(const SettingsSnapshot& snapshot, SettingKey key, int fallback) {
+    bool ok = false;
+    const int value = snapshot.values.value(key, QVariant(fallback)).toInt(&ok);
     return ok ? value : fallback;
 }
 
@@ -960,6 +983,140 @@ void SettingsView::onSecondaryRowActivated() {
         applyPatchFromUi(patch);
         return;
     }
+    case SettingID::ScreenBrightness: {
+        const SettingsSnapshot snapshot = SettingsStore::instance().current();
+        const int current = clampPercentInt(
+            intSettingFromSnapshot(snapshot, SettingKey::ScreenBrightnessPercent, 80),
+            kScreenBrightnessPercentMin,
+            kScreenBrightnessPercentMax);
+
+        SliderBubble::Spec spec;
+        spec.iconGlyph = kScreenBrightnessIconGlyph;
+        spec.minValue = kScreenBrightnessPercentMin;
+        spec.maxValue = kScreenBrightnessPercentMax;
+        spec.step = 1;
+        spec.value = current;
+        spec.dismissOnCommit = true;
+
+        auto previewTimer = std::make_shared<QTimer>();
+        previewTimer->setSingleShot(true);
+        previewTimer->setInterval(kPreviewThrottleMs);
+
+        auto latestPreviewPercent = std::make_shared<int>(spec.value);
+        auto previewDirty = std::make_shared<bool>(false);
+
+        auto flushPreview = [latestPreviewPercent]() {
+            SettingsPatch previewPatch;
+            previewPatch.values.insert(SettingKey::ScreenBrightnessPercent,
+                                       QVariant(*latestPreviewPercent));
+            SettingsService::instance().preview(previewPatch);
+        };
+
+        connect(previewTimer.get(),
+                &QTimer::timeout,
+                this,
+                [previewTimer, previewDirty, flushPreview]() {
+                    if (!*previewDirty) return;
+                    flushPreview();
+                    *previewDirty = false;
+                    previewTimer->start();
+                });
+
+        spec.onValueChanging =
+            [row, previewTimer, latestPreviewPercent, previewDirty, flushPreview](int value) {
+                *latestPreviewPercent = value;
+                *previewDirty = true;
+                row->setValueText(formatPercent(value,
+                                                kScreenBrightnessPercentMin,
+                                                kScreenBrightnessPercentMax));
+
+                if (!previewTimer->isActive()) {
+                    flushPreview();
+                    *previewDirty = false;
+                    previewTimer->start();
+                }
+            };
+
+        spec.onValueCommitted = [this, previewTimer, previewDirty](int value) {
+            previewTimer->stop();
+            *previewDirty = false;
+
+            SettingsPatch patch;
+            patch.values.insert(SettingKey::ScreenBrightnessPercent, QVariant(value));
+            applyPatchFromUi(patch);
+        };
+        spec.onDismissed = [previewTimer]() { previewTimer->stop(); };
+
+        app->showSliderBubble(spec, buildAnchor());
+        return;
+    }
+    case SettingID::AudioVolume: {
+        const SettingsSnapshot snapshot = SettingsStore::instance().current();
+        const int current = clampPercentInt(
+            intSettingFromSnapshot(snapshot, SettingKey::AudioVolumePercent, 50),
+            kAudioVolumePercentMin,
+            kAudioVolumePercentMax);
+
+        SliderBubble::Spec spec;
+        spec.iconGlyph = kAudioVolumeIconGlyph;
+        spec.minValue = kAudioVolumePercentMin;
+        spec.maxValue = kAudioVolumePercentMax;
+        spec.step = 1;
+        spec.value = current;
+        spec.dismissOnCommit = true;
+
+        auto previewTimer = std::make_shared<QTimer>();
+        previewTimer->setSingleShot(true);
+        previewTimer->setInterval(kPreviewThrottleMs);
+
+        auto latestPreviewPercent = std::make_shared<int>(spec.value);
+        auto previewDirty = std::make_shared<bool>(false);
+
+        auto flushPreview = [latestPreviewPercent]() {
+            SettingsPatch previewPatch;
+            previewPatch.values.insert(SettingKey::AudioVolumePercent,
+                                       QVariant(*latestPreviewPercent));
+            SettingsService::instance().preview(previewPatch);
+        };
+
+        connect(previewTimer.get(),
+                &QTimer::timeout,
+                this,
+                [previewTimer, previewDirty, flushPreview]() {
+                    if (!*previewDirty) return;
+                    flushPreview();
+                    *previewDirty = false;
+                    previewTimer->start();
+                });
+
+        spec.onValueChanging =
+            [row, previewTimer, latestPreviewPercent, previewDirty, flushPreview](int value) {
+                *latestPreviewPercent = value;
+                *previewDirty = true;
+                row->setValueText(formatPercent(value,
+                                                kAudioVolumePercentMin,
+                                                kAudioVolumePercentMax));
+
+                if (!previewTimer->isActive()) {
+                    flushPreview();
+                    *previewDirty = false;
+                    previewTimer->start();
+                }
+            };
+
+        spec.onValueCommitted = [this, previewTimer, previewDirty](int value) {
+            previewTimer->stop();
+            *previewDirty = false;
+
+            SettingsPatch patch;
+            patch.values.insert(SettingKey::AudioVolumePercent, QVariant(value));
+            applyPatchFromUi(patch);
+        };
+        spec.onDismissed = [previewTimer]() { previewTimer->stop(); };
+
+        app->showSliderBubble(spec, buildAnchor());
+        return;
+    }
     case SettingID::Palette:
         emit EventBus::instance().cameraRequested(QRect(), TransitionMode::Instant);
         emit EventBus::instance().paletteSelectorRequested();
@@ -1295,6 +1452,26 @@ void SettingsView::refreshSecondaryRowsFromSnapshot(const SettingsSnapshot& snap
             const bool enabled =
                 boolSettingFromSnapshot(snapshot, SettingKey::HideMarkerWhenHudHidden, false);
             row->setToggleOn(enabled);
+            break;
+        }
+        case SettingID::ScreenBrightness: {
+            const int value = clampPercentInt(
+                intSettingFromSnapshot(snapshot, SettingKey::ScreenBrightnessPercent, 80),
+                kScreenBrightnessPercentMin,
+                kScreenBrightnessPercentMax);
+            row->setValueText(formatPercent(value,
+                                            kScreenBrightnessPercentMin,
+                                            kScreenBrightnessPercentMax));
+            break;
+        }
+        case SettingID::AudioVolume: {
+            const int value = clampPercentInt(
+                intSettingFromSnapshot(snapshot, SettingKey::AudioVolumePercent, 50),
+                kAudioVolumePercentMin,
+                kAudioVolumePercentMax);
+            row->setValueText(formatPercent(value,
+                                            kAudioVolumePercentMin,
+                                            kAudioVolumePercentMax));
             break;
         }
         case SettingID::TriggerFlatSceneCorrection:

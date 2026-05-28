@@ -26,7 +26,9 @@ enum class SettingID {
     SdCardCapacity,
     SdCardFormat,
     UsbDiskCapacity,
-    UsbDiskFormat
+    UsbDiskFormat,
+    ScreenBrightness,
+    AudioVolume
 };
 
 /** @brief Render/action contract for secondary row trailing affordance. */

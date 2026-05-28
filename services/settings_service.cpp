@@ -1,6 +1,7 @@
 #include "services/settings_service.h"
 
 #include "hardware/hardware_manager.h"
+#include "hardware/hmi/system_control.h"
 #include "hardware/imaging/thermal_camera.h"
 #include "hardware/storage/storage_manager.h"
 #include "processing/thermal_palette.h"
@@ -16,6 +17,10 @@ constexpr float kLinearAgcMinCelsiusMin = -40.0f;
 constexpr float kLinearAgcMinCelsiusMax = 600.0f;
 constexpr float kLinearAgcMaxCelsiusMin = -40.0f;
 constexpr float kLinearAgcMaxCelsiusMax = 600.0f;
+constexpr int kScreenBrightnessPercentMin = 1;
+constexpr int kScreenBrightnessPercentMax = 100;
+constexpr int kAudioVolumePercentMin = 0;
+constexpr int kAudioVolumePercentMax = 100;
 
 QString keyToDebugName(SettingKey key) {
     for (const auto& descriptor : kSettingRegistry) {
@@ -469,6 +474,41 @@ bool SettingsService::normalizePatch(const SettingsPatch& input,
             outPatch->values.insert(key, QVariant(valueC));
             continue;
         }
+        case SettingKey::ScreenBrightnessPercent: {
+            if (!value.canConvert<int>()) {
+                if (outError) *outError = "Invalid screen-brightness payload";
+                return false;
+            }
+
+            bool ok = false;
+            const int parsed = value.toInt(&ok);
+            if (!ok) {
+                if (outError) *outError = "Invalid screen-brightness payload";
+                return false;
+            }
+
+            const int clamped =
+                qBound(kScreenBrightnessPercentMin, parsed, kScreenBrightnessPercentMax);
+            outPatch->values.insert(key, QVariant(clamped));
+            continue;
+        }
+        case SettingKey::AudioVolumePercent: {
+            if (!value.canConvert<int>()) {
+                if (outError) *outError = "Invalid audio-volume payload";
+                return false;
+            }
+
+            bool ok = false;
+            const int parsed = value.toInt(&ok);
+            if (!ok) {
+                if (outError) *outError = "Invalid audio-volume payload";
+                return false;
+            }
+
+            const int clamped = qBound(kAudioVolumePercentMin, parsed, kAudioVolumePercentMax);
+            outPatch->values.insert(key, QVariant(clamped));
+            continue;
+        }
         }
 
         if (outError) *outError = "Unsupported setting key";
@@ -691,6 +731,55 @@ bool SettingsService::applyRuntimeEffects(const SettingsChangeEvent& change, QSt
             allSuccess = false;
         } else {
             emit hudHideMarkerChanged(payload.toBool());
+        }
+    }
+
+    const bool hasSystemSettingDelta =
+        change.changedKeys.contains(SettingKey::ScreenBrightnessPercent) ||
+        change.changedKeys.contains(SettingKey::AudioVolumePercent);
+
+    if (hasSystemSettingDelta) {
+        auto* systemControl = HardwareManager::instance().systemControl();
+        if (!systemControl) {
+            errors << "SystemControl is unavailable";
+            allSuccess = false;
+        } else {
+            auto applyOrCollect = [&errors, &allSuccess](const char* label,
+                                                         bool ok,
+                                                         const QString& detail) {
+                if (ok) return;
+                errors << QString("%1: %2").arg(QString::fromLatin1(label), detail);
+                allSuccess = false;
+            };
+
+            if (change.changedKeys.contains(SettingKey::ScreenBrightnessPercent)) {
+                const int brightnessPercent =
+                    qBound(kScreenBrightnessPercentMin,
+                           intSettingFromSnapshot(change.snapshot,
+                                                  SettingKey::ScreenBrightnessPercent,
+                                                  80),
+                           kScreenBrightnessPercentMax);
+
+                QString brightnessError;
+                applyOrCollect("Screen brightness",
+                               systemControl->setScreenBrightnessPercent(brightnessPercent,
+                                                                        &brightnessError),
+                               brightnessError);
+            }
+
+            if (change.changedKeys.contains(SettingKey::AudioVolumePercent)) {
+                const int volumePercent =
+                    qBound(kAudioVolumePercentMin,
+                           intSettingFromSnapshot(change.snapshot,
+                                                  SettingKey::AudioVolumePercent,
+                                                  50),
+                           kAudioVolumePercentMax);
+
+                QString volumeError;
+                applyOrCollect("Audio volume",
+                               systemControl->setAudioVolumePercent(volumePercent, &volumeError),
+                               volumeError);
+            }
         }
     }
 
