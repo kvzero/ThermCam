@@ -170,26 +170,29 @@ InteractionUpdateDecision GalleryView::onInteractionUpdate(const InteractionEven
 
     // Intent: Handle batch selection drag with auto-scrolling
     if (m_isSelectionMode && !isEdgeBackGesture) {
-        if (m_dragAnchorIndex == -1) {
-            m_dragAnchorIndex = getItemIndexAt(start, currentColumns(), m_activeScroll);
-            m_selectionBaseline = m_selectedItems;
+        if (m_swipeAxis == SwipeAxis::Horizontal) {
+            if (m_dragAnchorIndex == -1) {
+                m_dragAnchorIndex = getItemIndexAt(start, currentColumns(), m_activeScroll);
+                m_selectionBaseline = m_selectedItems;
+            }
+
+            updateSelectionRange(currentPos);
+
+            const int topZone = height() * m_cfg.EDGE_SCROLL_ZONE_RATIO;
+            const int bottomZone = height() * (1.0 - m_cfg.EDGE_SCROLL_ZONE_RATIO);
+
+            if (currentPos.y() < topZone) {
+                m_edgeScrollSpeed = -((topZone - currentPos.y()) / static_cast<qreal>(topZone)) * m_cfg.EDGE_SCROLL_MAX_SPEED;
+                if (!m_edgeScrollTimer->isActive()) m_edgeScrollTimer->start(m_cfg.EDGE_SCROLL_INTERVAL_MS);
+            } else if (currentPos.y() > bottomZone) {
+                m_edgeScrollSpeed = ((currentPos.y() - bottomZone) / static_cast<qreal>(height() - bottomZone)) * m_cfg.EDGE_SCROLL_MAX_SPEED;
+                if (!m_edgeScrollTimer->isActive()) m_edgeScrollTimer->start(m_cfg.EDGE_SCROLL_INTERVAL_MS);
+            } else {
+                m_edgeScrollTimer->stop();
+            }
+            return InteractionUpdateDecision::KeepOwner;
         }
-
-        updateSelectionRange(currentPos);
-
-        const int topZone = height() * m_cfg.EDGE_SCROLL_ZONE_RATIO;
-        const int bottomZone = height() * (1.0 - m_cfg.EDGE_SCROLL_ZONE_RATIO);
-
-        if (currentPos.y() < topZone) {
-            m_edgeScrollSpeed = -((topZone - currentPos.y()) / static_cast<qreal>(topZone)) * m_cfg.EDGE_SCROLL_MAX_SPEED;
-            if (!m_edgeScrollTimer->isActive()) m_edgeScrollTimer->start(m_cfg.EDGE_SCROLL_INTERVAL_MS);
-        } else if (currentPos.y() > bottomZone) {
-            m_edgeScrollSpeed = ((currentPos.y() - bottomZone) / static_cast<qreal>(height() - bottomZone)) * m_cfg.EDGE_SCROLL_MAX_SPEED;
-            if (!m_edgeScrollTimer->isActive()) m_edgeScrollTimer->start(m_cfg.EDGE_SCROLL_INTERVAL_MS);
-        } else {
-            m_edgeScrollTimer->stop();
-        }
-        return InteractionUpdateDecision::KeepOwner;
+        m_edgeScrollTimer->stop();
     }
 
     // Intent: Standard grid panning
@@ -246,7 +249,7 @@ void GalleryView::onInteractionEnd(const InteractionEvent& event) {
         }
     }
 
-    if (!m_isSelectionMode) {
+    if (!m_isSelectionMode || m_swipeAxis == SwipeAxis::Vertical) {
         enforceStableState(vy);
     }
 }
