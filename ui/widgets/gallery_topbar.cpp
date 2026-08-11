@@ -3,11 +3,10 @@
 #include <QPainterPath>
 #include <QEasingCurve>
 #include <QFontMetricsF>
+#include <QMouseEvent>
 #include <cmath>
 
 GalleryTopBar::GalleryTopBar(QWidget* parent) : QWidget(parent) {
-    setProperty("isInteractable", true);
-
     auto setupAnim = [this](QPropertyAnimation** anim, const char* prop, int dur, QEasingCurve::Type curve) {
         *anim = new QPropertyAnimation(this, prop, this);
         (*anim)->setDuration(dur);
@@ -96,13 +95,55 @@ void GalleryTopBar::triggerGlowAnimation(QPropertyAnimation* anim, bool active) 
     }
 }
 
-void GalleryTopBar::onInteractionBegin(const InteractionEvent& event) {
-    m_lastGlowPos = event.currentLocal;
-    (void)onInteractionUpdate(event);
+void GalleryTopBar::mousePressEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton) {
+        QWidget::mousePressEvent(event);
+        return;
+    }
+
+    m_pressActive = updateHoverAt(event->pos());
+    if (!m_pressActive) {
+        event->ignore();
+        return;
+    }
+    event->accept();
 }
 
-InteractionUpdateDecision GalleryTopBar::onInteractionUpdate(const InteractionEvent& event) {
-    const QPoint localPos = event.currentLocal;
+void GalleryTopBar::mouseMoveEvent(QMouseEvent* event) {
+    if (!m_pressActive || !(event->buttons() & Qt::LeftButton)) {
+        QWidget::mouseMoveEvent(event);
+        return;
+    }
+
+    updateHoverAt(event->pos());
+    event->accept();
+}
+
+void GalleryTopBar::mouseReleaseEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton || !m_pressActive) {
+        QWidget::mouseReleaseEvent(event);
+        return;
+    }
+
+    m_pressActive = false;
+
+    if (m_hoverLeft) {
+        if (m_isSelectionMode) emit selectAllClicked();
+        else emit backRequested();
+    }
+    else if (m_hoverTrash) {
+        emit deleteRequested();
+    }
+    else if (m_hoverRightCancel) {
+        setSelectionMode(!m_isSelectionMode);
+        emit selectionModeToggled(m_isSelectionMode);
+    }
+
+    clearHover();
+    event->accept();
+}
+
+bool GalleryTopBar::updateHoverAt(const QPoint& localPos) {
     m_lastGlowPos = localPos;
 
     /* Intent: Massively artificially inflate the hitboxes for blind tactile operation */
@@ -124,33 +165,10 @@ InteractionUpdateDecision GalleryTopBar::onInteractionUpdate(const InteractionEv
 
     update();
 
-    /* Intent: Surrender gesture lock if sliding out of the physical button zones */
-    return (m_hoverLeft || m_hoverRightCancel || m_hoverTrash)
-               ? InteractionUpdateDecision::KeepOwner
-               : InteractionUpdateDecision::ReleaseOwner;
+    return m_hoverLeft || m_hoverRightCancel || m_hoverTrash;
 }
 
-void GalleryTopBar::onInteractionEnd(const InteractionEvent& /*event*/) {
-    triggerGlowAnimation(m_leftGlowAnim, false);
-    triggerGlowAnimation(m_rightGlowAnim, false);
-
-    if (m_hoverLeft) {
-        if (m_isSelectionMode) emit selectAllClicked();
-        else emit backRequested();
-    }
-    else if (m_hoverTrash) {
-        emit deleteRequested();
-    }
-    else if (m_hoverRightCancel) {
-        setSelectionMode(!m_isSelectionMode);
-        emit selectionModeToggled(m_isSelectionMode);
-    }
-
-    m_hoverLeft = m_hoverRightCancel = m_hoverTrash = false;
-    update();
-}
-
-void GalleryTopBar::onInteractionCancel() {
+void GalleryTopBar::clearHover() {
     triggerGlowAnimation(m_leftGlowAnim, false);
     triggerGlowAnimation(m_rightGlowAnim, false);
     m_hoverLeft = m_hoverRightCancel = m_hoverTrash = false;

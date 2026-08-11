@@ -2,11 +2,10 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QEasingCurve>
+#include <QMouseEvent>
 #include <algorithm>
 
 VideoControlBar::VideoControlBar(QWidget* parent) : QWidget(parent) {
-    setProperty("isInteractable", true);
-
     m_hideTimer = new QTimer(this);
     m_hideTimer->setSingleShot(true);
     connect(m_hideTimer, &QTimer::timeout, this, &VideoControlBar::initiateFadeOut);
@@ -30,6 +29,7 @@ void VideoControlBar::show() {
 }
 
 void VideoControlBar::hideImmediate() {
+    cancelInteraction();
     m_hideTimer->stop();
     m_fadeAnim->stop();
     setOpacity(0.0);
@@ -61,13 +61,46 @@ QString VideoControlBar::formatTimeMs(qint64 ms, bool forceHours) const {
     return QString::asprintf("%02lld:%02lld", m, s);
 }
 
-void VideoControlBar::onInteractionBegin(const InteractionEvent& event) {
-    (void)onInteractionUpdate(event);
+void VideoControlBar::mousePressEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton) {
+        QWidget::mousePressEvent(event);
+        return;
+    }
+
+    m_pressActive = updateInteractionAt(event->pos());
+    if (!m_pressActive) {
+        event->ignore();
+        return;
+    }
+    event->accept();
 }
 
-InteractionUpdateDecision VideoControlBar::onInteractionUpdate(const InteractionEvent& event) {
-    const QPoint localPos = event.currentLocal;
-    if (m_opacity < 0.1) return InteractionUpdateDecision::ReleaseOwner;
+void VideoControlBar::mouseMoveEvent(QMouseEvent* event) {
+    if (!m_pressActive || !(event->buttons() & Qt::LeftButton)) {
+        QWidget::mouseMoveEvent(event);
+        return;
+    }
+
+    updateInteractionAt(event->pos());
+    event->accept();
+}
+
+void VideoControlBar::mouseReleaseEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton || !m_pressActive) {
+        QWidget::mouseReleaseEvent(event);
+        return;
+    }
+
+    m_pressActive = false;
+    finishInteraction();
+    event->accept();
+}
+
+bool VideoControlBar::updateInteractionAt(const QPoint& localPos) {
+    if (m_opacity < 0.1) {
+        cancelInteraction();
+        return false;
+    }
 
     QRectF expandedPlay = m_playHitbox.adjusted(-m_cfg.HIT_EXPANSION_PX, -m_cfg.HIT_EXPANSION_PX,
                                                  m_cfg.HIT_EXPANSION_PX, m_cfg.HIT_EXPANSION_PX);
@@ -91,12 +124,12 @@ InteractionUpdateDecision VideoControlBar::onInteractionUpdate(const Interaction
     if (interacting) {
         m_hideTimer->start(m_cfg.FADE_DELAY_MS);
         emit interactionActive();
-        return InteractionUpdateDecision::KeepOwner;
+        return true;
     }
-    return InteractionUpdateDecision::ReleaseOwner;
+    return false;
 }
 
-void VideoControlBar::onInteractionEnd(const InteractionEvent& /*event*/) {
+void VideoControlBar::finishInteraction() {
     if (m_hoverPlay) {
         emit togglePlayRequested();
     }
@@ -111,7 +144,8 @@ void VideoControlBar::onInteractionEnd(const InteractionEvent& /*event*/) {
     update();
 }
 
-void VideoControlBar::onInteractionCancel() {
+void VideoControlBar::cancelInteraction() {
+    m_pressActive = false;
     m_hoverPlay = false;
     if (m_isScrubbing) {
         m_isScrubbing = false;

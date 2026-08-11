@@ -5,10 +5,14 @@
 #include "ui/settings_menu_types.h"
 #include "core/settings_types.h"
 #include "services/settings_service.h"
+#include "ui/overlays/bubble_dialog.h"
+#include <QElapsedTimer>
 #include <QPropertyAnimation>
 #include <QVector>
 
+class QMouseEvent;
 class ScrollIndicator;
+class SettingsBaseRow;
 class SettingsPrimaryRow;
 class SettingsSecondaryRow;
 
@@ -19,9 +23,8 @@ class SettingsSecondaryRow;
  * for Back/Close actions, and renders the non-widget black-to-transparent mask
  * required by the settings scroll interaction.
  */
-class SettingsTopBar : public QWidget, public InteractionTarget {
+class SettingsTopBar : public QWidget {
     Q_OBJECT
-    Q_INTERFACES(InteractionTarget)
     Q_PROPERTY(qreal maskOpacity READ maskOpacity WRITE setMaskOpacity)
 public:
     /* --- Lifecycle --- */
@@ -32,18 +35,15 @@ public:
     qreal maskOpacity() const { return m_maskOpacity; }
     void setMaskOpacity(qreal v);
 
-    /* --- InteractionTarget Forwarding --- */
-    void onInteractionBegin(const InteractionEvent& event) override;
-    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
-    void onInteractionEnd(const InteractionEvent& event) override;
-    void onInteractionCancel() override;
-
 signals:
     /* --- Cross-Module Signals --- */
     void backTriggered();
     void closeTriggered();
 
 protected:
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
 
@@ -68,8 +68,8 @@ private:
  * @brief Layer-0 settings scene owner coordinating panel state, scroll state, and transitions.
  *
  * Owns the complete settings interaction lifecycle while active in App's view stack.
- * It receives semantic gestures from InteractionArbiter, controls row layout/animation,
- * and emits navigation intent back to App through EventBus.
+ * It receives Qt mouse gestures, controls row layout/animation, and emits
+ * navigation intent back to App through EventBus.
  */
 class SettingsView : public BaseView {
     Q_OBJECT
@@ -86,12 +86,6 @@ public:
     void onExit() override;
     void handleKeyShortPress() override {}
 
-    /* --- InteractionTarget Contract --- */
-    void onInteractionBegin(const InteractionEvent& event) override;
-    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
-    void onInteractionEnd(const InteractionEvent& event) override;
-    void onInteractionCancel() override;
-
     /* --- Public Properties --- */
     qreal leftScroll() const { return m_leftScroll; }
     qreal rightScroll() const { return m_rightScroll; }
@@ -102,6 +96,9 @@ public:
     void setSplitProgress(qreal v);
 
 protected:
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
 
@@ -158,6 +155,30 @@ private:
     qreal rightMaxScroll() const;
     qreal applyOverscroll(qreal candidate, qreal maxScroll) const;
     void settleScroll(bool leftPanel, float velocity);
+    SettingsBaseRow* rowAt(const QPoint& pos) const;
+    void startPointerSession(const QPoint& pos, bool allowRowPress);
+    void updatePointerSession(const QPoint& pos);
+    void finishPointerSession(const QPoint& pos);
+    void cancelPointerSession();
+    void cancelActiveRowPress();
+    void updateDragVelocity(const QPoint& pos);
+
+    /* --- Bubble Overlay Flow --- */
+    void initBubbles();
+    void connectBubble(BubbleBase* bubble);
+    void resizeBubbles();
+    void raiseVisibleBubbles();
+    void dismissBubblesImmediately();
+    void showRadioListBubble(const RadioListBubble::Spec& spec,
+                             const BubbleAnchorContext& anchor);
+    void showSliderBubble(const SliderBubble::Spec& spec,
+                          const BubbleAnchorContext& anchor);
+    void showStepperBubble(const StepperBubble::Spec& spec,
+                           const BubbleAnchorContext& anchor);
+    void onBubbleOutsideDragStarted(const QPoint& startGlobal, const QPoint& currentGlobal);
+    void onBubbleOutsideDragMoved(const QPoint& currentGlobal);
+    void onBubbleOutsideDragReleased(const QPoint& finalGlobal);
+    void onBubbleOutsideDragCanceled();
 
     /* --- Navigation & Panel Flow --- */
     void collapseToSingle();
@@ -167,6 +188,9 @@ private:
     /* --- Widget Ownership --- */
     SettingsTopBar* m_topBar = nullptr;
     ScrollIndicator* m_scrollIndicator = nullptr;
+    RadioListBubble* m_radioListBubble = nullptr;
+    SliderBubble* m_sliderBubble = nullptr;
+    StepperBubble* m_stepperBubble = nullptr;
 
     /* --- Row Caches --- */
     QVector<SettingsPrimaryRow*> m_primaryRows;
@@ -187,12 +211,18 @@ private:
     QPropertyAnimation* m_splitAnim = nullptr;
 
     /* --- Gesture Session State --- */
+    bool m_pressActive = false;
+    SettingsBaseRow* m_pressedRow = nullptr;
+    QPoint m_pressStartPos;
+    QPoint m_lastPos;
+    QPoint m_previousSamplePos;
+    QPointF m_velocityPxPerMs;
+    QElapsedTimer m_velocityTimer;
+    qint64 m_previousSampleMs = 0;
     SwipeAxis m_swipeAxis = SwipeAxis::None;
     ScrollTarget m_scrollTarget = ScrollTarget::Left;
     qreal m_dragStartLeft = 0.0;
     qreal m_dragStartRight = 0.0;
-    int m_lastDx = 0;
-    int m_lastDy = 0;
 
     /* --- Settings Apply Session --- */
     bool m_applyInFlight = false;

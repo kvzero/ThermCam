@@ -3,7 +3,8 @@
 
 #include <QWidget>
 #include <QPropertyAnimation>
-#include "ui/interaction_target.h"
+
+class QMouseEvent;
 
 /**
  * @brief Floating navigation and action bar for the Gallery.
@@ -13,9 +14,8 @@
  * Touch interaction emits a white glow, which erupts into a red shockwave
  * upon release, seamlessly pulling out the Trash module.
  */
-class GalleryTopBar : public QWidget, public InteractionTarget {
+class GalleryTopBar : public QWidget {
     Q_OBJECT
-    Q_INTERFACES(InteractionTarget)
     Q_PROPERTY(qreal morphProgress READ morphProgress WRITE setMorphProgress)
     Q_PROPERTY(qreal trashExtraWidth READ trashExtraWidth WRITE setTrashExtraWidth)
     Q_PROPERTY(qreal leftGlow READ leftGlow WRITE setLeftGlow)
@@ -25,12 +25,6 @@ class GalleryTopBar : public QWidget, public InteractionTarget {
 
 public:
     explicit GalleryTopBar(QWidget* parent = nullptr);
-
-    /* --- InteractionTarget Contract --- */
-    void onInteractionBegin(const InteractionEvent& event) override;
-    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
-    void onInteractionEnd(const InteractionEvent& event) override;
-    void onInteractionCancel() override;
 
     /* --- State Mutators --- */
     void setSelectionMode(bool active);
@@ -68,12 +62,17 @@ signals:
     void deleteRequested();
 
 protected:
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
 
 private:
     void drawLeftAction(QPainter& p, int H);
     void drawRightAction(QPainter& p, int H);
     void triggerGlowAnimation(QPropertyAnimation* anim, bool active);
+    bool updateHoverAt(const QPoint& pos);
+    void clearHover();
 
     struct Config {
         const qreal MARGIN_RATIO      = 0.15;
@@ -110,6 +109,7 @@ private:
     bool m_hoverLeft = false;
     bool m_hoverRightCancel = false;
     bool m_hoverTrash = false;
+    bool m_pressActive = false;
 
     qreal m_leftGlow = 0.0;
     qreal m_rightGlow = 0.0;

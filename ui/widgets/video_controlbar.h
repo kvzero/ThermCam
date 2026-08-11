@@ -8,9 +8,9 @@
 #include <QPoint>
 #include <QColor>
 #include <QString>
-#include "ui/interaction_target.h"
 
 class QPainter;
+class QMouseEvent;
 
 /**
  * @brief High-precision Video Control Bar.
@@ -18,9 +18,8 @@ class QPainter;
  * DESIGN PRINCIPLE: All visual metrics are ratio-based to ensure perfect scaling
  * across different screen resolutions. No magic numbers are allowed in the logic.
  */
-class VideoControlBar : public QWidget, public InteractionTarget {
+class VideoControlBar : public QWidget {
     Q_OBJECT
-    Q_INTERFACES(InteractionTarget)
     Q_PROPERTY(qreal opacity READ opacity WRITE setOpacity)
 public:
     explicit VideoControlBar(QWidget* parent = nullptr);
@@ -29,11 +28,6 @@ public:
     void hideImmediate();
 
     void updatePlaybackState(bool playing, qint64 currentMs, qint64 totalMs, const QString& durationStr);
-
-    void onInteractionBegin(const InteractionEvent& event) override;
-    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
-    void onInteractionEnd(const InteractionEvent& event) override;
-    void onInteractionCancel() override;
 
     qreal opacity() const { return m_opacity; }
     void setOpacity(qreal o) { m_opacity = o; update(); }
@@ -45,6 +39,9 @@ signals:
     void interactionActive();
 
 protected:
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
 
 private slots:
@@ -52,6 +49,9 @@ private slots:
 
 private:
     QString formatTimeMs(qint64 ms, bool forceHours) const;
+    bool updateInteractionAt(const QPoint& pos);
+    void finishInteraction();
+    void cancelInteraction();
 
     struct Config {
         /* --- Layer Geometry --- */
@@ -98,6 +98,7 @@ private:
 
     bool m_isScrubbing = false;
     qint64 m_scrubTargetMs = -1;
+    bool m_pressActive = false;
 
     QTimer* m_hideTimer = nullptr;
     QPropertyAnimation* m_fadeAnim = nullptr;

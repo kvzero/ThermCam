@@ -1,9 +1,8 @@
 #include "bubble_dialog.h"
 
-#include "ui/interaction_arbiter.h"
-
 #include <QFont>
 #include <QLinearGradient>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QRadialGradient>
@@ -25,8 +24,6 @@ QRect mapRectFromGlobal(QWidget* w, const QRect& globalRect) {
 BubbleBase::BubbleBase(QWidget* parent) : QWidget(parent) {
     hide();
     setAttribute(Qt::WA_TranslucentBackground, true);
-    setProperty("isInteractable", true);
-    setProperty("allowSlideTrigger", false);
 
     m_popAnim = new QPropertyAnimation(this, "animProgress", this);
     m_popAnim->setDuration(m_cfg.DURATION_POP_MS);
@@ -38,10 +35,10 @@ BubbleBase::BubbleBase(QWidget* parent) : QWidget(parent) {
 }
 
 void BubbleBase::present(const BubbleAnchorContext& anchor) {
-    InteractionArbiter::instance().cancelTouchSession();
     m_anchor = anchor;
 
     m_releasedByOutsidePan = false;
+    m_forwardingOutsideDrag = false;
     clearPressState();
     m_touchAnim->stop();
     m_touchProgress = 0.0;
@@ -76,6 +73,8 @@ void BubbleBase::dismiss() {
 }
 
 void BubbleBase::dismissImmediately() {
+    if (m_forwardingOutsideDrag) emit outsideDragCanceled();
+    m_forwardingOutsideDrag = false;
     m_isDismissing = false;
     m_popAnim->stop();
     m_touchAnim->stop();
@@ -85,24 +84,6 @@ void BubbleBase::dismissImmediately() {
     hide();
     emit bubbleDismissed();
     onBubbleDismissed();
-}
-
-void BubbleBase::onInteractionBegin(const InteractionEvent& event) {
-    beginPress(event.currentLocal);
-}
-
-InteractionUpdateDecision BubbleBase::onInteractionUpdate(const InteractionEvent& event) {
-    return updatePress(event.currentLocal)
-               ? InteractionUpdateDecision::KeepOwner
-               : InteractionUpdateDecision::ReleaseOwner;
-}
-
-void BubbleBase::onInteractionEnd(const InteractionEvent& /*event*/) {
-    endPress(true);
-}
-
-void BubbleBase::onInteractionCancel() {
-    endPress(false);
 }
 
 bool BubbleBase::contentPress(const QPoint& /*contentPos*/) {
@@ -162,6 +143,55 @@ void BubbleBase::paintEvent(QPaintEvent* /*event*/) {
 
 void BubbleBase::resizeEvent(QResizeEvent* /*event*/) {
     relayout();
+}
+
+void BubbleBase::mousePressEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton) {
+        QWidget::mousePressEvent(event);
+        return;
+    }
+
+    beginPress(event->pos());
+    event->accept();
+}
+
+void BubbleBase::mouseMoveEvent(QMouseEvent* event) {
+    if (!(event->buttons() & Qt::LeftButton)) {
+        QWidget::mouseMoveEvent(event);
+        return;
+    }
+
+    if (m_forwardingOutsideDrag) {
+        emit outsideDragMoved(event->globalPos());
+        event->accept();
+        return;
+    }
+
+    if (!updatePress(event->pos())) {
+        m_forwardingOutsideDrag = true;
+        emit outsideDragStarted(mapToGlobal(m_pressStartPos), event->globalPos());
+    }
+    event->accept();
+}
+
+void BubbleBase::mouseReleaseEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton) {
+        QWidget::mouseReleaseEvent(event);
+        return;
+    }
+
+    if (m_forwardingOutsideDrag) {
+        m_forwardingOutsideDrag = false;
+        emit outsideDragReleased(event->globalPos());
+        if (m_isDismissing && m_popAnim->state() != QAbstractAnimation::Running) {
+            finishDismiss();
+        }
+        event->accept();
+        return;
+    }
+
+    endPress(true);
+    event->accept();
 }
 
 void BubbleBase::beginPress(const QPoint& localPos) {
@@ -391,6 +421,11 @@ void BubbleBase::relayout() {
 
 void BubbleBase::onPopAnimFinished() {
     if (!m_isDismissing) return;
+    if (m_forwardingOutsideDrag) return;
+    finishDismiss();
+}
+
+void BubbleBase::finishDismiss() {
     m_isDismissing = false;
     clearPressState();
     hide();

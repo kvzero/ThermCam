@@ -1,5 +1,6 @@
 #include "gallery_view.h"
 #include "core/event_bus.h"
+#include "core/global_context.h"
 #include "ui/widgets/gallery_topbar.h"
 #include "ui/widgets/scroll_indicator.h"
 #include "ui/app.h"
@@ -8,6 +9,10 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QEasingCurve>
+#include <QEvent>
+#include <QGestureEvent>
+#include <QMouseEvent>
+#include <QPinchGesture>
 #include <cmath>
 #include <algorithm>
 
@@ -23,6 +28,9 @@ GalleryView::GalleryView(QWidget* parent) : BaseView(parent) {
     m_scrollAnim = new QPropertyAnimation(this, "activeScroll", this);
     m_zoomAnim = new QPropertyAnimation(this, "zoomProgress", this);
     m_edgeScrollTimer = new QTimer(this);
+    m_longPressTimer = new QTimer(this);
+    m_longPressTimer->setSingleShot(true);
+    grabGesture(Qt::PinchGesture);
 
     // --- Signals: TopBar ---
     connect(m_topBar, &GalleryTopBar::backRequested, this, []() {
@@ -52,6 +60,10 @@ GalleryView::GalleryView(QWidget* parent) : BaseView(parent) {
     // --- Signals: Internal Timers & Animators ---
     connect(m_edgeScrollTimer, &QTimer::timeout, this, &GalleryView::performEdgeAutoScroll);
     connect(m_scrollIndicator, &ScrollIndicator::opacityChanged, this, QOverload<>::of(&QWidget::update));
+    connect(m_longPressTimer, &QTimer::timeout, this, [this]() {
+        if (!m_pressActive || m_swipeStarted) return;
+        triggerLongPressAt(m_pressStartPos);
+    });
 
     connect(m_zoomAnim, &QPropertyAnimation::finished, this, [this]() {
         m_mode = (m_zoomProgress >= m_cfg.ZOOM_TRANSITION_THRESHOLD) ? GridMode::Col4 : GridMode::Col2;
@@ -97,6 +109,7 @@ GalleryView::GalleryView(QWidget* parent) : BaseView(parent) {
 }
 
 void GalleryView::onEnter() {
+    cancelPointerSession();
     m_scrollAnim->stop();
     m_zoomAnim->stop();
     m_edgeScrollTimer->stop();
@@ -115,6 +128,7 @@ void GalleryView::onEnter() {
 }
 
 void GalleryView::onExit() {
+    cancelPointerSession();
     m_scrollAnim->stop();
     m_zoomAnim->stop();
     m_edgeScrollTimer->stop();
@@ -122,39 +136,99 @@ void GalleryView::onExit() {
 }
 
 // ============================================================================
-// Gesture Routing & Handling
+// Pointer Routing & Handling
 // ============================================================================
 
-void GalleryView::onInteractionBegin(const InteractionEvent& /*event*/) {
-    m_lastGestureDx = 0;
-    m_lastGestureDy = 0;
+bool GalleryView::event(QEvent* event) {
+    if (event->type() == QEvent::Gesture) {
+        return handlePinchGesture(static_cast<QGestureEvent*>(event));
+    }
+    return BaseView::event(event);
+}
+
+void GalleryView::mousePressEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton) {
+        BaseView::mousePressEvent(event);
+        return;
+    }
+
+    startPointerSession(event->pos());
+    event->accept();
+}
+
+void GalleryView::mouseMoveEvent(QMouseEvent* event) {
+    if (!m_pressActive || !(event->buttons() & Qt::LeftButton)) {
+        BaseView::mouseMoveEvent(event);
+        return;
+    }
+
+    updatePointerSession(event->pos());
+    event->accept();
+}
+
+void GalleryView::mouseReleaseEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton || !m_pressActive) {
+        BaseView::mouseReleaseEvent(event);
+        return;
+    }
+
+    finishPointerSession(event->pos());
+    event->accept();
+}
+
+void GalleryView::startPointerSession(const QPoint& pos) {
+    cancelPointerSession();
+    m_pressActive = true;
+    m_swipeStarted = false;
+    m_longPressTriggered = false;
+    m_pressStartPos = pos;
+    m_lastPos = pos;
+    m_previousSamplePos = pos;
+    m_velocityPxPerMs = QPointF();
+    m_pressTimer.restart();
+    m_velocityTimer.restart();
+    m_previousSampleMs = 0;
+
     m_swipeAxis = SwipeAxis::None;
     m_gestureStartScroll = m_activeScroll;
 
     m_dragAnchorIndex = -1;
     m_selectionBaseline.clear();
+    m_longPressTimer->start(m_cfg.LONG_PRESS_TIME_MS);
 
     if (m_scrollAnim->state() == QAbstractAnimation::Running) {
         m_scrollAnim->stop();
     }
 }
 
-InteractionUpdateDecision GalleryView::onInteractionUpdate(const InteractionEvent& event) {
-    const QPoint start = event.startGlobal;
-    const int dx = event.deltaFromStartGlobal.x();
-    const int dy = event.deltaFromStartGlobal.y();
-    const int deltaX = event.deltaFromPreviousGlobal.x();
-    const int deltaY = event.deltaFromPreviousGlobal.y();
-    m_lastGestureDx = dx;
-    m_lastGestureDy = dy;
+void GalleryView::updatePointerSession(const QPoint& pos) {
+    if (!m_pressActive) return;
 
-    const QPoint currentPos = event.currentGlobal;
-    if (m_viewer->currentState() != MediaViewer::Hidden) {
-         m_viewer->onPanUpdate(currentPos, deltaX, deltaY);
-        return InteractionUpdateDecision::KeepOwner;
+    updatePointerVelocity(pos);
+
+    const QPoint start = m_pressStartPos;
+    const int dx = pos.x() - start.x();
+    const int dy = pos.y() - start.y();
+    const int deltaX = pos.x() - m_lastPos.x();
+    const int deltaY = pos.y() - m_lastPos.y();
+    m_lastPos = pos;
+    const qreal distance = std::hypot(static_cast<qreal>(dx), static_cast<qreal>(dy));
+    if (!m_swipeStarted) {
+        if (distance <= m_cfg.SWIPE_THRESHOLD_PX) {
+            return;
+        }
+
+        m_swipeStarted = true;
+        m_longPressTimer->stop();
     }
 
-    if (m_isPinching) return InteractionUpdateDecision::KeepOwner;
+    const QPoint currentPos = pos;
+    if (m_viewer->currentState() != MediaViewer::Hidden) {
+         m_viewer->onPanUpdate(currentPos, deltaX, deltaY);
+        return;
+    }
+
+    if (m_isPinching) return;
 
     m_lastDragPos = currentPos;
 
@@ -190,7 +264,7 @@ InteractionUpdateDecision GalleryView::onInteractionUpdate(const InteractionEven
             } else {
                 m_edgeScrollTimer->stop();
             }
-            return InteractionUpdateDecision::KeepOwner;
+            return;
         }
         m_edgeScrollTimer->stop();
     }
@@ -207,29 +281,35 @@ InteractionUpdateDecision GalleryView::onInteractionUpdate(const InteractionEven
         }
         setActiveScroll(target);
     }
-    return InteractionUpdateDecision::KeepOwner;
 }
 
-void GalleryView::onInteractionEnd(const InteractionEvent& event) {
-    const QPoint start = event.startGlobal;
-    const int dx = event.deltaFromStartGlobal.x();
-    const float vx = event.velocityPxPerMs.x();
-    const float vy = event.velocityPxPerMs.y();
+void GalleryView::finishPointerSession(const QPoint& pos) {
+    if (!m_pressActive) return;
+
+    updatePointerVelocity(pos);
+    m_pressActive = false;
+    m_longPressTimer->stop();
+
+    const QPoint start = m_pressStartPos;
+    const int dx = pos.x() - start.x();
+    const float vx = static_cast<float>(m_velocityPxPerMs.x());
+    const float vy = static_cast<float>(m_velocityPxPerMs.y());
+
     if (m_viewer->currentState() != MediaViewer::Hidden) {
-        m_viewer->onPanFinished(vx, vy);
+        if (m_swipeStarted) {
+            m_viewer->onPanFinished(vx, vy);
+        } else if (m_pressTimer.elapsed() < m_cfg.TAP_MAX_TIME_MS) {
+            handleTapAt(pos);
+        }
         return;
     }
 
     m_edgeScrollTimer->stop();
 
-    if (m_isPinching) {
-        qreal targetZoom = (m_zoomProgress > m_cfg.ZOOM_TRANSITION_THRESHOLD) ? 1.0 : 0.0;
-        m_zoomAnim->stop();
-        m_zoomAnim->setStartValue(m_zoomProgress);
-        m_zoomAnim->setEndValue(targetZoom);
-        m_zoomAnim->setDuration(m_cfg.SNAP_DURATION);
-        m_zoomAnim->setEasingCurve(QEasingCurve::OutBack);
-        m_zoomAnim->start();
+    if (!m_swipeStarted) {
+        if (!m_longPressTriggered && m_pressTimer.elapsed() < m_cfg.TAP_MAX_TIME_MS) {
+            handleTapAt(pos);
+        }
         return;
     }
 
@@ -254,11 +334,69 @@ void GalleryView::onInteractionEnd(const InteractionEvent& event) {
     }
 }
 
-void GalleryView::onInteractionCancel() {
+void GalleryView::cancelPointerSession() {
+    m_pressActive = false;
+    m_swipeStarted = false;
+    m_longPressTriggered = false;
+    if (m_longPressTimer) {
+        m_longPressTimer->stop();
+    }
     m_edgeScrollTimer->stop();
 }
 
-void GalleryView::onInteractionPinch(const QPoint& center, float factor) {
+void GalleryView::updatePointerVelocity(const QPoint& pos) {
+    const qint64 elapsedMs = m_velocityTimer.isValid() ? m_velocityTimer.elapsed() : 0;
+    if (m_previousSampleMs <= 0) {
+        m_previousSampleMs = elapsedMs;
+        m_previousSamplePos = pos;
+        return;
+    }
+
+    const qint64 rawDtMs = elapsedMs - m_previousSampleMs;
+    if (rawDtMs <= 0) return;
+
+    const QPoint delta = pos - m_previousSamplePos;
+    if (!delta.isNull()) {
+        // Qt's synthesized mouse samples can arrive closer than one frame on
+        // linuxfb/evdevtouch; clamp dt before deriving inertia velocity.
+        const qreal refreshRate = qMax<qreal>(1.0, GlobalContext::instance().refreshRate());
+        const qreal minSampleMs = 1000.0 / refreshRate;
+        const qreal dtMs = qMax(static_cast<qreal>(rawDtMs), minSampleMs);
+        QPointF instant(static_cast<qreal>(delta.x()) / dtMs,
+                        static_cast<qreal>(delta.y()) / dtMs);
+        instant.setX(qBound(-m_cfg.VELOCITY_MAX_PX_PER_MS,
+                            instant.x(),
+                            m_cfg.VELOCITY_MAX_PX_PER_MS));
+        instant.setY(qBound(-m_cfg.VELOCITY_MAX_PX_PER_MS,
+                            instant.y(),
+                            m_cfg.VELOCITY_MAX_PX_PER_MS));
+        constexpr qreal kVelocityWeight = 0.3;
+        m_velocityPxPerMs = (m_velocityPxPerMs * (1.0 - kVelocityWeight)) +
+                            (instant * kVelocityWeight);
+    }
+
+    m_previousSampleMs = elapsedMs;
+    m_previousSamplePos = pos;
+}
+
+bool GalleryView::handlePinchGesture(QGestureEvent* event) {
+    if (auto* pinch = qobject_cast<QPinchGesture*>(event->gesture(Qt::PinchGesture))) {
+        cancelPointerSession();
+        const QPoint center = pinch->centerPoint().toPoint();
+
+        if (pinch->state() == Qt::GestureStarted || pinch->state() == Qt::GestureUpdated) {
+            updatePinchAt(center, static_cast<float>(pinch->totalScaleFactor()));
+        } else if (pinch->state() == Qt::GestureFinished || pinch->state() == Qt::GestureCanceled) {
+            finishPinchGesture();
+        }
+
+        event->accept(pinch);
+        return true;
+    }
+    return BaseView::event(event);
+}
+
+void GalleryView::updatePinchAt(const QPoint& center, float factor) {
     if (m_viewer->currentState() != MediaViewer::Hidden) {
         return;
     }
@@ -294,8 +432,19 @@ void GalleryView::onInteractionPinch(const QPoint& center, float factor) {
     setZoomProgress(targetZoom);
 }
 
-void GalleryView::onInteractionTap(const InteractionEvent& event) {
-    const QPoint pos = event.currentGlobal;
+void GalleryView::finishPinchGesture() {
+    if (!m_isPinching) return;
+
+    qreal targetZoom = (m_zoomProgress > m_cfg.ZOOM_TRANSITION_THRESHOLD) ? 1.0 : 0.0;
+    m_zoomAnim->stop();
+    m_zoomAnim->setStartValue(m_zoomProgress);
+    m_zoomAnim->setEndValue(targetZoom);
+    m_zoomAnim->setDuration(m_cfg.SNAP_DURATION);
+    m_zoomAnim->setEasingCurve(QEasingCurve::OutBack);
+    m_zoomAnim->start();
+}
+
+void GalleryView::handleTapAt(const QPoint& pos) {
     if (m_viewer->currentState() != MediaViewer::Hidden) {
         m_viewer->onTap(pos);
         return;
@@ -314,11 +463,11 @@ void GalleryView::onInteractionTap(const InteractionEvent& event) {
     }
 }
 
-void GalleryView::onInteractionLongPress(const InteractionEvent& event) {
-    const QPoint start = event.currentGlobal;
+void GalleryView::triggerLongPressAt(const QPoint& start) {
     if (m_viewer->currentState() != MediaViewer::Hidden) return;
     if (m_isSelectionMode) return;
 
+    m_longPressTriggered = true;
     emit EventBus::instance().hapticRequested(4);
     m_topBar->setSelectionMode(true);
     m_isSelectionMode = true;

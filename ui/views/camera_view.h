@@ -9,6 +9,7 @@
 #include <QParallelAnimationGroup>
 #include <QTimer>
 
+class QMouseEvent;
 class ThermalProcessor;
 class StatusBar;
 class CapsuleButton;
@@ -17,8 +18,6 @@ class PaletteSelector;
 
 /**
  * @brief The Main View (Layer 0 Content + Layer 1 HUD).
- *
- * Refactored to act as a passive executor for InteractionArbiter commands.
  */
 class CameraView : public BaseView {
     Q_OBJECT
@@ -36,15 +35,6 @@ public:
     void handleKeyShortPress() override;
     void resetTransientUi() override;
 
-    /* --- InteractionTarget Contract --- */
-    void onInteractionBegin(const InteractionEvent& event) override;
-    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
-    void onInteractionEnd(const InteractionEvent& event) override;
-    void onInteractionCancel() override;
-    void onInteractionTap(const InteractionEvent& event) override;
-    void onInteractionDoubleTap(const InteractionEvent& event) override;
-    void onInteractionLongPress(const InteractionEvent& event) override;
-
     /* --- Transition Anchor Hook --- */
     /** @brief Exposes the capsule widget as Camera's fallback transition anchor. */
     QWidget* capsuleWidget() override;
@@ -58,6 +48,11 @@ public slots:
     void updateFrame(const VisualFrame& frame);
 
 protected:
+    bool eventFilter(QObject* watched, QEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
+    void mouseDoubleClickEvent(QMouseEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
 
@@ -71,6 +66,10 @@ private:
     void openPaletteSelector();
     void closePaletteSelector(bool commitSelection);
     void refreshPalettePreviews();
+    void beginViewGesture(const QPoint& pos);
+    void updateViewGesture(const QPoint& pos);
+    void finishViewGesture(const QPoint& pos);
+    void triggerDoubleTapShutter();
 
     /* --- Visual Constants for Shutter Feedback --- */
     struct ShutterConfig {
@@ -129,11 +128,14 @@ private:
         static constexpr int PALETTE_SHOW_THRESHOLD_PX = 56;
         static constexpr int PALETTE_SHOW_DELAY_MS = 90;
         static constexpr int EDGE_CONFIRM_MARGIN_PX = 2;
+        static constexpr int TAP_MAX_DISTANCE_PX = 10;
         static constexpr int ANIM_DURATION_MS = 260;
     } m_hudCfg;
 
     enum class SwipeAxis { None, Horizontal, Vertical };
     SwipeAxis m_swipeAxis = SwipeAxis::None;
+    bool m_viewPressActive = false;
+    QPoint m_viewPressStart;
 };
 
 

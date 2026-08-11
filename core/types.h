@@ -4,8 +4,6 @@
 #include <QMetaType>
 #include <QImage>
 #include <QByteArray>
-#include <QList>
-#include <QPoint>
 #include <QtGlobal>
 
 /**
@@ -73,21 +71,6 @@ struct VisualFrame {
     TempPt center_spot;     // Mapped coordinates
 };
 Q_DECLARE_METATYPE(VisualFrame)
-
-/**
- * @brief Represents a raw touch point from the Linux Input device.
- */
-struct RawTouchPoint {
-    int id = -1;       /**< Slot ID (Tracking ID) */
-    int x = 0;         /**< Raw X coordinate from digitizer */
-    int y = 0;         /**< Raw Y coordinate from digitizer */
-    bool active = false; /**< True if the finger is currently on the screen */
-
-    RawTouchPoint() = default;
-    RawTouchPoint(int _id, int _x, int _y, bool _active)
-        : id(_id), x(_x), y(_y), active(_active) {}
-};
-Q_DECLARE_METATYPE(RawTouchPoint);
 
 /**
  * @brief Lightweight battery status used for high-frequency UI updates.

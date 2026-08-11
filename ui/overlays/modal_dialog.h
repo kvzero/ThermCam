@@ -5,8 +5,8 @@
 #include <QPoint>
 #include <QPropertyAnimation>
 #include <functional>
-#include "ui/interaction_target.h"
 
+class QMouseEvent;
 class QPainter;
 
 enum class ModalLevel {
@@ -30,9 +30,8 @@ struct ModalSpec {
  * shell press feedback, and primary/secondary action contract dispatch. Subclasses
  * only provide content sizing/painting and optional content interaction.
  */
-class ModalBase : public QWidget, public InteractionTarget {
+class ModalBase : public QWidget {
     Q_OBJECT
-    Q_INTERFACES(InteractionTarget)
     Q_PROPERTY(qreal animProgress READ animProgress WRITE setAnimProgress)
     Q_PROPERTY(qreal touchProgress READ touchProgress WRITE setTouchProgress)
 
@@ -49,12 +48,6 @@ public:
     /* --- Public API --- */
     void present(const ModalSpec& spec);
     void dismiss();
-
-    /* --- InteractionTarget Contract --- */
-    void onInteractionBegin(const InteractionEvent& event) override;
-    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
-    void onInteractionEnd(const InteractionEvent& event) override;
-    void onInteractionCancel() override;
 
     /* --- Animation Properties --- */
     qreal animProgress() const { return m_animProgress; }
@@ -74,6 +67,9 @@ protected:
     virtual bool contentRelease(const QPoint& contentPos);
     virtual void contentCancel();
 
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
 
@@ -131,7 +127,8 @@ private:
 
         const int DURATION_POP_MS = 250;
         const int DURATION_EXIT_MS = 125;
-        const int DURATION_TOUCH_MS = 150;
+        const int DURATION_TOUCH_MS = 160;
+        const int MASK_TAP_MAX_DISTANCE_PX = 10;
     } m_cfg;
 
     /* --- Runtime State --- */
@@ -141,7 +138,9 @@ private:
     QRect m_secondaryRect;
     QRect m_primaryRect;
 
-    PressTarget m_pressedTarget = PressTarget::None;
+    PressTarget m_pressStartTarget = PressTarget::None;
+    PressTarget m_currentTarget = PressTarget::None;
+    QPoint m_pressStartPos;
     QPoint m_lastPos;
     QPoint m_glowPos;
     bool m_isPanelPressed = false;

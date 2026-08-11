@@ -5,7 +5,8 @@
 #include <QPropertyAnimation>
 #include <QPoint>
 #include "core/types.h"
-#include "ui/interaction_target.h"
+
+class QMouseEvent;
 
 /**
  * @brief Professional Mode Selection and Recording Feedback Widget.
@@ -16,9 +17,8 @@
  *
  * Visuals follow the "Glass DNA": Frosted background, inner stroke, and adaptive contrast.
  */
-class ModeSelector : public QWidget, public InteractionTarget {
+class ModeSelector : public QWidget {
     Q_OBJECT
-    Q_INTERFACES(InteractionTarget)
     Q_PROPERTY(qreal vStretch READ vStretch WRITE setVStretch)
     Q_PROPERTY(qreal hStretch READ hStretch WRITE setHStretch)
     Q_PROPERTY(qreal iconPop READ iconPop WRITE setIconPop)
@@ -33,13 +33,11 @@ public:
 
     explicit ModeSelector(QWidget* parent = nullptr);
 
-    /** --- InteractionTarget Contract --- */
-    void onInteractionBegin(const InteractionEvent& event) override;
-    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
-    void onInteractionEnd(const InteractionEvent& event) override;
-    void onInteractionCancel() override;
     Q_INVOKABLE void longPressed();
     Q_INVOKABLE void collapse();
+
+    bool isPicking() const { return m_state == State::Picking; }
+    bool containsVisualGlobalPoint(const QPoint& globalPos) const;
 
     /** @brief Sets overall widget opacity for HUD immersion transitions. */
     void setContentsOpacity(qreal opacity) { m_contentsOpacity = opacity; update(); }
@@ -55,6 +53,9 @@ public:
     void setGlowOpacity(qreal o) { m_glowOpacity = o; update(); }
 
 protected:
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
 
 private slots:
@@ -67,13 +68,18 @@ private slots:
     void onBlinkTick(bool visible);
 
 private:
+    bool beginPress(const QPoint& pos);
+    void updatePress(const QPoint& pos);
+    void finishPress();
+    void cancelPress();
+
     /** @brief Internal drawing helper for icons with contrast shadows. */
     void drawIcon(QPainter& p, const QRect& r, CaptureMode mode, bool active, qreal scale);
 
     /** @brief Internal drawing helper for the recording status bar content. */
     void drawRecordingInfo(QPainter& p, const QRect& r);
 
-    bool isPointInVisualArea(const QPoint& pos);
+    bool isPointInVisualArea(const QPoint& pos) const;
 
     /* --- State Data --- */
     QTimer* m_longPressTimer;

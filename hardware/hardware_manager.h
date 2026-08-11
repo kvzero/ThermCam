@@ -5,7 +5,7 @@
 
 /* Forward declarations to minimize header dependencies */
 class ThermalCamera;
-class InputManager;
+class KeyManager;
 class HapticProvider;
 class SystemControl;
 class BatteryMonitor;
@@ -27,7 +27,7 @@ public:
 
     /* Component Accessors */
     ThermalCamera* camera() const { return m_camera; }
-    InputManager* input()   const { return m_input; }
+    KeyManager* keys() const { return m_keys; }
     HapticProvider* haptic() const { return m_haptic; }
     SystemControl* systemControl() const { return m_systemControl; }
     BatteryMonitor* battery() const { return m_battery; }
@@ -41,7 +41,7 @@ private:
     HardwareManager& operator=(const HardwareManager&) = delete;
 
     ThermalCamera*  m_camera = nullptr;
-    InputManager*   m_input  = nullptr;
+    KeyManager*     m_keys = nullptr;
     HapticProvider* m_haptic = nullptr;
     SystemControl* m_systemControl = nullptr;
     BatteryMonitor* m_battery = nullptr;

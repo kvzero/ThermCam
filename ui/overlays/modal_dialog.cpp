@@ -1,11 +1,11 @@
 #include "modal_dialog.h"
 
 #include "core/event_bus.h"
-#include "ui/interaction_arbiter.h"
 
 #include <QFont>
 #include <QFontMetrics>
 #include <QLinearGradient>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QRadialGradient>
@@ -22,8 +22,6 @@ QStringList splitModalTextLines(const QString& text) {
 
 ModalBase::ModalBase(QWidget* parent) : QWidget(parent) {
     hide();
-    setProperty("isInteractable", true);
-    setProperty("allowSlideTrigger", true);
 
     m_popAnim = new QPropertyAnimation(this, "animProgress", this);
     m_popAnim->setDuration(m_cfg.DURATION_POP_MS);
@@ -31,11 +29,10 @@ ModalBase::ModalBase(QWidget* parent) : QWidget(parent) {
 
     m_touchAnim = new QPropertyAnimation(this, "touchProgress", this);
     m_touchAnim->setDuration(m_cfg.DURATION_TOUCH_MS);
-    m_touchAnim->setEasingCurve(QEasingCurve::OutCubic);
+    m_touchAnim->setEasingCurve(QEasingCurve::InOutQuad);
 }
 
 void ModalBase::present(const ModalSpec& spec) {
-    InteractionArbiter::instance().cancelTouchSession();
     m_spec = spec;
 
     clearPressState();
@@ -68,23 +65,6 @@ void ModalBase::dismiss() {
     m_popAnim->start();
 }
 
-void ModalBase::onInteractionBegin(const InteractionEvent& event) {
-    beginPress(event.currentLocal);
-}
-
-InteractionUpdateDecision ModalBase::onInteractionUpdate(const InteractionEvent& event) {
-    updatePress(event.currentLocal);
-    return InteractionUpdateDecision::KeepOwner;
-}
-
-void ModalBase::onInteractionEnd(const InteractionEvent& /*event*/) {
-    endPress(true);
-}
-
-void ModalBase::onInteractionCancel() {
-    endPress(false);
-}
-
 bool ModalBase::onPrimaryAction() {
     return true;
 }
@@ -106,6 +86,37 @@ bool ModalBase::contentRelease(const QPoint& /*contentPos*/) {
 }
 
 void ModalBase::contentCancel() {}
+
+void ModalBase::mousePressEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton) {
+        QWidget::mousePressEvent(event);
+        return;
+    }
+
+    beginPress(event->pos());
+    event->accept();
+}
+
+void ModalBase::mouseMoveEvent(QMouseEvent* event) {
+    if (!(event->buttons() & Qt::LeftButton)) {
+        QWidget::mouseMoveEvent(event);
+        return;
+    }
+
+    updatePress(event->pos());
+    event->accept();
+}
+
+void ModalBase::mouseReleaseEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton) {
+        QWidget::mouseReleaseEvent(event);
+        return;
+    }
+
+    updatePress(event->pos());
+    endPress(true);
+    event->accept();
+}
 
 void ModalBase::paintEvent(QPaintEvent* /*event*/) {
     QPainter p(this);
@@ -150,11 +161,8 @@ void ModalBase::paintEvent(QPaintEvent* /*event*/) {
 
     paintContent(p, m_contentRect);
 
-    const PressTarget releaseZone = zoneAt(m_lastPos);
-    const bool secondaryPressed = (m_pressedTarget == PressTarget::SecondaryButton &&
-                                   releaseZone == PressTarget::SecondaryButton);
-    const bool primaryPressed = (m_pressedTarget == PressTarget::PrimaryButton &&
-                                 releaseZone == PressTarget::PrimaryButton);
+    const bool secondaryPressed = (m_currentTarget == PressTarget::SecondaryButton);
+    const bool primaryPressed = (m_currentTarget == PressTarget::PrimaryButton);
 
     auto drawButton = [&](const QRect& rect, const QString& text, const QColor& base, bool pressed) {
         QColor fill = pressed ? base.lighter(130) : base;
@@ -236,25 +244,25 @@ ModalBase::PressTarget ModalBase::zoneAt(const QPoint& pos) const {
 }
 
 void ModalBase::beginPress(const QPoint& localPos) {
+    m_pressStartPos = localPos;
     m_lastPos = localPos;
     m_glowPos = localPos;
 
-    PressTarget pressed = zoneAt(localPos);
+    const PressTarget pressed = zoneAt(localPos);
     if (pressed == PressTarget::Panel && m_contentRect.contains(localPos)) {
         const QPoint contentPos = localPos - m_contentRect.topLeft();
         if (contentPress(contentPos)) {
-            m_pressedTarget = PressTarget::Content;
-            setInteractionActive(false, localPos);
+            m_pressStartTarget = PressTarget::Content;
+            m_currentTarget = PressTarget::Content;
+            setInteractionActive(m_panelRect.contains(localPos), localPos);
             update();
             return;
         }
     }
 
-    m_pressedTarget = pressed;
-    const bool active = (pressed == PressTarget::Panel ||
-                         pressed == PressTarget::SecondaryButton ||
-                         pressed == PressTarget::PrimaryButton);
-    setInteractionActive(active, localPos);
+    m_pressStartTarget = pressed;
+    m_currentTarget = pressed;
+    setInteractionActive(m_panelRect.contains(localPos), localPos);
     update();
 }
 
@@ -262,27 +270,26 @@ void ModalBase::updatePress(const QPoint& localPos) {
     m_lastPos = localPos;
     m_glowPos = localPos;
 
-    if (m_pressedTarget == PressTarget::Content) {
+    if (m_pressStartTarget == PressTarget::Content) {
         contentMove(localPos - m_contentRect.topLeft());
         update();
         return;
     }
 
-    if (m_pressedTarget == PressTarget::None) {
-        setInteractionActive(false, localPos);
-        update();
-        return;
-    }
-
+    m_currentTarget = zoneAt(localPos);
     setInteractionActive(m_panelRect.contains(localPos), localPos);
     update();
 }
 
 void ModalBase::endPress(bool allowAction) {
-    const PressTarget pressedTarget = m_pressedTarget;
+    const PressTarget startTarget = m_pressStartTarget;
     const PressTarget releaseZone = zoneAt(m_lastPos);
+    const QPoint pressDelta = m_lastPos - m_pressStartPos;
+    const bool isMaskTap =
+        std::abs(pressDelta.x()) <= m_cfg.MASK_TAP_MAX_DISTANCE_PX &&
+        std::abs(pressDelta.y()) <= m_cfg.MASK_TAP_MAX_DISTANCE_PX;
 
-    if (pressedTarget == PressTarget::Content) {
+    if (startTarget == PressTarget::Content) {
         if (allowAction) {
             contentRelease(m_lastPos - m_contentRect.topLeft());
         } else {
@@ -295,34 +302,30 @@ void ModalBase::endPress(bool allowAction) {
     clearPressState();
     if (!allowAction) return;
 
-    if (pressedTarget == PressTarget::PrimaryButton &&
+    if (startTarget == PressTarget::PrimaryButton &&
         releaseZone == PressTarget::PrimaryButton) {
         tryPrimaryAction();
         return;
     }
 
-    if (pressedTarget == PressTarget::SecondaryButton &&
+    if (startTarget == PressTarget::SecondaryButton &&
         releaseZone == PressTarget::SecondaryButton) {
         trySecondaryAction();
         return;
     }
 
-    if (pressedTarget == PressTarget::Panel &&
+    if (startTarget == PressTarget::None &&
         releaseZone == PressTarget::None &&
-        m_spec.dismissOnMaskTap) {
-        trySecondaryAction();
-        return;
-    }
-
-    if (pressedTarget == PressTarget::None &&
-        releaseZone == PressTarget::None &&
+        isMaskTap &&
         m_spec.dismissOnMaskTap) {
         trySecondaryAction();
     }
 }
 
 void ModalBase::clearPressState() {
-    m_pressedTarget = PressTarget::None;
+    m_pressStartTarget = PressTarget::None;
+    m_currentTarget = PressTarget::None;
+    m_pressStartPos = QPoint();
     setInteractionActive(false);
     update();
 }
@@ -334,12 +337,14 @@ void ModalBase::setInteractionActive(bool active, const QPoint& localPos) {
         if (!m_isPanelPressed) {
             m_isPanelPressed = true;
             m_touchAnim->stop();
+            m_touchAnim->setStartValue(m_touchProgress);
             m_touchAnim->setEndValue(1.0);
             m_touchAnim->start();
         }
     } else if (m_isPanelPressed) {
         m_isPanelPressed = false;
         m_touchAnim->stop();
+        m_touchAnim->setStartValue(m_touchProgress);
         m_touchAnim->setEndValue(0.0);
         m_touchAnim->start();
     }

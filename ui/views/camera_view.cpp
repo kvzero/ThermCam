@@ -13,9 +13,11 @@
 #include "ui/widgets/status_bar.h"
 #include "ui/overlays/palette_selector.h"
 
+#include <QApplication>
 #include <QDebug>
 #include <QEasingCurve>
 #include <QMetaObject>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QResizeEvent>
 #include <QVariant>
@@ -157,6 +159,7 @@ CameraView::~CameraView() {
 void CameraView::onEnter() {
     qInfo() << "[CameraView] Enter: Connecting Hardware";
     connectHardware();
+    qApp->installEventFilter(this);
 
     if (m_paletteSelector && m_paletteSelector->isPresented()) {
         m_paletteSelector->dismiss(false);
@@ -170,6 +173,8 @@ void CameraView::onEnter() {
 
 void CameraView::onExit() {
     qInfo() << "[CameraView] Exit: Disconnecting Hardware";
+    qApp->removeEventFilter(this);
+    resetTransientUi();
 
     if (m_paletteOpenTimer) {
         m_paletteOpenTimer->stop();
@@ -288,38 +293,114 @@ void CameraView::resetTransientUi() {
     }
 }
 
-/* --- Gesture Implementations --- */
+/* --- View Gesture Handling --- */
 
-void CameraView::onInteractionBegin(const InteractionEvent& /*event*/) {
+bool CameraView::eventFilter(QObject* watched, QEvent* event) {
+    Q_UNUSED(watched);
+
+    if (event->type() == QEvent::MouseButtonPress &&
+        isVisible() &&
+        m_modeSelector &&
+        m_modeSelector->isPicking()) {
+        auto* mouse = static_cast<QMouseEvent*>(event);
+        if (!m_modeSelector->containsVisualGlobalPoint(mouse->globalPos())) {
+            m_modeSelector->collapse();
+        }
+    }
+
+    return false;
+}
+
+void CameraView::mousePressEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton) {
+        BaseView::mousePressEvent(event);
+        return;
+    }
+
+    beginViewGesture(event->pos());
+    event->accept();
+}
+
+void CameraView::mouseMoveEvent(QMouseEvent* event) {
+    if (!m_viewPressActive || !(event->buttons() & Qt::LeftButton)) {
+        BaseView::mouseMoveEvent(event);
+        return;
+    }
+
+    updateViewGesture(event->pos());
+    event->accept();
+}
+
+void CameraView::mouseReleaseEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton || !m_viewPressActive) {
+        BaseView::mouseReleaseEvent(event);
+        return;
+    }
+
+    updateViewGesture(event->pos());
+    finishViewGesture(event->pos());
+    event->accept();
+}
+
+void CameraView::mouseDoubleClickEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton) {
+        BaseView::mouseDoubleClickEvent(event);
+        return;
+    }
+
+    m_viewPressActive = false;
+    m_swipeAxis = SwipeAxis::None;
+    if (!m_paletteSelector || !m_paletteSelector->isPresented()) {
+        triggerDoubleTapShutter();
+    }
+    event->accept();
+}
+
+void CameraView::beginViewGesture(const QPoint& pos) {
+    m_viewPressActive = true;
+    m_viewPressStart = pos;
     m_swipeAxis = SwipeAxis::None;
 }
 
-InteractionUpdateDecision CameraView::onInteractionUpdate(const InteractionEvent& event) {
+void CameraView::updateViewGesture(const QPoint& pos) {
+    if (!m_viewPressActive) return;
+
     if (m_paletteSelector && m_paletteSelector->isPresented()) {
-        return InteractionUpdateDecision::KeepOwner;
+        return;
     }
 
-    const int dx = event.deltaFromStartGlobal.x();
-    const int dy = event.deltaFromStartGlobal.y();
+    const int dx = pos.x() - m_viewPressStart.x();
+    const int dy = pos.y() - m_viewPressStart.y();
     if (m_swipeAxis == SwipeAxis::None) {
         if (std::abs(dx) > m_hudCfg.SWIPE_DEADZONE_PX || std::abs(dy) > m_hudCfg.SWIPE_DEADZONE_PX) {
             m_swipeAxis = (std::abs(dx) > std::abs(dy)) ? SwipeAxis::Horizontal : SwipeAxis::Vertical;
         }
     }
-    return InteractionUpdateDecision::KeepOwner;
 }
 
-void CameraView::onInteractionEnd(const InteractionEvent& event) {
+void CameraView::finishViewGesture(const QPoint& pos) {
+    if (!m_viewPressActive) return;
+    m_viewPressActive = false;
+
+    const int dx = pos.x() - m_viewPressStart.x();
+    const int dy = pos.y() - m_viewPressStart.y();
+    const bool isTap = std::abs(dx) <= m_hudCfg.TAP_MAX_DISTANCE_PX &&
+                       std::abs(dy) <= m_hudCfg.TAP_MAX_DISTANCE_PX;
+
     if (m_paletteSelector && m_paletteSelector->isPresented()) {
+        if (isTap) {
+            closePaletteSelector(true);
+        }
         return;
     }
 
-    const QPoint start = event.startGlobal;
-    const int dx = event.deltaFromStartGlobal.x();
-    const int dy = event.deltaFromStartGlobal.y();
     if (m_swipeAxis == SwipeAxis::None &&
         (std::abs(dx) > m_hudCfg.SWIPE_DEADZONE_PX || std::abs(dy) > m_hudCfg.SWIPE_DEADZONE_PX)) {
         m_swipeAxis = (std::abs(dx) > std::abs(dy)) ? SwipeAxis::Horizontal : SwipeAxis::Vertical;
+    }
+
+    if (isTap) {
+        return;
     }
 
     if (m_swipeAxis != SwipeAxis::Vertical || height() <= 0) {
@@ -327,9 +408,9 @@ void CameraView::onInteractionEnd(const InteractionEvent& event) {
     }
 
     const int screenH = height();
-    const int finalY = start.y() + dy;
+    const int finalY = pos.y();
     const int bottomZone = qRound(screenH * m_hudCfg.BOTTOM_TRIGGER_ZONE_RATIO);
-    const bool startedFromBottomEdge = start.y() >= (screenH - bottomZone);
+    const bool startedFromBottomEdge = m_viewPressStart.y() >= (screenH - bottomZone);
     const bool downwardEnough = dy >= m_hudCfg.SWIPE_HIDE_THRESHOLD_PX;
     const bool upwardEnough = (-dy) >= m_hudCfg.SWIPE_SHOW_THRESHOLD_PX;
     const bool crossedBottomEdge = finalY >= (screenH - m_hudCfg.EDGE_CONFIRM_MARGIN_PX);
@@ -350,28 +431,10 @@ void CameraView::onInteractionEnd(const InteractionEvent& event) {
     }
 }
 
-void CameraView::onInteractionCancel() {
-    m_swipeAxis = SwipeAxis::None;
-}
-
-void CameraView::onInteractionTap(const InteractionEvent& /*event*/) {
-    if (m_paletteSelector && m_paletteSelector->isPresented()) {
-        closePaletteSelector(true);
-    }
-}
-
-void CameraView::onInteractionDoubleTap(const InteractionEvent& /*event*/) {
-    if (m_paletteSelector && m_paletteSelector->isPresented()) {
-        return;
-    }
-
+void CameraView::triggerDoubleTapShutter() {
     auto* camera = HardwareManager::instance().camera();
     if (!camera) return;
     camera->triggerShutter();
-}
-
-void CameraView::onInteractionLongPress(const InteractionEvent& /*event*/) {
-    // Reserved for future in-view interactions.
 }
 
 /* --- Transition Anchor --- */

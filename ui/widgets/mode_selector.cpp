@@ -3,13 +3,12 @@
 #include "services/capture_service.h"
 #include "hardware/hardware_manager.h"
 #include "hardware/hmi/haptic_provider.h"
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QEasingCurve>
 
 ModeSelector::ModeSelector(QWidget* parent) : QWidget(parent) {
-    setProperty("isInteractable", true);
-
     // Synchronize initial state with the logic service
     m_currentMode = CaptureService::instance().currentMode();
     m_pendingMode = m_currentMode;
@@ -64,21 +63,52 @@ void ModeSelector::setVStretch(qreal s) {
     update();
 }
 
-/** --- Interaction Logic (InteractionArbiter Implementation) --- */
-void ModeSelector::onInteractionBegin(const InteractionEvent& event) {
+/** --- Interaction Logic --- */
+void ModeSelector::mousePressEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton) {
+        QWidget::mousePressEvent(event);
+        return;
+    }
+    if (!beginPress(event->pos())) {
+        event->ignore();
+        return;
+    }
+    event->accept();
+}
+
+void ModeSelector::mouseMoveEvent(QMouseEvent* event) {
+    if (!m_isPressed || !(event->buttons() & Qt::LeftButton)) {
+        QWidget::mouseMoveEvent(event);
+        return;
+    }
+    updatePress(event->pos());
+    event->accept();
+}
+
+void ModeSelector::mouseReleaseEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton) {
+        QWidget::mouseReleaseEvent(event);
+        return;
+    }
+    updatePress(event->pos());
+    finishPress();
+    event->accept();
+}
+
+bool ModeSelector::beginPress(const QPoint& pos) {
     // Reset interaction gate.
     m_isPressed = false;
 
-    if (!isPointInVisualArea(event.currentLocal)) {
+    if (!isPointInVisualArea(pos)) {
         // Collapse immediately when tapping outside the visual body in Picking state.
         if (m_state == State::Picking) {
             collapse();
         }
-        return;
+        return false;
     }
 
     m_isPressed = true; // Only authorized if hit-test passes
-    m_glowPos = event.currentLocal;
+    m_glowPos = pos;
 
     m_glowAnim->stop();
     m_glowAnim->setEndValue(1.0);
@@ -86,7 +116,7 @@ void ModeSelector::onInteractionBegin(const InteractionEvent& event) {
 
     if (m_state == State::Picking) {
         CaptureMode otherMode = (m_currentMode == CaptureMode::Photo) ? CaptureMode::Video : CaptureMode::Photo;
-        m_hoveredMode = (event.currentLocal.y() < height() / 2) ? otherMode : m_currentMode;
+        m_hoveredMode = (pos.y() < height() / 2) ? otherMode : m_currentMode;
         m_isStickyPicking = false;
     } else {
         m_popAnim->stop();
@@ -95,18 +125,19 @@ void ModeSelector::onInteractionBegin(const InteractionEvent& event) {
         m_longPressTimer->start(m_cfg.INTERNAL_LONG_PRESS_MS);
     }
     update();
+    return true;
 }
 
-InteractionUpdateDecision ModeSelector::onInteractionUpdate(const InteractionEvent& event) {
-    const QPoint localPos = event.currentLocal;
+void ModeSelector::updatePress(const QPoint& localPos) {
+    if (!m_isPressed) return;
+
     /**
-     * Dynamic Hitbox.relinquishing control to the background view
-     * immediately if the finger leaves the visual area.
+     * In QWidget ownership, a press keeps routing to this control until release.
+     * Leaving the compact visual body cancels the local press semantics.
      */
     if (m_state != State::Picking && !isPointInVisualArea(localPos)) {
-        m_isPressed = false;
-        m_longPressTimer->stop();
-        return InteractionUpdateDecision::ReleaseOwner;
+        cancelPress();
+        return;
     }
 
     m_glowPos = localPos;
@@ -122,10 +153,9 @@ InteractionUpdateDecision ModeSelector::onInteractionUpdate(const InteractionEve
         }
     }
     update();
-    return InteractionUpdateDecision::KeepOwner;
 }
 
-void ModeSelector::onInteractionEnd(const InteractionEvent& /*event*/) {
+void ModeSelector::finishPress() {
     m_longPressTimer->stop();
     m_glowAnim->setEndValue(0.0);
     m_glowAnim->start();
@@ -156,7 +186,7 @@ void ModeSelector::onInteractionEnd(const InteractionEvent& /*event*/) {
     update();
 }
 
-void ModeSelector::onInteractionCancel() {
+void ModeSelector::cancelPress() {
     m_longPressTimer->stop();
     m_glowAnim->setEndValue(0.0);
     m_glowAnim->start();
@@ -365,7 +395,7 @@ void ModeSelector::drawRecordingInfo(QPainter& p, const QRect& r) {
 }
 
 
-bool ModeSelector::isPointInVisualArea(const QPoint& pos) {
+bool ModeSelector::isPointInVisualArea(const QPoint& pos) const {
     const qreal baseSize = width() * 0.5;
     const qreal curW = baseSize + (width() - baseSize) * m_hStretch;
     const qreal curH = baseSize + (height() - baseSize) * m_vStretch;
@@ -374,4 +404,8 @@ bool ModeSelector::isPointInVisualArea(const QPoint& pos) {
 
     // Expand the judgment area
     return visualRect.adjusted(-20, -20, 20, 20).contains(pos);
+}
+
+bool ModeSelector::containsVisualGlobalPoint(const QPoint& globalPos) const {
+    return isPointInVisualArea(mapFromGlobal(globalPos));
 }

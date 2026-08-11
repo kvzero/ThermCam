@@ -1,17 +1,20 @@
 #include "toast_manager.h"
 #include "core/global_context.h"
 
+#include <QApplication>
+#include <QEvent>
 #include <QPainter>
 #include <QResizeEvent>
 #include <QPaintEvent>
 #include <QLinearGradient>
 #include <QEasingCurve>
+#include <QMouseEvent>
 #include <cmath>
 
 ToastManager::ToastManager(QWidget* parent) : QWidget(parent) {
     hide();
-    setProperty("isInteractable", true);
-    setProperty("allowSlideTrigger", true);
+    setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    qApp->installEventFilter(this);
 
     m_anim = new QPropertyAnimation(this, "offsetY", this);
     m_anim->setEasingCurve(QEasingCurve::OutCubic);
@@ -20,6 +23,10 @@ ToastManager::ToastManager(QWidget* parent) : QWidget(parent) {
     m_autoHideTimer = new QTimer(this);
     m_autoHideTimer->setSingleShot(true);
     connect(m_autoHideTimer, &QTimer::timeout, this, &ToastManager::animateOut);
+}
+
+ToastManager::~ToastManager() {
+    qApp->removeEventFilter(this);
 }
 
 void ToastManager::showToast(const QString& msg, ToastLevel level) {
@@ -33,6 +40,7 @@ void ToastManager::showToast(const QString& msg, ToastLevel level) {
 void ToastManager::processQueue() {
     if (m_queue.isEmpty()) {
         m_isShowing = false;
+        m_dragActive = false;
         hide();
         return;
     }
@@ -52,6 +60,7 @@ void ToastManager::processQueue() {
 }
 
 void ToastManager::animateIn() {
+    m_dragActive = false;
     m_anim->stop();
     disconnect(m_anim, &QPropertyAnimation::finished, this, &ToastManager::processQueue);
 
@@ -63,6 +72,7 @@ void ToastManager::animateIn() {
 }
 
 void ToastManager::animateOut() {
+    m_dragActive = false;
     m_anim->stop();
     connect(m_anim, &QPropertyAnimation::finished, this, &ToastManager::processQueue, Qt::UniqueConnection);
 
@@ -72,49 +82,86 @@ void ToastManager::animateOut() {
     m_anim->start();
 }
 
-void ToastManager::onInteractionBegin(const InteractionEvent& event) {
-    m_gestureStartOffsetY = m_offsetY;
-    m_gestureStartY = event.currentGlobal.y();
-    m_isFirstGestureMove = false;
-}
-
-InteractionUpdateDecision ToastManager::onInteractionUpdate(const InteractionEvent& event) {
-    m_autoHideTimer->stop();
-    m_anim->stop();
-
-    QPoint currentGlobalPos = event.currentGlobal;
-
-    // If the gesture entered from outside (Searchlight), sync the anchor on the first move
-    if (m_isFirstGestureMove) {
-        m_gestureStartY = currentGlobalPos.y();
-        m_gestureStartOffsetY = m_offsetY;
-        m_isFirstGestureMove = false;
+bool ToastManager::eventFilter(QObject* watched, QEvent* event) {
+    if (m_sendingSyntheticRelease || !m_isShowing || !isVisible()) {
+        return false;
     }
 
-    // Calculate the TOTAL physical displacement since the start of the gesture
-    int totalPhysicalDy = currentGlobalPos.y() - m_gestureStartY;
+    if (event->type() == QEvent::MouseButtonPress) {
+        auto* mouse = static_cast<QMouseEvent*>(event);
+        if (mouse->button() == Qt::LeftButton &&
+            visualRectGlobal().contains(mouse->globalPos())) {
+            beginDrag(mouse->globalPos().y());
+            return true;
+        }
+        return false;
+    }
+
+    if (event->type() == QEvent::MouseMove) {
+        auto* mouse = static_cast<QMouseEvent*>(event);
+        if (!(mouse->buttons() & Qt::LeftButton)) {
+            return false;
+        }
+
+        if (m_dragActive) {
+            updateDrag(mouse->globalPos().y());
+            return true;
+        }
+
+        if (visualRectGlobal().contains(mouse->globalPos())) {
+            releaseCurrentMouseReceiver(watched, mouse);
+            beginDrag(mouse->globalPos().y());
+            return true;
+        }
+        return false;
+    }
+
+    if (event->type() == QEvent::MouseButtonRelease) {
+        auto* mouse = static_cast<QMouseEvent*>(event);
+        if (mouse->button() == Qt::LeftButton && m_dragActive) {
+            finishDrag();
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void ToastManager::beginDrag(int globalY) {
+    m_autoHideTimer->stop();
+    m_anim->stop();
+    disconnect(m_anim, &QPropertyAnimation::finished, this, &ToastManager::processQueue);
+
+    m_dragActive = true;
+    m_dragStartGlobalY = globalY;
+    m_dragStartOffsetY = m_offsetY;
+}
+
+void ToastManager::updateDrag(int globalY) {
+    const int totalPhysicalDy = globalY - m_dragStartGlobalY;
 
     int newVisualOffsetY = 0;
 
     // --- Absolute Mapping Logic ---
     if (totalPhysicalDy < 0) {
         // Upward movement: Linear mapping
-        newVisualOffsetY = m_gestureStartOffsetY + totalPhysicalDy;
+        newVisualOffsetY = m_dragStartOffsetY + totalPhysicalDy;
     } else {
         // Downward movement: Apply damping to the TOTAL displacement
         // This prevents jitter because the result is deterministic for any finger position
         const double dampedDelta = DAMPING_FACTOR * std::sqrt(static_cast<double>(totalPhysicalDy));
-        newVisualOffsetY = m_gestureStartOffsetY + static_cast<int>(dampedDelta);
+        newVisualOffsetY = m_dragStartOffsetY + static_cast<int>(dampedDelta);
     }
 
     setOffsetY(newVisualOffsetY);
-
-    return InteractionUpdateDecision::KeepOwner;
 }
 
-void ToastManager::onInteractionEnd(const InteractionEvent& /*event*/) {
+void ToastManager::finishDrag() {
+    if (!m_dragActive) return;
+
+    m_dragActive = false;
     // Calculate the final displacement based on the currentOffsetY vs startOffsetY
-    int finalVisualDelta = m_offsetY - m_gestureStartOffsetY;
+    const int finalVisualDelta = m_offsetY - m_dragStartOffsetY;
 
     // If the widget was pushed up beyond the threshold, dismiss it
     const int dismissThreshold = -qRound(m_contentH * DISMISS_THRESHOLD_RATIO);
@@ -133,8 +180,8 @@ void ToastManager::onInteractionEnd(const InteractionEvent& /*event*/) {
     }
 }
 
-void ToastManager::onInteractionCancel() {
-    m_isFirstGestureMove = true;
+void ToastManager::cancelDrag() {
+    m_dragActive = false;
     m_anim->stop();
     disconnect(m_anim, &QPropertyAnimation::finished, this, &ToastManager::processQueue);
 
@@ -145,6 +192,23 @@ void ToastManager::onInteractionCancel() {
     if (isVisible()) {
         m_autoHideTimer->start(RESUME_DURATION_MS);
     }
+}
+
+void ToastManager::releaseCurrentMouseReceiver(QObject* receiver, const QMouseEvent* sourceEvent) {
+    if (!receiver || !sourceEvent) return;
+
+    // Outside-slide takeover happens mid mouse-grab. Finish the current Qt
+    // receiver first so scrollers and pressed widgets do not lose release.
+    QMouseEvent releaseEvent(QEvent::MouseButtonRelease,
+                             sourceEvent->localPos(),
+                             sourceEvent->windowPos(),
+                             sourceEvent->screenPos(),
+                             Qt::LeftButton,
+                             sourceEvent->buttons() & ~Qt::LeftButton,
+                             sourceEvent->modifiers());
+    m_sendingSyntheticRelease = true;
+    QCoreApplication::sendEvent(receiver, &releaseEvent);
+    m_sendingSyntheticRelease = false;
 }
 
 void ToastManager::setOffsetY(int y) {
@@ -158,6 +222,10 @@ QRect ToastManager::getVisualRect() const {
     return QRect((width() - pillW) / 2, 0, pillW, m_contentH);
 }
 
+QRect ToastManager::visualRectGlobal() const {
+    const QRect visual = getVisualRect();
+    return QRect(mapToGlobal(visual.topLeft()), visual.size());
+}
 
 void ToastManager::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);

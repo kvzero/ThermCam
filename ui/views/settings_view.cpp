@@ -8,6 +8,7 @@
 #include "hardware/storage/storage_manager.h"
 #include "ui/app.h"
 
+#include <QMouseEvent>
 #include <QPainter>
 #include <QEasingCurve>
 #include <QDebug>
@@ -316,8 +317,6 @@ std::vector<SecondaryItemData> visibleSecondaryItems(int primaryIndex,
 // ============================================================
 
 SettingsTopBar::SettingsTopBar(QWidget* parent) : QWidget(parent) {
-    setProperty("isInteractable", true);
-    setProperty("allowSlideTrigger", false);
 }
 
 void SettingsTopBar::setTitle(const QString& title) {
@@ -343,20 +342,41 @@ SettingsTopBar::PressZone SettingsTopBar::zoneAt(const QPoint& pos) const {
     return PressZone::None;
 }
 
-void SettingsTopBar::onInteractionBegin(const InteractionEvent& event) {
-    m_pressedZone = zoneAt(event.currentLocal);
-    m_lastPos = event.currentLocal;
+void SettingsTopBar::mousePressEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton) {
+        QWidget::mousePressEvent(event);
+        return;
+    }
+
+    m_pressedZone = zoneAt(event->pos());
+    if (m_pressedZone == PressZone::None) {
+        event->ignore();
+        return;
+    }
+
+    m_lastPos = event->pos();
     update();
+    event->accept();
 }
 
-InteractionUpdateDecision SettingsTopBar::onInteractionUpdate(const InteractionEvent& event) {
-    if (m_pressedZone == PressZone::None) return InteractionUpdateDecision::ReleaseOwner;
-    m_lastPos = event.currentLocal;
+void SettingsTopBar::mouseMoveEvent(QMouseEvent* event) {
+    if (m_pressedZone == PressZone::None || !(event->buttons() & Qt::LeftButton)) {
+        QWidget::mouseMoveEvent(event);
+        return;
+    }
+
+    m_lastPos = event->pos();
     update();
-    return InteractionUpdateDecision::KeepOwner;
+    event->accept();
 }
 
-void SettingsTopBar::onInteractionEnd(const InteractionEvent& /*event*/) {
+void SettingsTopBar::mouseReleaseEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton || m_pressedZone == PressZone::None) {
+        QWidget::mouseReleaseEvent(event);
+        return;
+    }
+
+    m_lastPos = event->pos();
     if (m_pressedZone == PressZone::Back && zoneAt(m_lastPos) == PressZone::Back) {
         emit backTriggered();
     } else if (m_pressedZone == PressZone::Close && zoneAt(m_lastPos) == PressZone::Close) {
@@ -364,12 +384,7 @@ void SettingsTopBar::onInteractionEnd(const InteractionEvent& /*event*/) {
     }
     m_pressedZone = PressZone::None;
     update();
-}
-
-void SettingsTopBar::onInteractionCancel() {
-    if (m_pressedZone == PressZone::None) return;
-    m_pressedZone = PressZone::None;
-    update();
+    event->accept();
 }
 
 void SettingsTopBar::resizeEvent(QResizeEvent* /*event*/) {
@@ -408,8 +423,13 @@ void SettingsTopBar::paintEvent(QPaintEvent* /*event*/) {
         p.drawText(r, Qt::AlignCenter, iconGlyph);
     };
 
-    drawButton(m_backRect, kTopBarBackIcon, m_pressedZone == PressZone::Back);
-    drawButton(m_closeRect, kTopBarCloseIcon, m_pressedZone == PressZone::Close);
+    const PressZone currentZone = zoneAt(m_lastPos);
+    drawButton(m_backRect,
+               kTopBarBackIcon,
+               m_pressedZone == PressZone::Back && currentZone == PressZone::Back);
+    drawButton(m_closeRect,
+               kTopBarCloseIcon,
+               m_pressedZone == PressZone::Close && currentZone == PressZone::Close);
 
     QFont titleFont("Roboto");
     titleFont.setPixelSize(qRound(height() * 0.33));
@@ -433,6 +453,7 @@ SettingsView::SettingsView(QWidget* parent) : BaseView(parent) {
 
     m_scrollIndicator = new ScrollIndicator(this);
     connect(m_scrollIndicator, &ScrollIndicator::opacityChanged, this, QOverload<>::of(&QWidget::update));
+    initBubbles();
 
     m_leftScrollAnim = new QPropertyAnimation(this, "leftScroll", this);
     m_leftScrollAnim->setDuration(m_cfg.SNAP_DURATION_MS);
@@ -501,38 +522,94 @@ void SettingsView::onEnter() {
 }
 
 void SettingsView::onExit() {
+    cancelPointerSession();
+    dismissBubblesImmediately();
     m_leftScrollAnim->stop();
     m_rightScrollAnim->stop();
     m_splitAnim->stop();
 }
 
-void SettingsView::onInteractionBegin(const InteractionEvent& /*event*/) {
-    m_lastDx = 0;
-    m_lastDy = 0;
+void SettingsView::mousePressEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton) {
+        BaseView::mousePressEvent(event);
+        return;
+    }
+
+    startPointerSession(event->pos(), true);
+    event->accept();
+}
+
+void SettingsView::mouseMoveEvent(QMouseEvent* event) {
+    if (!m_pressActive || !(event->buttons() & Qt::LeftButton)) {
+        BaseView::mouseMoveEvent(event);
+        return;
+    }
+
+    updatePointerSession(event->pos());
+    event->accept();
+}
+
+void SettingsView::mouseReleaseEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton || !m_pressActive) {
+        BaseView::mouseReleaseEvent(event);
+        return;
+    }
+
+    finishPointerSession(event->pos());
+    event->accept();
+}
+
+void SettingsView::startPointerSession(const QPoint& pos, bool allowRowPress) {
+    cancelPointerSession();
+    m_pressActive = true;
+    m_pressStartPos = pos;
+    m_lastPos = pos;
+    m_previousSamplePos = pos;
+    m_velocityPxPerMs = QPointF();
+    m_velocityTimer.restart();
+    m_previousSampleMs = 0;
+
     m_swipeAxis = SwipeAxis::None;
     m_dragStartLeft = m_leftScroll;
     m_dragStartRight = m_rightScroll;
 
     m_leftScrollAnim->stop();
     m_rightScrollAnim->stop();
+
+    m_pressedRow = allowRowPress ? rowAt(pos) : nullptr;
+    if (m_pressedRow && !m_pressedRow->beginPress(m_pressedRow->mapFromParent(pos))) {
+        m_pressedRow = nullptr;
+    }
 }
 
-InteractionUpdateDecision SettingsView::onInteractionUpdate(const InteractionEvent& event) {
-    const QPoint start = event.startGlobal;
-    const int dx = event.deltaFromStartGlobal.x();
-    const int dy = event.deltaFromStartGlobal.y();
-    m_lastDx = dx;
-    m_lastDy = dy;
+void SettingsView::updatePointerSession(const QPoint& pos) {
+    if (!m_pressActive) return;
+
+    updateDragVelocity(pos);
+    m_lastPos = pos;
+
+    const int dx = pos.x() - m_pressStartPos.x();
+    const int dy = pos.y() - m_pressStartPos.y();
+    const int threshold = m_pressedRow
+                              ? qMax(m_cfg.DEADZONE_PX, qRound(m_pressedRow->height() * 0.12))
+                              : m_cfg.DEADZONE_PX;
 
     if (m_swipeAxis == SwipeAxis::None) {
-        if (std::abs(dx) > m_cfg.DEADZONE_PX || std::abs(dy) > m_cfg.DEADZONE_PX) {
+        if (std::abs(dx) > threshold || std::abs(dy) > threshold) {
             m_swipeAxis = (std::abs(dx) > std::abs(dy)) ? SwipeAxis::Horizontal : SwipeAxis::Vertical;
         }
     }
-    if (m_swipeAxis != SwipeAxis::Vertical) return InteractionUpdateDecision::KeepOwner;
+
+    if (m_swipeAxis != SwipeAxis::None) {
+        cancelActiveRowPress();
+    } else if (m_pressedRow) {
+        m_pressedRow->updatePress(m_pressedRow->mapFromParent(pos));
+    }
+
+    if (m_swipeAxis != SwipeAxis::Vertical) return;
 
     if (m_mode == PanelMode::Expanded && m_splitProgress > 0.95) {
-        m_scrollTarget = (start.x() > leftPanelWidth()) ? ScrollTarget::Right : ScrollTarget::Left;
+        m_scrollTarget = (m_pressStartPos.x() > leftPanelWidth()) ? ScrollTarget::Right : ScrollTarget::Left;
     } else {
         m_scrollTarget = ScrollTarget::Left;
     }
@@ -544,16 +621,30 @@ InteractionUpdateDecision SettingsView::onInteractionUpdate(const InteractionEve
         qreal candidate = m_dragStartRight - dy;
         setRightScroll(applyOverscroll(candidate, rightMaxScroll()));
     }
-    return InteractionUpdateDecision::KeepOwner;
 }
 
-void SettingsView::onInteractionEnd(const InteractionEvent& event) {
-    const QPoint start = event.startGlobal;
-    const int dx = event.deltaFromStartGlobal.x();
-    const float vy = event.velocityPxPerMs.y();
+void SettingsView::finishPointerSession(const QPoint& pos) {
+    if (!m_pressActive) return;
+
+    updateDragVelocity(pos);
+    m_pressActive = false;
+    m_lastPos = pos;
+
+    const int dx = pos.x() - m_pressStartPos.x();
+    if (m_swipeAxis == SwipeAxis::None) {
+        auto* row = m_pressedRow;
+        m_pressedRow = nullptr;
+        if (row) {
+            row->releasePress(row->mapFromParent(pos));
+        }
+        return;
+    }
+
+    cancelActiveRowPress();
+
     if (m_swipeAxis == SwipeAxis::Horizontal) {
         const int edgeZone = qRound(width() * m_cfg.SWIPE_BACK_EDGE_RATIO);
-        if (start.x() < edgeZone && dx > width() * m_cfg.SWIPE_BACK_DIST_RATIO) {
+        if (m_pressStartPos.x() < edgeZone && dx > width() * m_cfg.SWIPE_BACK_DIST_RATIO) {
             if (m_mode == PanelMode::Expanded) {
                 collapseToSingle();
             } else {
@@ -564,11 +655,58 @@ void SettingsView::onInteractionEnd(const InteractionEvent& event) {
     }
 
     if (m_swipeAxis == SwipeAxis::Vertical) {
-        settleScroll(m_scrollTarget == ScrollTarget::Left, vy);
+        settleScroll(m_scrollTarget == ScrollTarget::Left,
+                     static_cast<float>(m_velocityPxPerMs.y()));
     }
 }
 
-void SettingsView::onInteractionCancel() {
+void SettingsView::cancelActiveRowPress() {
+    if (!m_pressedRow) return;
+    m_pressedRow->cancelPress();
+    m_pressedRow = nullptr;
+}
+
+void SettingsView::updateDragVelocity(const QPoint& pos) {
+    const qint64 elapsedMs = m_velocityTimer.isValid() ? m_velocityTimer.elapsed() : 0;
+    if (m_previousSampleMs <= 0) {
+        m_previousSampleMs = elapsedMs;
+        m_previousSamplePos = pos;
+        return;
+    }
+
+    const qint64 dtMs = elapsedMs - m_previousSampleMs;
+    if (dtMs <= 0) return;
+
+    const QPoint delta = pos - m_previousSamplePos;
+    if (!delta.isNull()) {
+        const QPointF instant(static_cast<qreal>(delta.x()) / static_cast<qreal>(dtMs),
+                              static_cast<qreal>(delta.y()) / static_cast<qreal>(dtMs));
+        m_velocityPxPerMs = (m_velocityPxPerMs * 0.45) + (instant * 0.55);
+    }
+
+    m_previousSampleMs = elapsedMs;
+    m_previousSamplePos = pos;
+}
+
+SettingsBaseRow* SettingsView::rowAt(const QPoint& pos) const {
+    if (pos.y() < topBarHeight()) return nullptr;
+
+    auto findRow = [pos](const auto& rows) -> SettingsBaseRow* {
+        for (auto* row : rows) {
+            if (row && row->isVisible() && row->geometry().contains(pos)) {
+                return row;
+            }
+        }
+        return nullptr;
+    };
+
+    if (auto* row = findRow(m_secondaryRows)) return row;
+    return findRow(m_primaryRows);
+}
+
+void SettingsView::cancelPointerSession() {
+    m_pressActive = false;
+    cancelActiveRowPress();
     m_swipeAxis = SwipeAxis::None;
 }
 
@@ -605,6 +743,7 @@ void SettingsView::setSplitProgress(qreal v) {
 
 void SettingsView::resizeEvent(QResizeEvent* /*event*/) {
     relayoutRows();
+    resizeBubbles();
 }
 
 void SettingsView::paintEvent(QPaintEvent* /*event*/) {
@@ -632,6 +771,115 @@ void SettingsView::paintEvent(QPaintEvent* /*event*/) {
         QRect singleRect(0, topH, width(), height() - topH);
         m_scrollIndicator->paint(p, singleRect);
     }
+}
+
+void SettingsView::initBubbles() {
+    m_radioListBubble = new RadioListBubble(this);
+    m_radioListBubble->hide();
+    connectBubble(m_radioListBubble);
+
+    m_sliderBubble = new SliderBubble(this);
+    m_sliderBubble->hide();
+    connectBubble(m_sliderBubble);
+
+    m_stepperBubble = new StepperBubble(this);
+    m_stepperBubble->hide();
+    connectBubble(m_stepperBubble);
+}
+
+void SettingsView::connectBubble(BubbleBase* bubble) {
+    if (!bubble) return;
+
+    connect(bubble, &BubbleBase::outsideDragStarted,
+            this, &SettingsView::onBubbleOutsideDragStarted);
+    connect(bubble, &BubbleBase::outsideDragMoved,
+            this, &SettingsView::onBubbleOutsideDragMoved);
+    connect(bubble, &BubbleBase::outsideDragReleased,
+            this, &SettingsView::onBubbleOutsideDragReleased);
+    connect(bubble, &BubbleBase::outsideDragCanceled,
+            this, &SettingsView::onBubbleOutsideDragCanceled);
+}
+
+void SettingsView::resizeBubbles() {
+    const QRect bounds = rect();
+    if (m_radioListBubble) m_radioListBubble->setGeometry(bounds);
+    if (m_sliderBubble) m_sliderBubble->setGeometry(bounds);
+    if (m_stepperBubble) m_stepperBubble->setGeometry(bounds);
+}
+
+void SettingsView::raiseVisibleBubbles() {
+    if (m_radioListBubble && m_radioListBubble->isVisible()) m_radioListBubble->raise();
+    if (m_sliderBubble && m_sliderBubble->isVisible()) m_sliderBubble->raise();
+    if (m_stepperBubble && m_stepperBubble->isVisible()) m_stepperBubble->raise();
+}
+
+void SettingsView::dismissBubblesImmediately() {
+    if (m_radioListBubble && m_radioListBubble->isVisible()) {
+        m_radioListBubble->dismissImmediately();
+    }
+    if (m_sliderBubble && m_sliderBubble->isVisible()) {
+        m_sliderBubble->dismissImmediately();
+    }
+    if (m_stepperBubble && m_stepperBubble->isVisible()) {
+        m_stepperBubble->dismissImmediately();
+    }
+}
+
+void SettingsView::showRadioListBubble(const RadioListBubble::Spec& spec,
+                                       const BubbleAnchorContext& anchor) {
+    if (!m_radioListBubble) return;
+    if (m_sliderBubble && m_sliderBubble->isVisible()) {
+        m_sliderBubble->dismissImmediately();
+    }
+    if (m_stepperBubble && m_stepperBubble->isVisible()) {
+        m_stepperBubble->dismissImmediately();
+    }
+    m_radioListBubble->raise();
+    m_radioListBubble->present(spec, anchor);
+}
+
+void SettingsView::showSliderBubble(const SliderBubble::Spec& spec,
+                                    const BubbleAnchorContext& anchor) {
+    if (!m_sliderBubble) return;
+    if (m_radioListBubble && m_radioListBubble->isVisible()) {
+        m_radioListBubble->dismissImmediately();
+    }
+    if (m_stepperBubble && m_stepperBubble->isVisible()) {
+        m_stepperBubble->dismissImmediately();
+    }
+    m_sliderBubble->raise();
+    m_sliderBubble->present(spec, anchor);
+}
+
+void SettingsView::showStepperBubble(const StepperBubble::Spec& spec,
+                                     const BubbleAnchorContext& anchor) {
+    if (!m_stepperBubble) return;
+    if (m_radioListBubble && m_radioListBubble->isVisible()) {
+        m_radioListBubble->dismissImmediately();
+    }
+    if (m_sliderBubble && m_sliderBubble->isVisible()) {
+        m_sliderBubble->dismissImmediately();
+    }
+    m_stepperBubble->raise();
+    m_stepperBubble->present(spec, anchor);
+}
+
+void SettingsView::onBubbleOutsideDragStarted(const QPoint& startGlobal,
+                                              const QPoint& currentGlobal) {
+    startPointerSession(mapFromGlobal(startGlobal), false);
+    updatePointerSession(mapFromGlobal(currentGlobal));
+}
+
+void SettingsView::onBubbleOutsideDragMoved(const QPoint& currentGlobal) {
+    updatePointerSession(mapFromGlobal(currentGlobal));
+}
+
+void SettingsView::onBubbleOutsideDragReleased(const QPoint& finalGlobal) {
+    finishPointerSession(mapFromGlobal(finalGlobal));
+}
+
+void SettingsView::onBubbleOutsideDragCanceled() {
+    cancelPointerSession();
 }
 
 void SettingsView::onPrimaryRowActivated() {
@@ -669,7 +917,6 @@ void SettingsView::onSecondaryRowActivated() {
     };
 
     auto* app = qobject_cast<App*>(window());
-    if (!app) return;
 
     switch (item.id) {
     case SettingID::Emissivity: {
@@ -731,7 +978,7 @@ void SettingsView::onSecondaryRowActivated() {
         };
         spec.onDismissed = [previewTimer]() { previewTimer->stop(); };
 
-        app->showSliderBubble(spec, buildAnchor());
+        showSliderBubble(spec, buildAnchor());
         return;
     }
     case SettingID::SeekVisionEnabled: {
@@ -775,7 +1022,7 @@ void SettingsView::onSecondaryRowActivated() {
             applyPatchFromUi(patch);
         };
 
-        app->showRadioListBubble(spec, buildAnchor());
+        showRadioListBubble(spec, buildAnchor());
         return;
     }
     case SettingID::LinearAgcMin: {
@@ -813,7 +1060,7 @@ void SettingsView::onSecondaryRowActivated() {
             applyPatchFromUi(patch);
         };
 
-        app->showStepperBubble(spec, buildAnchor());
+        showStepperBubble(spec, buildAnchor());
         return;
     }
     case SettingID::LinearAgcMax: {
@@ -851,7 +1098,7 @@ void SettingsView::onSecondaryRowActivated() {
             applyPatchFromUi(patch);
         };
 
-        app->showStepperBubble(spec, buildAnchor());
+        showStepperBubble(spec, buildAnchor());
         return;
     }
     case SettingID::ShutterAutoEnabled: {
@@ -863,6 +1110,7 @@ void SettingsView::onSecondaryRowActivated() {
         return;
     }
     case SettingID::TriggerFlatSceneCorrection: {
+        if (!app) return;
         app->showTextModal(
             QStringLiteral("WARNING: Risk of image ghosting!\n"
                         "Fully cover lens with a flat object before continuing."),
@@ -906,7 +1154,7 @@ void SettingsView::onSecondaryRowActivated() {
             applyPatchFromUi(patch);
         };
 
-        app->showStepperBubble(spec, buildAnchor());
+        showStepperBubble(spec, buildAnchor());
         return;
     }
     case SettingID::TemperatureUnit: {
@@ -935,7 +1183,7 @@ void SettingsView::onSecondaryRowActivated() {
             applyPatchFromUi(patch);
         };
 
-        app->showRadioListBubble(spec, buildAnchor());
+        showRadioListBubble(spec, buildAnchor());
         return;
     }
     case SettingID::StoragePriority: {
@@ -965,7 +1213,7 @@ void SettingsView::onSecondaryRowActivated() {
             applyPatchFromUi(patch);
         };
 
-        app->showRadioListBubble(spec, buildAnchor());
+        showRadioListBubble(spec, buildAnchor());
         return;
     }
     case SettingID::OSDOverlay: {
@@ -1049,7 +1297,7 @@ void SettingsView::onSecondaryRowActivated() {
         };
         spec.onDismissed = [previewTimer]() { previewTimer->stop(); };
 
-        app->showSliderBubble(spec, buildAnchor());
+        showSliderBubble(spec, buildAnchor());
         return;
     }
     case SettingID::AudioVolume: {
@@ -1116,7 +1364,7 @@ void SettingsView::onSecondaryRowActivated() {
         };
         spec.onDismissed = [previewTimer]() { previewTimer->stop(); };
 
-        app->showSliderBubble(spec, buildAnchor());
+        showSliderBubble(spec, buildAnchor());
         return;
     }
     case SettingID::Palette:
@@ -1128,6 +1376,7 @@ void SettingsView::onSecondaryRowActivated() {
         const bool sdCard = (item.id == SettingID::SdCardSafeEject);
         const QString targetName = sdCard ? QStringLiteral("SD Card")
                                           : QStringLiteral("USB Disk");
+        if (!app) return;
         app->showTextModal(
             QString("Safely eject %1?\nWait for completion before unplugging.").arg(targetName),
             [this, app, targetName, sdCard]() {
@@ -1166,6 +1415,7 @@ void SettingsView::onSecondaryRowActivated() {
         const bool sdCard = (item.id == SettingID::SdCardFormat);
         const QString targetName = sdCard ? QStringLiteral("SD Card")
                                           : QStringLiteral("USB Disk");
+        if (!app) return;
         app->showTextModal(QString("Format %1?\nAll files will be erased.").arg(targetName),
                            [this, app, targetName, sdCard]() {
                                auto* storage = HardwareManager::instance().storage();
@@ -1217,6 +1467,7 @@ void SettingsView::onTopBarCloseTriggered() {
 }
 
 void SettingsView::buildPrimaryRows() {
+    cancelActiveRowPress();
     for (auto* row : m_primaryRows) delete row;
     m_primaryRows.clear();
 
@@ -1229,6 +1480,7 @@ void SettingsView::buildPrimaryRows() {
 }
 
 void SettingsView::rebuildSecondaryRows(int primaryIndex) {
+    cancelActiveRowPress();
     for (auto* row : m_secondaryRows) delete row;
     m_secondaryRows.clear();
 
@@ -1282,6 +1534,7 @@ void SettingsView::relayoutRows() {
     }
 
     m_topBar->raise();
+    raiseVisibleBubbles();
     update();
 }
 

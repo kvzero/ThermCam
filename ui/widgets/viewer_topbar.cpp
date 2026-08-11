@@ -2,11 +2,10 @@
 #include "core/global_context.h"
 #include <QEasingCurve>
 #include <QDateTime>
+#include <QMouseEvent>
 #include <QPainterPath>
 
 ViewerTopBar::ViewerTopBar(QWidget* parent) : QWidget(parent) {
-    setProperty("isInteractable", true);
-
     m_hideTimer = new QTimer(this);
     m_hideTimer->setSingleShot(true);
     connect(m_hideTimer, &QTimer::timeout, this, &ViewerTopBar::initiateFadeOut);
@@ -64,13 +63,53 @@ void ViewerTopBar::triggerGlowAnimation(QPropertyAnimation* anim, bool active) {
     }
 }
 
-void ViewerTopBar::onInteractionBegin(const InteractionEvent& event) {
-    (void)onInteractionUpdate(event);
+void ViewerTopBar::mousePressEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton) {
+        QWidget::mousePressEvent(event);
+        return;
+    }
+
+    m_pressActive = updateHoverAt(event->pos());
+    if (!m_pressActive) {
+        event->ignore();
+        return;
+    }
+    event->accept();
 }
 
-InteractionUpdateDecision ViewerTopBar::onInteractionUpdate(const InteractionEvent& event) {
-    const QPoint localPos = event.currentLocal;
-    if (m_opacity < 0.1) return InteractionUpdateDecision::ReleaseOwner;
+void ViewerTopBar::mouseMoveEvent(QMouseEvent* event) {
+    if (!m_pressActive || !(event->buttons() & Qt::LeftButton)) {
+        QWidget::mouseMoveEvent(event);
+        return;
+    }
+
+    updateHoverAt(event->pos());
+    event->accept();
+}
+
+void ViewerTopBar::mouseReleaseEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton || !m_pressActive) {
+        QWidget::mouseReleaseEvent(event);
+        return;
+    }
+
+    m_pressActive = false;
+
+    if (m_hoverBack) {
+        emit backRequested();
+    } else if (m_hoverDelete) {
+        emit deleteRequested();
+    }
+
+    clearHover();
+    event->accept();
+}
+
+bool ViewerTopBar::updateHoverAt(const QPoint& localPos) {
+    if (m_opacity < 0.1) {
+        clearHover();
+        return false;
+    }
 
     m_lastGlowPos = localPos;
 
@@ -92,39 +131,21 @@ InteractionUpdateDecision ViewerTopBar::onInteractionUpdate(const InteractionEve
      m_hoverTime = newHoverTime;
      update();
 
-
     // Keep the bar alive while interacting
     if (newHoverBack || newHoverDel || newHoverTime) {
         m_hideTimer->start(m_cfg.FADE_DELAY_MS);
         emit interactionActive();
-        return InteractionUpdateDecision::KeepOwner;
+        return true;
     }
-    return InteractionUpdateDecision::ReleaseOwner;
+    return false;
 }
 
-void ViewerTopBar::onInteractionEnd(const InteractionEvent& /*event*/) {
+void ViewerTopBar::clearHover() {
     // Turn off all glows
     triggerGlowAnimation(m_backGlowAnim, false);
     triggerGlowAnimation(m_deleteGlowAnim, false);
     triggerGlowAnimation(m_timeGlowAnim, false);
 
-    if (m_hoverBack) {
-        emit backRequested();
-    } else if (m_hoverDelete) {
-        emit deleteRequested();
-    }
-    // Time label is usually purely informational, so no action on hoverTime
-
-    m_hoverBack = false;
-    m_hoverDelete = false;
-    m_hoverTime = false;
-    update();
-}
-
-void ViewerTopBar::onInteractionCancel() {
-    triggerGlowAnimation(m_backGlowAnim, false);
-    triggerGlowAnimation(m_deleteGlowAnim, false);
-    triggerGlowAnimation(m_timeGlowAnim, false);
     m_hoverBack = false;
     m_hoverDelete = false;
     m_hoverTime = false;

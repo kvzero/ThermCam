@@ -4,7 +4,6 @@
 #include <QWidget>
 #include <core/types.h>
 #include "ui/overlays/modal_dialog.h"
-#include "ui/overlays/bubble_dialog.h"
 
 class QStackedWidget;
 class BaseView;
@@ -20,7 +19,6 @@ class TextModal;
  * @brief The Root UI Container (Body).
  *
  * Manages the physical layout, Z-order layering, and view lifecycle.
- * It provides the "stage" for InteractionArbiter to orchestrate logic.
  *
  * Layer Structure:
  * - Layer 0: View Stack (Camera, Gallery, Settings)
@@ -55,24 +53,11 @@ public:
      */
     BaseView* activeView() const;
 
-    /**
-     * @brief Locate a widget at global coordinates.
-     * Used by InteractionArbiter for touch routing and hit testing.
-     */
-    QWidget* findWidgetAt(const QPoint& globalPos);
-
     /* --- Accessors for System Overlays --- */
     // QuickSettings* quickSettings() const;
     void showTextModal(const QString& title,
                        std::function<void()> onPrimaryAction,
                            ModalLevel level = ModalLevel::Critical);
-    void showRadioListBubble(const RadioListBubble::Spec& spec,
-                             const BubbleAnchorContext& anchor);
-    void showSliderBubble(const SliderBubble::Spec& spec,
-                          const BubbleAnchorContext& anchor);
-    void showStepperBubble(const StepperBubble::Spec& spec,
-                           const BubbleAnchorContext& anchor);
-    void dismissBubble();
     void showToast(const QString& message, ToastLevel level);
 
 protected:
@@ -85,6 +70,10 @@ protected:
 private:
     void initLayer_Stack();
     void initLayer_Overlays();
+    void connectHardwareKeys();
+    void handleHardwareKeyPressed();
+    void handleHardwareKeyShortPress();
+    void handleHardwareKeyLongPress();
 
     /* Layer 0: Business Views */
     QStackedWidget* m_viewStack = nullptr;
@@ -98,9 +87,6 @@ private:
     /* Layer 2: Global System Overlays */
     // QuickSettings* m_quickSettings = nullptr;
     TextModal* m_textModal = nullptr;
-    RadioListBubble* m_radioListBubble = nullptr;
-    SliderBubble* m_sliderBubble = nullptr;
-    StepperBubble* m_stepperBubble = nullptr;
     ToastManager* m_toastManager = nullptr;
 };
 

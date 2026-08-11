@@ -2,7 +2,7 @@
 #include "hardware_manager.h"
 #include "hardware/rga/rga_image.h"
 #include "imaging/thermal_camera.h"
-#include "hardware/hmi/input_manager.h"
+#include "hardware/hmi/key_manager.h"
 #include "hardware/hmi/haptic_provider.h"
 #include "hardware/hmi/system_control.h"
 #include "hardware/sensor/battery_monitor.h"
@@ -21,9 +21,9 @@ bool HardwareManager::init() {
 
     RgaImage::globalInit();
 
-    m_input = new InputManager(this);
-    if (!m_input->init()) {
-        qWarning() << "HardwareManager: InputManager failed";
+    m_keys = new KeyManager(this);
+    if (!m_keys->init()) {
+        qWarning() << "HardwareManager: KeyManager failed";
     }
 
     m_haptic = &HapticProvider::instance();

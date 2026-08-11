@@ -3,26 +3,24 @@
 
 #include <QWidget>
 #include "ui/settings_menu_types.h"
-#include "ui/interaction_target.h"
 
 /**
- * @brief Shared press-owner contract for settings rows under InteractionArbiter delegation.
+ * @brief Shared press state for settings rows owned by SettingsView.
  *
- * Owns per-row gesture intent gating (press highlight, vertical-scroll cancel,
- * and release-time activation) while a touch stream is captured by this row.
+ * Rows are painted QWidget items, not mouse-event owners. SettingsView owns the
+ * page gesture and calls these methods to arm, cancel, or release row activation.
  */
-class SettingsBaseRow : public QWidget, public InteractionTarget {
+class SettingsBaseRow : public QWidget {
     Q_OBJECT
-    Q_INTERFACES(InteractionTarget)
 public:
     /* --- Lifecycle --- */
     explicit SettingsBaseRow(QWidget* parent = nullptr);
 
-    /* --- InteractionTarget Contract --- */
-    void onInteractionBegin(const InteractionEvent& event) override;
-    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
-    void onInteractionEnd(const InteractionEvent& event) override;
-    void onInteractionCancel() override;
+    /* --- Press Contract Owned By SettingsView --- */
+    bool beginPress(const QPoint& localPos);
+    void updatePress(const QPoint& localPos);
+    void releasePress(const QPoint& localPos);
+    void cancelPress();
 
 signals:
     /* --- Cross-Module Signals --- */
@@ -47,7 +45,6 @@ private:
     bool m_activationArmed = false;
     bool m_isPressed = false;
     bool m_clickCanceled = false;
-    QPoint m_pressPos;
     QPoint m_lastPos;
 };
 

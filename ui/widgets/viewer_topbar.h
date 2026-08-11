@@ -8,16 +8,16 @@
 #include <QRect>
 #include <QPainter>
 #include "core/types.h"
-#include "ui/interaction_target.h"
+
+class QMouseEvent;
 
 /**
  * @brief Render helper for the Media Viewer's top control bar.
  * Handles auto-hiding, hit-testing, and drawing the Back/Delete actions.
  * Operates purely in physical coordinates without QWidget overhead.
  */
-class ViewerTopBar : public QWidget, public InteractionTarget  {
+class ViewerTopBar : public QWidget {
     Q_OBJECT
-    Q_INTERFACES(InteractionTarget)
     Q_PROPERTY(qreal opacity READ opacity WRITE setOpacity)
     Q_PROPERTY(qreal backGlow READ backGlow WRITE setBackGlow)
     Q_PROPERTY(qreal deleteGlow READ deleteGlow WRITE setDeleteGlow)
@@ -33,12 +33,6 @@ public:
 
     /** @brief Update the displayed file metadata */
     void updateInfo(const MediaFileInfo& info);
-
-    /** --- InteractionTarget Contract --- */
-    void onInteractionBegin(const InteractionEvent& event) override;
-    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
-    void onInteractionEnd(const InteractionEvent& event) override;
-    void onInteractionCancel() override;
 
     /** @brief Main render pass */
     qreal opacity() const { return m_opacity; }
@@ -59,6 +53,9 @@ signals:
     void interactionActive();
 
 protected:
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
 
 private slots:
@@ -89,6 +86,7 @@ private:
     QRectF m_deleteRect;
     bool m_hoverBack = false;
     bool m_hoverDelete = false;
+    bool m_pressActive = false;
 
     // --- Additional Hit Testing Geometry & Glow State ---
     QRectF m_timeRect; // Store the time text rect for hit testing
@@ -105,6 +103,8 @@ private:
 
     void triggerGlowAnimation(QPropertyAnimation* anim, bool active);
     void drawGlowEffect(QPainter& p, const QPainterPath& clipPath, qreal glowAlpha);
+    bool updateHoverAt(const QPoint& pos);
+    void clearHover();
 };
 
 #endif // VIEWER_TOPBAR_H

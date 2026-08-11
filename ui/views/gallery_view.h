@@ -3,10 +3,13 @@
 
 #include "ui/views/base_view.h"
 #include "ui/overlays/media_viewer.h"
+#include <QElapsedTimer>
 #include <QPropertyAnimation>
 #include <QSet>
 #include <QTimer>
 
+class QGestureEvent;
+class QMouseEvent;
 class GalleryTopBar;
 class ScrollIndicator;
 
@@ -32,15 +35,6 @@ public:
     void onExit() override;
     void handleKeyShortPress() override {}
 
-    /* --- InteractionTarget Contract --- */
-    void onInteractionBegin(const InteractionEvent& event) override;
-    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
-    void onInteractionEnd(const InteractionEvent& event) override;
-    void onInteractionCancel() override;
-    void onInteractionPinch(const QPoint& centerGlobal, float factor) override;
-    void onInteractionTap(const InteractionEvent& event) override;
-    void onInteractionLongPress(const InteractionEvent& event) override;
-
     /* --- Animation Property Accessors --- */
     qreal activeScroll() const { return m_activeScroll; }
     void setActiveScroll(qreal y);
@@ -49,6 +43,10 @@ public:
     void setZoomProgress(qreal p) { m_zoomProgress = p; update(); }
 
 protected:
+    bool event(QEvent* event) override;
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
 
@@ -99,6 +97,10 @@ private:
 
         const int   MOMENTUM_DURATION           = 800;
         const int   SNAP_DURATION               = 350;
+        const int   SWIPE_THRESHOLD_PX          = 10;
+        const int   TAP_MAX_TIME_MS             = 250;
+        const int   LONG_PRESS_TIME_MS          = 1500;
+        const qreal VELOCITY_MAX_PX_PER_MS      = 4.0;
     } m_cfg;
 
     /* --- Core State Machine --- */
@@ -124,9 +126,17 @@ private:
     QPoint m_lastDragPos;
     int m_dragAnchorIndex = -1;
 
-    /* --- Gesture Deltas --- */
-    int m_lastGestureDx = 0;
-    int m_lastGestureDy = 0;
+    /* --- Pointer Session State --- */
+    bool m_pressActive = false;
+    bool m_swipeStarted = false;
+    bool m_longPressTriggered = false;
+    QPoint m_pressStartPos;
+    QPoint m_lastPos;
+    QPoint m_previousSamplePos;
+    QPointF m_velocityPxPerMs;
+    QElapsedTimer m_pressTimer;
+    QElapsedTimer m_velocityTimer;
+    qint64 m_previousSampleMs = 0;
 
     /* --- Sub-Components --- */
     GalleryTopBar* m_topBar = nullptr;
@@ -134,6 +144,7 @@ private:
     MediaViewer* m_viewer = nullptr;
     QPropertyAnimation* m_scrollAnim = nullptr;
     QPropertyAnimation* m_zoomAnim = nullptr;
+    QTimer* m_longPressTimer = nullptr;
 
     /* --- Internal Math Helpers --- */
     int currentColumns() const { return (m_mode == GridMode::Col2) ? 2 : 4; }
@@ -147,6 +158,16 @@ private:
     void updateSelectionRange(const QPoint& currentPos);
     void requestDeleteSelected();
     void enforceStableState(float vy = 0.0f);
+    void startPointerSession(const QPoint& pos);
+    void updatePointerSession(const QPoint& pos);
+    void finishPointerSession(const QPoint& pos);
+    void cancelPointerSession();
+    void updatePointerVelocity(const QPoint& pos);
+    void handleTapAt(const QPoint& pos);
+    void triggerLongPressAt(const QPoint& pos);
+    bool handlePinchGesture(QGestureEvent* event);
+    void updatePinchAt(const QPoint& center, float factor);
+    void finishPinchGesture();
 
     /* --- Render Pipelines --- */
     void drawEmptyState(QPainter& p);

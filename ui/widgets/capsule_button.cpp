@@ -1,13 +1,10 @@
 #include "capsule_button.h"
 #include "core/event_bus.h"
+#include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 
 CapsuleButton::CapsuleButton(QWidget* parent) : QWidget(parent) {
-    // Stage 3 Protocol: We are an entity, but we refuse "Searchlight" hijacking
-    setProperty("isInteractable", true);
-    setProperty("allowSlideTrigger", false);
-
     m_longPressTimer = new QTimer(this);
     m_longPressTimer->setSingleShot(true);
     connect(m_longPressTimer, &QTimer::timeout, this, &CapsuleButton::longPressed);
@@ -24,22 +21,52 @@ CapsuleButton::CapsuleButton(QWidget* parent) : QWidget(parent) {
     setupAnim(&m_glowAnim, "glowOpacity");
 }
 
-void CapsuleButton::onInteractionBegin(const InteractionEvent& event) {
+void CapsuleButton::mousePressEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton) {
+        QWidget::mousePressEvent(event);
+        return;
+    }
+    beginPress(event->pos());
+    event->accept();
+}
+
+void CapsuleButton::mouseMoveEvent(QMouseEvent* event) {
+    if (!m_pressActive || !(event->buttons() & Qt::LeftButton)) {
+        QWidget::mouseMoveEvent(event);
+        return;
+    }
+    updatePress(event->pos());
+    event->accept();
+}
+
+void CapsuleButton::mouseReleaseEvent(QMouseEvent* event) {
+    if (event->button() != Qt::LeftButton || !m_pressActive) {
+        QWidget::mouseReleaseEvent(event);
+        return;
+    }
+    updatePress(event->pos());
+    finishPress();
+    event->accept();
+}
+
+void CapsuleButton::beginPress(const QPoint& pos) {
+    m_pressActive = true;
     m_isInside = true;
-    m_glowPos = event.currentLocal;
+    m_glowPos = pos;
 
     m_glowAnim->stop();
     m_glowAnim->setEndValue(1.0);
     m_glowAnim->start();
 
-    updateZone(event.currentLocal);
+    updateZone(pos);
 }
 
-InteractionUpdateDecision CapsuleButton::onInteractionUpdate(const InteractionEvent& event) {
-    const QPoint localPos = event.currentLocal;
-    m_glowPos = localPos;
-    bool wasInside = m_isInside;
-    m_isInside = rect().contains(localPos);
+void CapsuleButton::updatePress(const QPoint& pos) {
+    if (!m_pressActive) return;
+
+    m_glowPos = pos;
+    const bool wasInside = m_isInside;
+    m_isInside = rect().contains(pos);
 
     if (m_isInside) {
         if (!wasInside) {
@@ -47,11 +74,8 @@ InteractionUpdateDecision CapsuleButton::onInteractionUpdate(const InteractionEv
             m_glowAnim->stop();
             m_glowAnim->setEndValue(1.0);
             m_glowAnim->start();
-            updateZone(localPos);
-        } else {
-            // Continuous tracking
-            updateZone(localPos);
         }
+        updateZone(pos);
     } else if (wasInside) {
         // Regret logic: User slid out, suspend state but keep ownership
         m_longPressTimer->stop();
@@ -62,7 +86,18 @@ InteractionUpdateDecision CapsuleButton::onInteractionUpdate(const InteractionEv
     }
 
     update();
-    return InteractionUpdateDecision::KeepOwner; // We maintain strict ownership until release.
+}
+
+void CapsuleButton::finishPress() {
+    m_pressActive = false;
+    m_longPressTimer->stop();
+    m_glowAnim->stop();
+    m_glowAnim->setEndValue(0.0);
+    m_glowAnim->start();
+
+    m_currentZone = ActiveZone::None;
+    m_isInside = false;
+    update();
 }
 
 void CapsuleButton::updateZone(const QPoint& pos) {
@@ -107,35 +142,14 @@ void CapsuleButton::startLongPressTimer() {
     }
 }
 
-void CapsuleButton::onInteractionEnd(const InteractionEvent& /*event*/) {
-    m_longPressTimer->stop();
-    m_glowAnim->stop();
-    m_glowAnim->setEndValue(0.0);
-    m_glowAnim->start();
-
-    m_currentZone = ActiveZone::None;
-    m_isInside = false;
-    update();
-}
-
-void CapsuleButton::onInteractionCancel() {
-    m_longPressTimer->stop();
-    m_glowAnim->stop();
-    m_glowAnim->setEndValue(0.0);
-    m_glowAnim->start();
-
-    m_currentZone = ActiveZone::None;
-    m_isInside = false;
-    update();
-}
-
 void CapsuleButton::longPressed() {
     emit EventBus::instance().hapticRequested(4);
 
     if (m_currentZone == ActiveZone::None) return;
 
+    const ActiveZone selectedZone = m_currentZone;
     QRect halfRect;
-    if (m_currentZone == ActiveZone::Settings) {
+    if (selectedZone == ActiveZone::Settings) {
         halfRect = QRect(0, 0, width(), height() / 2);
     } else {
         halfRect = QRect(0, height() / 2, width(), height() / 2);
@@ -144,9 +158,11 @@ void CapsuleButton::longPressed() {
     QPoint globalTopLeft = this->mapToGlobal(halfRect.topLeft());
     QRect globalAnchor(globalTopLeft, halfRect.size());
 
-    if (m_currentZone == ActiveZone::Gallery) {
+    finishPress();
+
+    if (selectedZone == ActiveZone::Gallery) {
         emit EventBus::instance().galleryRequested(globalAnchor, TransitionMode::Auto);
-    } else if (m_currentZone == ActiveZone::Settings) {
+    } else if (selectedZone == ActiveZone::Settings) {
         emit EventBus::instance().settingsRequested(globalAnchor, TransitionMode::Auto);
     }
 }

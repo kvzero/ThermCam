@@ -24,7 +24,7 @@ SOURCES     +=  main.cpp \
                 hardware/rga/rga_image.cpp \
                 hardware/hmi/haptic_provider.cpp \
                 hardware/hmi/system_control.cpp \
-                hardware/hmi/input_manager.cpp \
+                hardware/hmi/key_manager.cpp \
                 hardware/sensor/battery_monitor.cpp \
                 hardware/storage/storage_manager.cpp \
                 processing/thermal_processor.cpp \
@@ -39,9 +39,7 @@ SOURCES     +=  main.cpp \
                 services/gallery_worker.cpp \
                 services/settings_service.cpp \
                 ui/app.cpp \
-                ui/gesture_recognizer.cpp \
                 ui/overlays/media_viewer.cpp \
-                ui/interaction_arbiter.cpp \
                 ui/views/camera_view.cpp \
                 ui/views/gallery_view.cpp \
                 ui/views/settings_view.cpp \
@@ -70,7 +68,7 @@ HEADERS     +=  core/global_context.h \
                 hardware/rga/rga_image.h \
                 hardware/hmi/haptic_provider.h \
                 hardware/hmi/system_control.h \
-                hardware/hmi/input_manager.h \
+                hardware/hmi/key_manager.h \
                 hardware/sensor/battery_monitor.h \
                 hardware/storage/storage_manager.h \
                 processing/thermal_processor.h \
@@ -86,10 +84,7 @@ HEADERS     +=  core/global_context.h \
                 services/gallery_worker.h \
                 services/settings_service.h \
                 ui/app.h \
-                ui/gesture_recognizer.h \
-                ui/interaction_target.h \
                 ui/overlays/media_viewer.h \
-                ui/interaction_arbiter.h \
                 ui/views/base_view.h \
                 ui/views/camera_view.h \
                 ui/views/gallery_view.h \

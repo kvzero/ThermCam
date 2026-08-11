@@ -2,70 +2,43 @@
 #include <QPainter>
 #include <QLinearGradient>
 #include <QFont>
-#include <QVariant>
 
 namespace {
 const QString kExpandChevronIcon = QString(QChar(0xea61));
 }
 
 SettingsBaseRow::SettingsBaseRow(QWidget* parent) : QWidget(parent) {
-    setProperty("isInteractable", true);
-    setProperty("allowSlideTrigger", false);
     setAttribute(Qt::WA_TranslucentBackground, true);
+    setAttribute(Qt::WA_TransparentForMouseEvents, true);
 }
 
-void SettingsBaseRow::onInteractionBegin(const InteractionEvent& event) {
-    m_activationArmed = isActivationArmed(event.currentLocal);
+bool SettingsBaseRow::beginPress(const QPoint& localPos) {
+    m_activationArmed = isActivationArmed(localPos);
     if (!m_activationArmed) {
         m_isPressed = false;
         m_clickCanceled = false;
-        return;
+        return false;
     }
 
     m_isPressed = true;
     m_clickCanceled = false;
-    m_pressPos = event.currentLocal;
-    m_lastPos = event.currentLocal;
+    m_lastPos = localPos;
     onPressStateChanged();
+    return true;
 }
 
-InteractionUpdateDecision SettingsBaseRow::onInteractionUpdate(const InteractionEvent& event) {
-    const QPoint localPos = event.currentLocal;
-    if (!m_activationArmed) return InteractionUpdateDecision::ReleaseOwner;
-    if (!m_isPressed) return InteractionUpdateDecision::ReleaseOwner;
+void SettingsBaseRow::updatePress(const QPoint& localPos) {
+    if (!m_activationArmed || !m_isPressed) return;
 
     m_lastPos = localPos;
-    const int dx = localPos.x() - m_pressPos.x();
-    const int dy = localPos.y() - m_pressPos.y();
-    const int threshold = qMax(6, qRound(height() * 0.12));
-
-    // Vertical drag means list scrolling intent, row should relinquish ownership.
-    if (std::abs(dy) > threshold && std::abs(dy) > std::abs(dx)) {
-        m_isPressed = false;
-        m_clickCanceled = true;
-        onPressStateChanged();
-        return InteractionUpdateDecision::ReleaseOwner;
-    }
-
-    // Horizontal drag means navigation gesture intent, row should relinquish ownership.
-    if (std::abs(dx) > threshold && std::abs(dx) > std::abs(dy)) {
-        m_isPressed = false;
-        m_clickCanceled = true;
-        onPressStateChanged();
-        return InteractionUpdateDecision::ReleaseOwner;
-    }
-
     if (!rect().contains(localPos)) {
-        m_isPressed = false;
-        m_clickCanceled = true;
-        onPressStateChanged();
-        return InteractionUpdateDecision::ReleaseOwner;
+        cancelPress();
+        return;
     }
-
-    return InteractionUpdateDecision::KeepOwner;
 }
 
-void SettingsBaseRow::onInteractionEnd(const InteractionEvent& /*event*/) {
+void SettingsBaseRow::releasePress(const QPoint& localPos) {
+    m_lastPos = localPos;
     const bool shouldActivate = m_activationArmed && m_isPressed && !m_clickCanceled &&
                                 rect().contains(m_lastPos);
     m_activationArmed = false;
@@ -76,7 +49,7 @@ void SettingsBaseRow::onInteractionEnd(const InteractionEvent& /*event*/) {
     if (shouldActivate) emit activated();
 }
 
-void SettingsBaseRow::onInteractionCancel() {
+void SettingsBaseRow::cancelPress() {
     if (!m_activationArmed && !m_isPressed && !m_clickCanceled) return;
     m_activationArmed = false;
     m_isPressed = false;

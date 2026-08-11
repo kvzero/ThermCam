@@ -2,6 +2,8 @@
 #define CORE_EVENT_BUS_H
 
 #include <QObject>
+#include <QRect>
+#include <QString>
 #include "core/types.h"
 
 /**
@@ -14,16 +16,19 @@ public:
 
 signals:
     /**
-     * @brief Fired when the physical Event-Key state changes.
-     * @param pressed True if the button is physically held down.
+     * @brief Fired immediately when the physical primary key is pressed.
      */
-    void rawKeySignal(bool pressed);
+    void keyPressed();
 
     /**
-     * @brief Fired when a new multi-touch synchronization frame is ready.
-     * @param points A snapshot of all active touch slots (Protocol B).
+     * @brief Fired when the primary key is released inside the short-press window.
      */
-    void rawTouchSignal(const QList<RawTouchPoint>& points);
+    void keyShortPressed();
+
+    /**
+     * @brief Fired once when the primary key remains held for the long-press window.
+     */
+    void keyLongPressed();
 
     /**
      * @brief Requests a system-wide toast notification.

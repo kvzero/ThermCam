@@ -1,15 +1,17 @@
 #ifndef UI_OVERLAYS_PALETTE_SELECTOR_H
 #define UI_OVERLAYS_PALETTE_SELECTOR_H
 
+#include <QElapsedTimer>
 #include <QImage>
 #include <QPoint>
+#include <QPointF>
 #include <QPropertyAnimation>
 #include <QVector>
 #include <QWidget>
 
 #include "processing/thermal_palette.h"
-#include "ui/interaction_target.h"
 
+class QMouseEvent;
 class QPainter;
 
 /**
@@ -18,9 +20,8 @@ class QPainter;
  * - Manages one interactive selection session from present() to dismiss().
  * - Emits semantic selection events; rendering/persistence is handled by upper layers.
  */
-class PaletteSelector : public QWidget, public InteractionTarget {
+class PaletteSelector : public QWidget {
     Q_OBJECT
-    Q_INTERFACES(InteractionTarget)
     Q_PROPERTY(qreal panelProgress READ panelProgress WRITE setPanelProgress)
     Q_PROPERTY(qreal centerIndex READ centerIndex WRITE setCenterIndex)
 
@@ -39,12 +40,6 @@ public:
     void setPreviewFrame(ThermalPalette::Id id, const QImage& frame);
     void clearPreviewFrames();
     QSize previewFrameSize() const;
-
-    /* --- InteractionTarget Contract --- */
-    void onInteractionBegin(const InteractionEvent& event) override;
-    InteractionUpdateDecision onInteractionUpdate(const InteractionEvent& event) override;
-    void onInteractionEnd(const InteractionEvent& event) override;
-    void onInteractionCancel() override;
 
     /* --- Animated Properties --- */
     qreal panelProgress() const { return m_panelProgress; }
@@ -65,10 +60,20 @@ signals:
     void selectionCommitted(ThermalPalette::Id id);
 
 protected:
+    void mousePressEvent(QMouseEvent* event) override;
+    void mouseMoveEvent(QMouseEvent* event) override;
+    void mouseReleaseEvent(QMouseEvent* event) override;
     void paintEvent(QPaintEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
 
 private:
+    /* --- Interaction Helpers --- */
+    void beginPress(const QPoint& localPos);
+    void updatePress(const QPoint& localPos);
+    void endPress();
+    void cancelPress();
+    void updateDragVelocity(const QPoint& localPos);
+
     /* --- Rendering Helpers --- */
     bool buildCarouselLayout(const QRect& preview,
                              QVector<qreal>* outCenterOffsets,
@@ -137,9 +142,12 @@ private:
     DragAxis m_dragAxis = DragAxis::Unknown;
     QPoint m_pressLocalPos;
     QPoint m_lastLocalPos;
+    QPoint m_previousLocalPos;
+    QPointF m_velocityPxPerMs;
+    QElapsedTimer m_dragTimer;
+    qint64 m_previousSampleMs = 0;
     qreal m_dragStartCenterIndex = 0.0;
     qreal m_dragStartPanelProgress = 1.0;
-    bool m_pressInPreview = false;
 
     /* --- Visual Configuration --- */
     struct LayoutConfig {
