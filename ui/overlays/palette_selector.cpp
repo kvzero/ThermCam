@@ -284,7 +284,7 @@ InteractionUpdateDecision PaletteSelector::onInteractionUpdate(const Interaction
     return InteractionUpdateDecision::KeepOwner;
 }
 
-void PaletteSelector::onInteractionEnd(const InteractionEvent& /*event*/) {
+void PaletteSelector::onInteractionEnd(const InteractionEvent& event) {
     if (!m_isPresented) return;
 
     const qreal dx = static_cast<qreal>(m_lastLocalPos.x() - m_pressLocalPos.x());
@@ -312,7 +312,18 @@ void PaletteSelector::onInteractionEnd(const InteractionEvent& /*event*/) {
         const bool horizontalMoved = (m_dragAxis == DragAxis::Horizontal) &&
                                      (std::abs(dx) > m_cfg.DRAG_SLOP_PX);
         if (horizontalMoved) {
-            animateSnapToNearest();
+            const qreal spacing = itemSpacingPx();
+            if (spacing >= 1.0) {
+                constexpr qreal kInertiaHorizonMs = 80.0;
+                constexpr qreal kMaxProjectedSteps = 1.0;
+                const qreal projected = m_centerIndex - ((event.velocityPxPerMs.x() * kInertiaHorizonMs) / spacing);
+                const qreal projectedDelta = projected - m_centerIndex;
+                const qreal limitedProjected =
+                    m_centerIndex + qBound(-kMaxProjectedSteps, projectedDelta, kMaxProjectedSteps);
+                animateSnapToIndex(nearestIndex(limitedProjected));
+            } else {
+                animateSnapToNearest();
+            }
         } else {
             animateSnapToIndex(tappedIndex(m_pressLocalPos));
         }
