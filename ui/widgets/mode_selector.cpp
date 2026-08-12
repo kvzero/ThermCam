@@ -269,13 +269,17 @@ void ModeSelector::paintEvent(QPaintEvent*) {
     const qreal curH = baseSize + (height() - baseSize) * m_vStretch;
 
     QRectF bgRect(width() - curW, height() - curH, curW, curH);
-    qreal radius = baseSize / 2.0;
+    const QRectF paintRect = bgRect.adjusted(m_cfg.STROKE_INSET_PX,
+                                             m_cfg.STROKE_INSET_PX,
+                                             -m_cfg.STROKE_INSET_PX,
+                                             -m_cfg.STROKE_INSET_PX);
+    const qreal radius = qMin(paintRect.width(), paintRect.height()) * m_cfg.CORNER_RADIUS_RATIO;
 
     // Layer 1: Frosted Glass Background
     QPainterPath path;
-    path.addRoundedRect(bgRect, radius, radius);
+    path.addRoundedRect(paintRect, radius, radius);
 
-    QLinearGradient bg(bgRect.topLeft(), bgRect.bottomRight());
+    QLinearGradient bg(paintRect.topLeft(), paintRect.bottomRight());
     bg.setColorAt(0, m_cfg.BG_START); bg.setColorAt(1, m_cfg.BG_END);
     p.fillPath(path, bg);
 

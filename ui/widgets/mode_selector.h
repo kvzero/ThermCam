@@ -112,6 +112,8 @@ private:
         const QColor GLOW_HALO     = QColor(255, 255, 255, 45);
         const QColor SHADOW_COLOR  = QColor(0, 0, 0, 180);
         const QColor RECORD_RED    = QColor(255, 59, 48);
+        const qreal CORNER_RADIUS_RATIO = 0.40;
+        const qreal STROKE_INSET_PX = 1.0;
 
         // Icons from tabler-icons
         const QString ICON_CAM_OUT  = QChar(0xea54);

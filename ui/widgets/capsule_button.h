@@ -72,6 +72,11 @@ private:
         const qreal ICON_BASE_SIZE_RATIO = 0.55;
         const qreal ICON_SETTING_OPTICAL_SCALE = 1.08;
         const qreal ICON_GALLERY_OPTICAL_SCALE = 1.0;
+        const qreal CORNER_RADIUS_RATIO = 0.40;
+        const qreal STROKE_INSET_PX = 1.0;
+        const QColor DIVIDER_COLOR = QColor(255, 255, 255, 88);
+        const qreal DIVIDER_WIDTH_RATIO = 0.46;
+        const qreal DIVIDER_STROKE_PX = 1.6;
 
         // Icons (Tabler Icons Unicode)
         const QString ICON_SETTING_OUTLINE = QChar(0xeb20);

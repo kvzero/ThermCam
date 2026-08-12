@@ -175,10 +175,15 @@ void CapsuleButton::paintEvent(QPaintEvent*) {
     p.setOpacity(m_contentsOpacity);
 
     // 1. Background: Frosted Glass Effect
+    const QRectF paintRect = QRectF(rect()).adjusted(m_cfg.STROKE_INSET_PX,
+                                                     m_cfg.STROKE_INSET_PX,
+                                                     -m_cfg.STROKE_INSET_PX,
+                                                     -m_cfg.STROKE_INSET_PX);
     QPainterPath glassPath;
-    glassPath.addRoundedRect(rect(), width() / 2.0, width() / 2.0);
+    const qreal cornerRadius = qMin(paintRect.width(), paintRect.height()) * m_cfg.CORNER_RADIUS_RATIO;
+    glassPath.addRoundedRect(paintRect, cornerRadius, cornerRadius);
 
-    QLinearGradient bgGrad(rect().topLeft(), rect().bottomRight());
+    QLinearGradient bgGrad(paintRect.topLeft(), paintRect.bottomRight());
     bgGrad.setColorAt(0, m_cfg.BG_START);
     bgGrad.setColorAt(1, m_cfg.BG_END);
     p.fillPath(glassPath, bgGrad);
@@ -187,7 +192,16 @@ void CapsuleButton::paintEvent(QPaintEvent*) {
     p.setPen(QPen(m_cfg.INNER_STROKE, 1.2));
     p.drawPath(glassPath);
 
-    // 3. Dynamic Glow: Liquid light inside container
+    // 3. Divider: subtle separation between Settings and Gallery zones
+    const qreal dividerHalfW = paintRect.width() * m_cfg.DIVIDER_WIDTH_RATIO * 0.5;
+    const qreal dividerY = paintRect.center().y();
+    QPen dividerPen(m_cfg.DIVIDER_COLOR, m_cfg.DIVIDER_STROKE_PX);
+    dividerPen.setCapStyle(Qt::RoundCap);
+    p.setPen(dividerPen);
+    p.drawLine(QPointF(paintRect.center().x() - dividerHalfW, dividerY),
+               QPointF(paintRect.center().x() + dividerHalfW, dividerY));
+
+    // 4. Dynamic Glow: Liquid light inside container
     if (m_glowOpacity > 0.01) {
         p.save();
         p.setClipPath(glassPath);
@@ -202,7 +216,7 @@ void CapsuleButton::paintEvent(QPaintEvent*) {
         p.restore();
     }
 
-    // 4. Icons: Adaptive state and scale
+    // 5. Icons: Adaptive state and scale
     p.setPen(Qt::white);
 
     QFont iconFont("tabler-icons");
