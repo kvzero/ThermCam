@@ -2,7 +2,9 @@
 #define SYSTEM_CONTROL_H
 
 #include <QObject>
+#include <QDateTime>
 #include <QString>
+#include <QStringList>
 #include <alsa/asoundlib.h>
 
 /**
@@ -50,6 +52,11 @@ public:
      */
     bool setAudioVolumePercent(int percent, QString* outError = nullptr);
 
+    /**
+     * @brief Sets system time and writes it back to the RTC.
+     */
+    bool setSystemDateTime(const QDateTime& dateTime, QString* outError = nullptr);
+
 private:
     /* ========================= Domain Initialization ========================= */
     bool initBacklight(QString* outError);
@@ -58,6 +65,11 @@ private:
     /* ========================= Filesystem Helpers ========================= */
     bool readIntFile(const QString& path, int* outValue, QString* outError) const;
     bool writeIntFile(const QString& path, int value, QString* outError) const;
+    bool runCommand(const QString& program,
+                    const QStringList& arguments,
+                    int timeoutMs,
+                    QString* outError,
+                    QString* outStdout = nullptr) const;
 
     /* ========================= ALSA Helpers ========================= */
     bool findPlaybackVolumeElementByName(const char* controlName,

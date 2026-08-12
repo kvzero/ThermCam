@@ -30,7 +30,8 @@ enum class SettingID {
     UsbDiskSafeEject,
     UsbDiskFormat,
     ScreenBrightness,
-    AudioVolume
+    AudioVolume,
+    Clock
 };
 
 /** @brief Render/action contract for secondary row trailing affordance. */

@@ -2,6 +2,7 @@
 #define APP_H
 
 #include <QWidget>
+#include <QDateTime>
 #include <core/types.h>
 #include "ui/overlays/modal_dialog.h"
 
@@ -14,6 +15,7 @@ class SettingsView;
 class ToastManager;
 class TransitionLayer;
 class TextModal;
+class ClockModal;
 
 /**
  * @brief The Root UI Container (Body).
@@ -59,6 +61,7 @@ public:
                        std::function<void()> onPrimaryAction,
                        ModalLevel level = ModalLevel::Critical,
                        TextModalSize size = TextModalSize::Normal);
+    void showClockModal(std::function<bool(const QDateTime&, QString*)> onCommit);
     void showToast(const QString& message, ToastLevel level);
 
 protected:
@@ -88,6 +91,7 @@ private:
     /* Layer 2: Global System Overlays */
     // QuickSettings* m_quickSettings = nullptr;
     TextModal* m_textModal = nullptr;
+    ClockModal* m_clockModal = nullptr;
     ToastManager* m_toastManager = nullptr;
 };
 

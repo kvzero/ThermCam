@@ -43,6 +43,7 @@ SOURCES     +=  main.cpp \
                 ui/views/camera_view.cpp \
                 ui/views/gallery_view.cpp \
                 ui/views/settings_view.cpp \
+                ui/overlays/clock_modal.cpp \
                 ui/overlays/modal_dialog.cpp \
                 ui/overlays/bubble_dialog.cpp \
                 ui/overlays/toast_manager.cpp \
@@ -91,6 +92,7 @@ HEADERS     +=  core/global_context.h \
                 ui/views/settings_view.h \
                 core/settings_types.h \
                 ui/settings_menu_types.h \
+                ui/overlays/clock_modal.h \
                 ui/overlays/modal_dialog.h \
                 ui/overlays/bubble_dialog.h \
                 ui/overlays/toast_manager.h \

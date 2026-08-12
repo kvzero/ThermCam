@@ -5,6 +5,7 @@
 #include "ui/views/gallery_view.h"
 #include "ui/views/settings_view.h"
 // #include "ui/overlays/quick_settings.h"
+#include "ui/overlays/clock_modal.h"
 #include "ui/overlays/modal_dialog.h"
 #include "ui/overlays/toast_manager.h"
 #include "ui/overlays/transition_layer.h"
@@ -83,6 +84,9 @@ void App::initLayer_Overlays() {
     m_textModal = new TextModal(this);
     m_textModal->hide();
 
+    m_clockModal = new ClockModal(this);
+    m_clockModal->hide();
+
     // Toast Notifications
     m_toastManager = new ToastManager(this);
     m_toastManager->hide();
@@ -101,7 +105,8 @@ void App::connectHardwareKeys() {
 }
 
 void App::handleHardwareKeyPressed() {
-    if (m_textModal && m_textModal->isVisible()) {
+    if ((m_textModal && m_textModal->isVisible()) ||
+        (m_clockModal && m_clockModal->isVisible())) {
         return;
     }
 
@@ -111,7 +116,8 @@ void App::handleHardwareKeyPressed() {
 }
 
 void App::handleHardwareKeyShortPress() {
-    if (m_textModal && m_textModal->isVisible()) {
+    if ((m_textModal && m_textModal->isVisible()) ||
+        (m_clockModal && m_clockModal->isVisible())) {
         return;
     }
 
@@ -145,6 +151,25 @@ void App::showTextModal(const QString& title,
         m_textModal->setMessage(title);
         m_textModal->setSize(size);
         m_textModal->present(spec);
+    }
+    if (m_toastManager && m_toastManager->isVisible()) {
+        m_toastManager->raise();
+    }
+}
+
+void App::showClockModal(std::function<bool(const QDateTime&, QString*)> onCommit) {
+    if (m_clockModal) {
+        m_clockModal->raise();
+
+        ModalSpec spec;
+        spec.level = ModalLevel::Normal;
+        spec.primaryText = "CONFIRM";
+        spec.secondaryText = "CANCEL";
+        spec.dismissOnMaskTap = true;
+
+        m_clockModal->setDateTime(QDateTime::currentDateTime());
+        m_clockModal->setCommitHandler(std::move(onCommit));
+        m_clockModal->present(spec);
     }
     if (m_toastManager && m_toastManager->isVisible()) {
         m_toastManager->raise();
@@ -274,5 +299,6 @@ void App::resizeEvent(QResizeEvent* event) {
     // Layer 2: System Overlays
     // if (m_quickSettings) m_quickSettings->resize(s.width(), m_quickSettings->height()); // Height managed internally
     if (m_textModal) m_textModal->resize(s);
+    if (m_clockModal) m_clockModal->resize(s);
     if (m_toastManager) m_toastManager->resize(s.width(), qRound(s.height() * 0.2));
 }

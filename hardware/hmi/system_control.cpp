@@ -4,6 +4,8 @@
 #include <QIODevice>
 #include <QByteArray>
 #include <QDebug>
+#include <QLocale>
+#include <QProcess>
 #include <QtGlobal>
 
 #include <cstring>
@@ -15,9 +17,28 @@ constexpr int kPercentMax = 100;
 const char* kBacklightBrightnessPath = "/sys/class/backlight/backlight/brightness";
 const char* kBacklightMaxPath = "/sys/class/backlight/backlight/max_brightness";
 const char* kDacDigitalControlName = "DAC Digital";
+const char* kDateCommand = "/usr/bin/date";
+const char* kHwclockCommand = "/usr/sbin/hwclock";
+constexpr int kClockCommandTimeoutMs = 5000;
+constexpr qint64 kRtcVerifyToleranceSecs = 10;
 
 QString alsaErrorText(int code) {
     return QString::fromLocal8Bit(snd_strerror(code));
+}
+
+bool parseHwclockOutput(const QString& output, QDateTime* outDateTime) {
+    if (!outDateTime) return false;
+
+    const QStringList parts = output.simplified().split(QLatin1Char(' '));
+    if (parts.size() < 5) return false;
+
+    const QString stamp = parts.mid(0, 5).join(QLatin1Char(' '));
+    const QDateTime parsed =
+        QLocale::c().toDateTime(stamp, QStringLiteral("ddd MMM d HH:mm:ss yyyy"));
+    if (!parsed.isValid()) return false;
+
+    *outDateTime = parsed;
+    return true;
 }
 } // namespace
 
@@ -157,6 +178,58 @@ bool SystemControl::setAudioVolumePercent(int percent, QString* outError) {
     return true;
 }
 
+bool SystemControl::setSystemDateTime(const QDateTime& dateTime, QString* outError) {
+    if (!dateTime.isValid()) {
+        if (outError) *outError = "Invalid date/time";
+        return false;
+    }
+
+    const QString stamp = dateTime.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+    if (!runCommand(QString::fromLatin1(kDateCommand),
+                    {QStringLiteral("-s"), stamp},
+                    kClockCommandTimeoutMs,
+                    outError)) {
+        return false;
+    }
+
+    if (!runCommand(QString::fromLatin1(kHwclockCommand),
+                    {QStringLiteral("-w")},
+                    kClockCommandTimeoutMs,
+                    outError)) {
+        return false;
+    }
+
+    QString rtcOutput;
+    if (!runCommand(QString::fromLatin1(kHwclockCommand),
+                    {QStringLiteral("-r")},
+                    kClockCommandTimeoutMs,
+                    outError,
+                    &rtcOutput)) {
+        return false;
+    }
+
+    QDateTime rtcDateTime;
+    if (!parseHwclockOutput(rtcOutput, &rtcDateTime)) {
+        if (outError) {
+            *outError = QString("Failed to parse RTC readback: %1").arg(rtcOutput);
+        }
+        return false;
+    }
+
+    const qint64 driftSecs = qAbs(dateTime.secsTo(rtcDateTime));
+    if (driftSecs > kRtcVerifyToleranceSecs) {
+        if (outError) {
+            *outError = QString("RTC readback mismatch: target %1, read %2, drift %3s")
+                            .arg(dateTime.toString(Qt::ISODate))
+                            .arg(rtcDateTime.toString(Qt::ISODate))
+                            .arg(driftSecs);
+        }
+        return false;
+    }
+
+    return true;
+}
+
 bool SystemControl::initBacklight(QString* outError) {
     int maxBrightness = 0;
     if (!readIntFile(m_maxBrightnessPath, &maxBrightness, outError)) {
@@ -286,6 +359,51 @@ bool SystemControl::writeIntFile(const QString& path, int value, QString* outErr
     if (written != payload.size()) {
         if (outError) {
             *outError = QString("Failed to write integer to %1").arg(path);
+        }
+        return false;
+    }
+
+    return true;
+}
+
+bool SystemControl::runCommand(const QString& program,
+                               const QStringList& arguments,
+                               int timeoutMs,
+                               QString* outError,
+                               QString* outStdout) const {
+    QProcess process;
+    process.setProgram(program);
+    process.setArguments(arguments);
+    process.start();
+
+    if (!process.waitForStarted(timeoutMs)) {
+        if (outError) {
+            *outError = QString("Failed to start %1: %2")
+                            .arg(program, process.errorString());
+        }
+        return false;
+    }
+
+    if (!process.waitForFinished(timeoutMs)) {
+        process.kill();
+        process.waitForFinished(1000);
+        if (outError) {
+            *outError = QString("Timed out running %1").arg(program);
+        }
+        return false;
+    }
+
+    const QString stderrText = QString::fromLocal8Bit(process.readAllStandardError()).trimmed();
+    const QString stdoutText = QString::fromLocal8Bit(process.readAllStandardOutput()).trimmed();
+    if (outStdout) *outStdout = stdoutText;
+
+    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+        if (outError) {
+            *outError = QString("%1 failed with code %2%3%4")
+                            .arg(program)
+                            .arg(process.exitCode())
+                            .arg(stderrText.isEmpty() ? QString() : QStringLiteral(": "))
+                            .arg(stderrText.isEmpty() ? stdoutText : stderrText);
         }
         return false;
     }

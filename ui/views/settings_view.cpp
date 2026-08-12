@@ -4,6 +4,7 @@
 #include "core/event_bus.h"
 #include "core/settings_store.h"
 #include "hardware/hardware_manager.h"
+#include "hardware/hmi/system_control.h"
 #include "hardware/imaging/thermal_camera.h"
 #include "hardware/storage/storage_manager.h"
 #include "ui/app.h"
@@ -58,7 +59,8 @@ const QVector<PrimaryItemData> kMenuBlueprint = {
         QString(QChar(0xea03)), QColor(182, 102, 45), "System",
         {
             {SettingID::ScreenBrightness, "Screen Brightness", QColor(255, 255, 255), ActionType::Value},
-            {SettingID::AudioVolume, "Audio Volume", QColor(255, 255, 255), ActionType::Value}
+            {SettingID::AudioVolume, "Audio Volume", QColor(255, 255, 255), ActionType::Value},
+            {SettingID::Clock, "Date & Time", QColor(255, 255, 255), ActionType::Action}
         }
     }
 };
@@ -1368,6 +1370,22 @@ void SettingsView::onSecondaryRowActivated() {
         showSliderBubble(spec, buildAnchor());
         return;
     }
+    case SettingID::Clock: {
+        if (!app) return;
+        app->showClockModal([](const QDateTime& dateTime, QString* outError) {
+            auto* system = HardwareManager::instance().systemControl();
+            if (!system) {
+                if (outError) *outError = "System control is unavailable";
+                return false;
+            }
+            const bool ok = system->setSystemDateTime(dateTime, outError);
+            if (!ok && outError) {
+                qWarning() << "[Settings] Set date/time failed:" << *outError;
+            }
+            return ok;
+        });
+        return;
+    }
     case SettingID::Palette:
         emit EventBus::instance().cameraRequested(QRect(), TransitionMode::Instant);
         emit EventBus::instance().paletteSelectorRequested();
@@ -1774,6 +1792,8 @@ void SettingsView::refreshSecondaryRowsFromSnapshot(const SettingsSnapshot& snap
                                             kAudioVolumePercentMax));
             break;
         }
+        case SettingID::Clock:
+            break;
         case SettingID::TriggerFlatSceneCorrection:
         case SettingID::SdCardFormat:
         case SettingID::UsbDiskFormat:
