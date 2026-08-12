@@ -4,6 +4,7 @@
 #include <QWidget>
 #include <QPoint>
 #include <QPropertyAnimation>
+#include <QSizeF>
 #include <functional>
 
 class QMouseEvent;
@@ -23,6 +24,11 @@ struct ModalSpec {
     std::function<void()> onSecondaryAction;
 };
 
+enum class TextModalSize {
+    Normal,
+    Large
+};
+
 /**
  * @brief Layer-2 modal dialog base owned by App overlay stack.
  *
@@ -37,8 +43,7 @@ class ModalBase : public QWidget {
 
 public:
     struct ContentLayout {
-        QSize preferred;
-        qreal heightRatio = 0.55;
+        QSizeF screenRatio = QSizeF(0.55, 0.18);
     };
 
     /* --- Lifecycle --- */
@@ -57,8 +62,7 @@ public:
 
 protected:
     /* --- Content Extension Points --- */
-    virtual ContentLayout contentLayoutHint(const QSize& maxContentSize,
-                                            const QSize& viewportSize) const = 0;
+    virtual ContentLayout contentLayoutHint(const QSize& viewportSize) const = 0;
     virtual void paintContent(QPainter& p, const QRect& contentRect) = 0;
     virtual bool onPrimaryAction();
     virtual bool onSecondaryAction();
@@ -66,6 +70,7 @@ protected:
     virtual bool contentMove(const QPoint& contentPos);
     virtual bool contentRelease(const QPoint& contentPos);
     virtual void contentCancel();
+    QRect contentGeometry() const { return m_contentRect; }
 
     void mousePressEvent(QMouseEvent* event) override;
     void mouseMoveEvent(QMouseEvent* event) override;
@@ -102,15 +107,9 @@ private:
 
     /* --- Visual Config --- */
     struct Config {
-        const qreal BASE_W_RATIO = 0.65;
-        const qreal BASE_H_RATIO = 0.55;
-        const qreal MAX_W_RATIO = 0.90;
-        const qreal MAX_H_RATIO = 0.86;
-        const int CONTENT_PAD_X = 30;
-        const qreal CONTENT_H_RATIO = 0.55;
-        const qreal BTN_W_RATIO = 0.42;
-        const qreal BTN_H_RATIO = 0.22;
-        const qreal BTN_BOTTOM_MARGIN_RATIO = 0.60;
+        const qreal CONTENT_PAD_X_RATIO = 0.045;
+        const qreal PANEL_BOTTOM_PAD_RATIO = 0.060;
+        const qreal BUTTON_H_RATIO = 0.11;
         const qreal BOX_CORNER_RADIUS = 42.0;
 
         const qreal SCALE_POP_START = 0.80;
@@ -122,6 +121,7 @@ private:
         const QColor BOX_STROKE = QColor(255, 255, 255, 55);
         const QColor GLOW_COLOR = QColor(255, 255, 255, 45);
         const QColor BTN_NEUTRAL = QColor(60, 60, 60);
+        const QColor BTN_PRIMARY = QColor(42, 126, 210);
         const QColor BTN_CRITICAL = QColor(190, 30, 30);
         const QColor BTN_TEXT = Qt::white;
 
@@ -170,15 +170,16 @@ public:
 
     /* --- Public API --- */
     void setMessage(const QString& message);
+    void setSize(TextModalSize size);
 
 protected:
-    ContentLayout contentLayoutHint(const QSize& maxContentSize,
-                                    const QSize& viewportSize) const override;
+    ContentLayout contentLayoutHint(const QSize& viewportSize) const override;
     void paintContent(QPainter& p, const QRect& contentRect) override;
 
 private:
     /* --- Runtime State --- */
     QString m_message;
+    TextModalSize m_size = TextModalSize::Normal;
 };
 
 #endif // MODAL_DIALOG_H

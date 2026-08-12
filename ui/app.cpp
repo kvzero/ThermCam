@@ -121,7 +121,7 @@ void App::handleHardwareKeyShortPress() {
 }
 
 void App::handleHardwareKeyLongPress() {
-    showTextModal("CONFIRM POWER OFF?", []() {
+    showTextModal("TURN OFF\nTHE CAMERA?", []() {
         if (std::system("poweroff") != 0) {
             qWarning() << "[System] Shutdown command failed.";
         }
@@ -131,7 +131,8 @@ void App::handleHardwareKeyLongPress() {
 
 void App::showTextModal(const QString& title,
                         std::function<void()> onPrimaryAction,
-                            ModalLevel level) {
+                        ModalLevel level,
+                        TextModalSize size) {
     if (m_textModal) {
         m_textModal->raise();
         ModalSpec spec;
@@ -142,6 +143,7 @@ void App::showTextModal(const QString& title,
         spec.onPrimaryAction = std::move(onPrimaryAction);
 
         m_textModal->setMessage(title);
+        m_textModal->setSize(size);
         m_textModal->present(spec);
     }
     if (m_toastManager && m_toastManager->isVisible()) {

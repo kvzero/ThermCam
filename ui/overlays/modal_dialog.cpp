@@ -172,7 +172,7 @@ void ModalBase::paintEvent(QPaintEvent* /*event*/) {
 
         QFont font("Roboto");
         font.setBold(true);
-        font.setPixelSize(qRound(rect.height() * 0.42));
+        font.setPixelSize(qRound(rect.height() * 0.48));
         p.setFont(font);
         p.setPen(m_cfg.BTN_TEXT);
         p.drawText(rect, Qt::AlignCenter, text);
@@ -192,48 +192,36 @@ void ModalBase::relayout() {
     const int W = width();
     const int H = height();
 
-    const int maxW = qRound(W * m_cfg.MAX_W_RATIO);
-    const int maxH = qRound(H * m_cfg.MAX_H_RATIO);
-    const int baseW = qRound(W * m_cfg.BASE_W_RATIO);
-    const int baseH = qRound(H * m_cfg.BASE_H_RATIO);
+    if (W <= 0 || H <= 0) {
+        m_panelRect = QRect();
+        m_contentRect = QRect();
+        m_secondaryRect = QRect();
+        m_primaryRect = QRect();
+        return;
+    }
 
-    const int minContentW = qMax(50, baseW - (m_cfg.CONTENT_PAD_X * 2));
-    const int minContentH = qMax(50, qRound(baseH * m_cfg.CONTENT_H_RATIO));
-    const QSize maxContent(qMax(50, maxW - (m_cfg.CONTENT_PAD_X * 2)),
-                           qMax(50, qRound(maxH * m_cfg.CONTENT_H_RATIO)));
+    const int sidePad = qRound(W * m_cfg.CONTENT_PAD_X_RATIO);
+    const int bottomPad = qRound(H * m_cfg.PANEL_BOTTOM_PAD_RATIO);
+    const int buttonH = qRound(H * m_cfg.BUTTON_H_RATIO);
 
-    ContentLayout hint = contentLayoutHint(maxContent, QSize(W, H));
-    qreal contentRatio = qBound(0.35, hint.heightRatio, 0.78);
-
-    QSize contentSize = hint.preferred.expandedTo(QSize(minContentW, minContentH));
-    contentSize = contentSize.boundedTo(maxContent);
-
-    int panelW = qMax(baseW, contentSize.width() + (m_cfg.CONTENT_PAD_X * 2));
-    int panelH = qMax(baseH, qRound(contentSize.height() / contentRatio));
-    panelW = qMin(panelW, maxW);
-    panelH = qMin(panelH, maxH);
+    const ContentLayout hint = contentLayoutHint(QSize(W, H));
+    const QSize contentSize(qRound(W * hint.screenRatio.width()),
+                            qRound(H * hint.screenRatio.height()));
+    const int panelW = contentSize.width() + (sidePad * 2);
+    const int panelH = contentSize.height() + buttonH + bottomPad;
 
     m_panelRect = QRect((W - panelW) / 2, (H - panelH) / 2, panelW, panelH);
-    const int btnW = qRound(panelW * m_cfg.BTN_W_RATIO);
-    const int btnH = qRound(panelH * m_cfg.BTN_H_RATIO);
-    const int hMargin = (panelW - (btnW * 2)) / 3;
-    const int bMargin = qRound(btnH * m_cfg.BTN_BOTTOM_MARGIN_RATIO);
-    const int btnY = m_panelRect.bottom() - btnH - bMargin + 1;
 
-    m_secondaryRect = QRect(m_panelRect.left() + hMargin, btnY, btnW, btnH);
-    m_primaryRect = QRect(m_panelRect.right() - hMargin - btnW + 1, btnY, btnW, btnH);
+    const int contentW = contentSize.width();
+    const int contentLeft = m_panelRect.left() + (panelW - contentW) / 2;
+    const int contentTop = m_panelRect.top();
+    m_contentRect = QRect(contentLeft, contentTop, contentW, contentSize.height());
 
-    const int desiredContentH = qRound(panelH * contentRatio);
-    const int contentAreaTop = m_panelRect.top();
-    const int contentAreaBottom = btnY - 1;
-    const int contentAreaH = qMax(1, contentAreaBottom - contentAreaTop + 1);
-    const int contentH = qMin(desiredContentH, contentAreaH);
-    const int contentTop = contentAreaTop + ((contentAreaH - contentH) / 2);
-
-    m_contentRect = QRect(m_panelRect.left() + m_cfg.CONTENT_PAD_X,
-                          contentTop,
-                          panelW - (m_cfg.CONTENT_PAD_X * 2),
-                          contentH);
+    const int buttonGap = sidePad;
+    const int btnW = (contentW - buttonGap) / 2;
+    const int btnY = m_contentRect.top() + m_contentRect.height();
+    m_secondaryRect = QRect(contentLeft, btnY, btnW, buttonH);
+    m_primaryRect = QRect(contentLeft + btnW + buttonGap, btnY, btnW, buttonH);
 }
 
 ModalBase::PressTarget ModalBase::zoneAt(const QPoint& pos) const {
@@ -371,7 +359,7 @@ bool ModalBase::trySecondaryAction() {
 }
 
 QColor ModalBase::primaryButtonColor() const {
-    return (m_spec.level == ModalLevel::Critical) ? m_cfg.BTN_CRITICAL : m_cfg.BTN_NEUTRAL;
+    return (m_spec.level == ModalLevel::Critical) ? m_cfg.BTN_CRITICAL : m_cfg.BTN_PRIMARY;
 }
 
 void ModalBase::onPopAnimFinished() {
@@ -390,29 +378,24 @@ void TextModal::setMessage(const QString& message) {
     update();
 }
 
-ModalBase::ContentLayout TextModal::contentLayoutHint(const QSize& maxContentSize,
-                                                      const QSize& viewportSize) const {
-    const int fontPx = qMax(14, qRound(viewportSize.height() * 0.0605));
+void TextModal::setSize(TextModalSize size) {
+    if (m_size == size) return;
+    m_size = size;
+    update();
+}
 
-    QFont font("Roboto");
-    font.setBold(true);
-    font.setPixelSize(fontPx);
-
-    QFontMetrics fm(font);
-    const QRect wrapped = fm.boundingRect(QRect(0, 0, maxContentSize.width(), 10000),
-                                          Qt::AlignCenter | Qt::TextWordWrap,
-                                          m_message);
-
+ModalBase::ContentLayout TextModal::contentLayoutHint(const QSize& /*viewportSize*/) const {
     ContentLayout out;
-    out.heightRatio = 0.55;
-    out.preferred = QSize(qBound(80, wrapped.width() + 8, maxContentSize.width()),
-                          qBound(40, wrapped.height() + 4, maxContentSize.height()));
+    out.screenRatio = (m_size == TextModalSize::Large)
+                          ? QSizeF(0.706, 0.458)
+                          : QSizeF(0.556, 0.348);
     return out;
 }
 
 void TextModal::paintContent(QPainter& p, const QRect& contentRect) {
-    const int panelH = qRound(contentRect.height() / 0.55);
-    const int fontPx = qMax(14, qRound(panelH * 0.11));
+    const qreal fontRatio = (m_size == TextModalSize::Large) ? 0.15 : 0.19;
+    const int fontPx = qRound(contentRect.height() * fontRatio);
+    const int opticalYOffset = qRound(contentRect.height() * 0.02);
 
     QFont font("Roboto");
     font.setBold(true);
@@ -422,7 +405,9 @@ void TextModal::paintContent(QPainter& p, const QRect& contentRect) {
 
     const QStringList logicalLines = splitModalTextLines(m_message);
     if (logicalLines.size() <= 1) {
-        p.drawText(contentRect, Qt::AlignCenter | Qt::TextWordWrap, m_message);
+        p.drawText(contentRect.translated(0, opticalYOffset),
+                   Qt::AlignCenter | Qt::TextWordWrap,
+                   m_message);
         return;
     }
 
@@ -450,7 +435,7 @@ void TextModal::paintContent(QPainter& p, const QRect& contentRect) {
                             : 0;
     const int totalH = textHNoGap + (lineCount - 1) * lineGap;
 
-    int y = contentRect.top() + (contentRect.height() - totalH) / 2;
+    int y = contentRect.top() + (contentRect.height() - totalH) / 2 + opticalYOffset;
     for (int i = 0; i < lineCount; ++i) {
         const int paraH = paragraphHeights[i];
         if (!logicalLines[i].isEmpty()) {

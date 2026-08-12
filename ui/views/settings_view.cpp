@@ -1123,7 +1123,8 @@ void SettingsView::onSecondaryRowActivated() {
                 }
                 app->showToast("FLAT-SCENE CORRECTION TRIGGERED", ToastLevel::Info);
             },
-            ModalLevel::Critical);
+            ModalLevel::Critical,
+            TextModalSize::Large);
         return;
     }
     case SettingID::ThermographyOffset: {
@@ -1407,7 +1408,8 @@ void SettingsView::onSecondaryRowActivated() {
                     relayoutRows();
                 }
             },
-            ModalLevel::Normal);
+            ModalLevel::Normal,
+            TextModalSize::Large);
         return;
     }
     case SettingID::SdCardFormat:
@@ -1445,7 +1447,8 @@ void SettingsView::onSecondaryRowActivated() {
                                    relayoutRows();
                                }
                            },
-                           ModalLevel::Critical);
+                           ModalLevel::Critical,
+                           TextModalSize::Large);
         return;
     }
     case SettingID::SdCardCapacity:

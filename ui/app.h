@@ -57,7 +57,8 @@ public:
     // QuickSettings* quickSettings() const;
     void showTextModal(const QString& title,
                        std::function<void()> onPrimaryAction,
-                           ModalLevel level = ModalLevel::Critical);
+                       ModalLevel level = ModalLevel::Critical,
+                       TextModalSize size = TextModalSize::Normal);
     void showToast(const QString& message, ToastLevel level);
 
 protected:
