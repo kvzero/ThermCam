@@ -661,13 +661,25 @@ qreal RadioListBubble::applyOverscroll(qreal candidate) const {
 // SliderBubble
 // ============================================================
 
-SliderBubble::SliderBubble(QWidget* parent) : BubbleBase(parent) {}
+SliderBubble::SliderBubble(QWidget* parent) : BubbleBase(parent) {
+    m_changeNotifyTimer = new QTimer(this);
+    m_changeNotifyTimer->setSingleShot(true);
+    connect(m_changeNotifyTimer, &QTimer::timeout, this, [this]() {
+        if (!m_hasPendingChangingValue) return;
+        flushPendingValueChanging();
+        m_changeNotifyTimer->start(qMax(1, m_spec.changingThrottleMs));
+    });
+}
 
 void SliderBubble::present(const Spec& spec, const BubbleAnchorContext& anchor) {
     m_spec = spec;
-    m_value = normalizeValue(m_spec.value);
+    m_valueIndex = indexFromValue(m_spec.value);
+    m_value = valueFromIndex(m_valueIndex);
+    m_pendingChangingValue = m_value;
     m_sliderActive = false;
     m_hasValueChanged = false;
+    m_hasPendingChangingValue = false;
+    stopValueChangingThrottle();
     BubbleBase::present(anchor);
 }
 
@@ -729,6 +741,7 @@ bool SliderBubble::contentRelease(const QPoint& contentPos) {
     if (!m_sliderActive) return false;
 
     updateValueByPointer(contentPos, true);
+    stopValueChangingThrottle();
     if (m_hasValueChanged && m_spec.onValueCommitted) {
         m_spec.onValueCommitted(m_value);
     }
@@ -740,6 +753,7 @@ bool SliderBubble::contentRelease(const QPoint& contentPos) {
 }
 
 void SliderBubble::contentCancel() {
+    stopValueChangingThrottle();
     if (m_sliderActive && m_hasValueChanged && m_spec.onValueCommitted) {
         m_spec.onValueCommitted(m_value);
     }
@@ -748,22 +762,31 @@ void SliderBubble::contentCancel() {
 }
 
 void SliderBubble::onBubbleDismissed() {
+    stopValueChangingThrottle();
     if (m_spec.onDismissed) m_spec.onDismissed();
 }
 
-int SliderBubble::normalizeValue(int value) const {
-    if (m_spec.maxValue <= m_spec.minValue) return m_spec.minValue;
-
-    const int clamped = qBound(m_spec.minValue, value, m_spec.maxValue);
-    const int step = qMax(1, m_spec.step);
-    const int span = clamped - m_spec.minValue;
-    const int snapped = m_spec.minValue + qRound(static_cast<qreal>(span) / step) * step;
-    return qBound(m_spec.minValue, snapped, m_spec.maxValue);
+int SliderBubble::maxStepIndex() const {
+    if (m_spec.maxValue <= m_spec.minValue || m_spec.step <= 0.0) return 0;
+    return qMax(0, qRound((m_spec.maxValue - m_spec.minValue) / m_spec.step));
 }
 
-int SliderBubble::valueFromTrackX(int x) const {
-    if (m_trackRect.width() <= 0 || m_spec.maxValue <= m_spec.minValue) {
-        return m_spec.minValue;
+int SliderBubble::indexFromValue(double value) const {
+    if (m_spec.maxValue <= m_spec.minValue || m_spec.step <= 0.0) return 0;
+    const double clamped = qBound(m_spec.minValue, value, m_spec.maxValue);
+    const int index = qRound((clamped - m_spec.minValue) / m_spec.step);
+    return qBound(0, index, maxStepIndex());
+}
+
+double SliderBubble::valueFromIndex(int index) const {
+    const int clampedIndex = qBound(0, index, maxStepIndex());
+    const double value = m_spec.minValue + (static_cast<double>(clampedIndex) * m_spec.step);
+    return qBound(m_spec.minValue, value, m_spec.maxValue);
+}
+
+int SliderBubble::indexFromTrackX(int x) const {
+    if (m_trackRect.width() <= 0 || maxStepIndex() <= 0) {
+        return 0;
     }
 
     int left = m_trackRect.left();
@@ -773,22 +796,21 @@ int SliderBubble::valueFromTrackX(int x) const {
                         qRound(m_trackRect.width() * m_cfg.TRACK_EDGE_SNAP_RATIO));
     edgeSnap = qBound(0, edgeSnap, qMax(0, (m_trackRect.width() - 1) / 2));
     if (edgeSnap > 0) {
-        if (x <= left + edgeSnap) return m_spec.minValue;
-        if (x >= right - edgeSnap) return m_spec.maxValue;
+        if (x <= left + edgeSnap) return 0;
+        if (x >= right - edgeSnap) return maxStepIndex();
         left += edgeSnap;
         right -= edgeSnap;
     }
 
     const int denom = qMax(1, right - left);
     const qreal ratio = qBound(0.0, static_cast<qreal>(x - left) / denom, 1.0);
-    const qreal raw = m_spec.minValue + ratio * (m_spec.maxValue - m_spec.minValue);
-    return normalizeValue(qRound(raw));
+    return qBound(0, qRound(ratio * maxStepIndex()), maxStepIndex());
 }
 
-qreal SliderBubble::valueToRatio(int value) const {
-    if (m_spec.maxValue <= m_spec.minValue) return 0.0;
-    return static_cast<qreal>(value - m_spec.minValue) /
-           static_cast<qreal>(m_spec.maxValue - m_spec.minValue);
+qreal SliderBubble::valueToRatio(double value) const {
+    const int maxIndex = maxStepIndex();
+    if (maxIndex <= 0) return 0.0;
+    return static_cast<qreal>(indexFromValue(value)) / static_cast<qreal>(maxIndex);
 }
 
 void SliderBubble::recalcGeometry(const QRect& contentRect) {
@@ -822,14 +844,45 @@ bool SliderBubble::isTrackInteractive(const QPoint& contentPos) const {
 
 void SliderBubble::updateValueByPointer(const QPoint& contentPos, bool notifyChanging) {
     const int widgetX = contentPos.x() + contentRect().left();
-    const int newValue = valueFromTrackX(widgetX);
-    if (newValue == m_value) return;
-    m_value = newValue;
+    const int newIndex = indexFromTrackX(widgetX);
+    if (newIndex == m_valueIndex) return;
+    m_valueIndex = newIndex;
+    m_value = valueFromIndex(m_valueIndex);
     m_hasValueChanged = true;
-    if (notifyChanging && m_spec.onValueChanging) {
-        m_spec.onValueChanging(m_value);
-    }
+    if (notifyChanging) notifyValueChanging(m_value);
     update();
+}
+
+void SliderBubble::notifyValueChanging(double value) {
+    if (!m_spec.onValueChanging) return;
+
+    const int throttleMs = qMax(0, m_spec.changingThrottleMs);
+    if (throttleMs <= 0) {
+        m_spec.onValueChanging(value);
+        return;
+    }
+
+    m_pendingChangingValue = value;
+    m_hasPendingChangingValue = true;
+    if (!m_changeNotifyTimer->isActive()) {
+        flushPendingValueChanging();
+        m_changeNotifyTimer->start(throttleMs);
+    }
+}
+
+void SliderBubble::flushPendingValueChanging() {
+    if (!m_hasPendingChangingValue || !m_spec.onValueChanging) return;
+
+    const double value = m_pendingChangingValue;
+    m_hasPendingChangingValue = false;
+    m_spec.onValueChanging(value);
+}
+
+void SliderBubble::stopValueChangingThrottle() {
+    if (m_changeNotifyTimer && m_changeNotifyTimer->isActive()) {
+        m_changeNotifyTimer->stop();
+    }
+    m_hasPendingChangingValue = false;
 }
 
 // ============================================================
@@ -865,8 +918,9 @@ StepperBubble::StepperBubble(QWidget* parent) : BubbleBase(parent) {
 
 void StepperBubble::present(const Spec& spec, const BubbleAnchorContext& anchor) {
     m_spec = spec;
-    m_value = normalizeValue(m_spec.value);
-    m_committedValue = m_value;
+    m_valueIndex = indexFromValue(m_spec.value);
+    m_committedValueIndex = m_valueIndex;
+    m_value = valueFromIndex(m_valueIndex);
     m_dirtyFromCommitted = false;
     m_activeZone = Zone::None;
     stopRepeat();
@@ -958,14 +1012,22 @@ void StepperBubble::onBubbleDismissed() {
     if (m_spec.onDismissed) m_spec.onDismissed();
 }
 
-int StepperBubble::normalizeValue(int value) const {
-    if (m_spec.maxValue <= m_spec.minValue) return m_spec.minValue;
+int StepperBubble::maxStepIndex() const {
+    if (m_spec.maxValue <= m_spec.minValue || m_spec.step <= 0.0) return 0;
+    return qMax(0, qRound((m_spec.maxValue - m_spec.minValue) / m_spec.step));
+}
 
-    const int clamped = qBound(m_spec.minValue, value, m_spec.maxValue);
-    const int step = qMax(1, m_spec.step);
-    const int span = clamped - m_spec.minValue;
-    const int snapped = m_spec.minValue + qRound(static_cast<qreal>(span) / step) * step;
-    return qBound(m_spec.minValue, snapped, m_spec.maxValue);
+int StepperBubble::indexFromValue(double value) const {
+    if (m_spec.maxValue <= m_spec.minValue || m_spec.step <= 0.0) return 0;
+    const double clamped = qBound(m_spec.minValue, value, m_spec.maxValue);
+    const int index = qRound((clamped - m_spec.minValue) / m_spec.step);
+    return qBound(0, index, maxStepIndex());
+}
+
+double StepperBubble::valueFromIndex(int index) const {
+    const int clampedIndex = qBound(0, index, maxStepIndex());
+    const double value = m_spec.minValue + (static_cast<double>(clampedIndex) * m_spec.step);
+    return qBound(m_spec.minValue, value, m_spec.maxValue);
 }
 
 void StepperBubble::recalcGeometry(const QRect& contentRect) {
@@ -997,13 +1059,12 @@ StepperBubble::Zone StepperBubble::zoneAt(const QPoint& contentPos) const {
 }
 
 void StepperBubble::applyStep(int direction, bool notifyChanging) {
-    const int step = qMax(1, m_spec.step);
-    const int raw = m_value + (direction * step);
-    const int next = normalizeValue(raw);
-    if (next == m_value) return;
+    const int nextIndex = qBound(0, m_valueIndex + direction, maxStepIndex());
+    if (nextIndex == m_valueIndex) return;
 
-    m_value = next;
-    m_dirtyFromCommitted = (m_value != m_committedValue);
+    m_valueIndex = nextIndex;
+    m_value = valueFromIndex(m_valueIndex);
+    m_dirtyFromCommitted = (m_valueIndex != m_committedValueIndex);
 
     if (notifyChanging && m_spec.onValueChanging) {
         m_spec.onValueChanging(m_value);
@@ -1038,7 +1099,7 @@ void StepperBubble::commitIfDirty() {
     if (m_spec.onValueCommitted) {
         m_spec.onValueCommitted(m_value);
     }
-    m_committedValue = m_value;
+    m_committedValueIndex = m_valueIndex;
     m_dirtyFromCommitted = false;
 }
 

@@ -268,13 +268,14 @@ public:
     struct Spec {
         QString iconGlyph;
         QColor accentColor = QColor(87, 186, 255);
-        int minValue = 0;
-        int maxValue = 100;
-        int step = 1;
-        int value = 50;
+        double minValue = 0.0;
+        double maxValue = 100.0;
+        double step = 1.0;
+        double value = 50.0;
         bool dismissOnCommit = true;
-        std::function<void(int value)> onValueChanging;
-        std::function<void(int value)> onValueCommitted;
+        int changingThrottleMs = 0;
+        std::function<void(double value)> onValueChanging;
+        std::function<void(double value)> onValueCommitted;
         std::function<void()> onDismissed;
     };
 
@@ -298,18 +299,27 @@ protected:
 
 private:
     /* --- Internal Helpers --- */
-    int normalizeValue(int value) const;
-    int valueFromTrackX(int x) const;
-    qreal valueToRatio(int value) const;
+    int maxStepIndex() const;
+    int indexFromValue(double value) const;
+    double valueFromIndex(int index) const;
+    int indexFromTrackX(int x) const;
+    qreal valueToRatio(double value) const;
     void recalcGeometry(const QRect& contentRect);
     bool isTrackInteractive(const QPoint& contentPos) const;
     void updateValueByPointer(const QPoint& contentPos, bool notifyChanging);
+    void notifyValueChanging(double value);
+    void flushPendingValueChanging();
+    void stopValueChangingThrottle();
 
     /* --- Runtime State --- */
     Spec m_spec;
-    int m_value = 0;
+    int m_valueIndex = 0;
+    double m_value = 0.0;
+    double m_pendingChangingValue = 0.0;
     bool m_sliderActive = false;
     bool m_hasValueChanged = false;
+    bool m_hasPendingChangingValue = false;
+    QTimer* m_changeNotifyTimer = nullptr;
     QRect m_iconRect;
     QRect m_trackRect;
     QRect m_trackHitRect;
@@ -344,16 +354,16 @@ class StepperBubble : public BubbleBase {
 
 public:
     struct Spec {
-        int minValue = 0;
-        int maxValue = 100;
-        int step = 1;
-        int value = 0;
+        double minValue = 0.0;
+        double maxValue = 100.0;
+        double step = 1.0;
+        double value = 0.0;
         bool dismissOnCommit = false;
         QString minusGlyph = QString(QChar(0xfb40));
         QString plusGlyph = QString(QChar(0xf6e8));
-        std::function<QString(int value)> valueTextFormatter;
-        std::function<void(int value)> onValueChanging;
-        std::function<void(int value)> onValueCommitted;
+        std::function<QString(double value)> valueTextFormatter;
+        std::function<void(double value)> onValueChanging;
+        std::function<void(double value)> onValueCommitted;
         std::function<void()> onDismissed;
     };
 
@@ -379,7 +389,9 @@ private:
         Plus
     };
 
-    int normalizeValue(int value) const;
+    int maxStepIndex() const;
+    int indexFromValue(double value) const;
+    double valueFromIndex(int index) const;
     void recalcGeometry(const QRect& contentRect);
     Zone zoneAt(const QPoint& contentPos) const;
     void applyStep(int direction, bool notifyChanging);
@@ -391,8 +403,9 @@ private:
 
     Spec m_spec;
 
-    int m_value = 0;
-    int m_committedValue = 0;
+    int m_valueIndex = 0;
+    int m_committedValueIndex = 0;
+    double m_value = 0.0;
     bool m_dirtyFromCommitted = false;
     Zone m_activeZone = Zone::None;
 

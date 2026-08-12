@@ -13,9 +13,7 @@
 #include <QPainter>
 #include <QEasingCurve>
 #include <QDebug>
-#include <QTimer>
 #include <cmath>
-#include <memory>
 
 namespace {
 
@@ -23,7 +21,7 @@ const QVector<PrimaryItemData> kMenuBlueprint = {
     {
         QString(QChar(0xf837)), QColor(72, 104, 255), "Camera",
         {
-            {SettingID::Emissivity, "Emissivity", QColor(255, 255, 255), ActionType::Value},
+            {SettingID::Emissivity, "Emissivity", QColor(255, 255, 255), ActionType::Action},
             {SettingID::ShutterAutoEnabled, "Auto Shutter", QColor(255, 255, 255), ActionType::Toggle},
             {SettingID::SeekVisionEnabled, "Auto SeekVision", QColor(255, 255, 255), ActionType::Toggle},
             {SettingID::LegacySharpenEnabled, "Sharpen Filter", QColor(255, 255, 255), ActionType::Toggle, SecondaryVisibility::RequiresLegacyMode},
@@ -70,16 +68,14 @@ const QString kTopBarCloseIcon = QString(QChar(0xeb55));
 
 constexpr float kEmissivityMin = 0.01f;
 constexpr float kEmissivityMax = 1.00f;
-constexpr int kEmissivitySliderMin = 1;
-constexpr int kEmissivitySliderMax = 100;
-constexpr int kEmissivitySliderStep = 1;
+constexpr float kEmissivityStep = 0.01f;
 constexpr int kPreviewThrottleMs = 50;
-constexpr int kThermographyOffsetTenthsMin = -100;
-constexpr int kThermographyOffsetTenthsMax = 100;
-constexpr int kThermographyOffsetTenthsStep = 1;
+constexpr float kThermographyOffsetMin = -10.0f;
+constexpr float kThermographyOffsetMax = 10.0f;
+constexpr float kThermographyOffsetStep = 0.1f;
 constexpr float kLinearAgcCelsiusMin = -40.0f;
 constexpr float kLinearAgcCelsiusMax = 600.0f;
-constexpr int kLinearAgcStep = 1;
+constexpr float kLinearAgcStep = 1.0f;
 constexpr int kScreenBrightnessPercentMin = 1;
 constexpr int kScreenBrightnessPercentMax = 100;
 constexpr int kAudioVolumePercentMin = 0;
@@ -90,31 +86,6 @@ const QString kAudioVolumeIconGlyph = QString(QChar(0xeb51));
 
 float clampEmissivity(float value) {
     return qBound(kEmissivityMin, value, kEmissivityMax);
-}
-
-int emissivityToSliderValue(float value) {
-    const float clamped = clampEmissivity(value);
-    return qBound(kEmissivitySliderMin,
-                  qRound(clamped * 100.0f),
-                  kEmissivitySliderMax);
-}
-
-float sliderValueToEmissivity(int value) {
-    const int clamped = qBound(kEmissivitySliderMin, value, kEmissivitySliderMax);
-    return clampEmissivity(static_cast<float>(clamped) / 100.0f);
-}
-
-int thermographyOffsetToTenths(float value) {
-    return qBound(kThermographyOffsetTenthsMin,
-                  qRound(value * 10.0f),
-                  kThermographyOffsetTenthsMax);
-}
-
-float thermographyTenthsToCelsius(int value) {
-    const int clamped = qBound(kThermographyOffsetTenthsMin,
-                               value,
-                               kThermographyOffsetTenthsMax);
-    return static_cast<float>(clamped) / 10.0f;
 }
 
 QVariant defaultValueForKey(SettingKey key) {
@@ -158,6 +129,10 @@ int clampPercentInt(int value, int minValue, int maxValue) {
 
 QString formatPercent(int value, int minValue, int maxValue) {
     return QStringLiteral("%1%").arg(clampPercentInt(value, minValue, maxValue));
+}
+
+QString formatPercent(double value, int minValue, int maxValue) {
+    return formatPercent(qRound(value), minValue, maxValue);
 }
 
 bool boolSettingFromSnapshot(const SettingsSnapshot& snapshot, SettingKey key, bool fallback) {
@@ -929,58 +904,31 @@ void SettingsView::onSecondaryRowActivated() {
                 .toFloat(&ok));
         const float current = ok ? emissivity : 0.95f;
 
-        SliderBubble::Spec spec;
-        spec.minValue = kEmissivitySliderMin;
-        spec.maxValue = kEmissivitySliderMax;
-        spec.step = kEmissivitySliderStep;
-        spec.value = emissivityToSliderValue(current);
-        spec.dismissOnCommit = true;
-        auto previewTimer = std::make_shared<QTimer>();
-        previewTimer->setSingleShot(true);
-        previewTimer->setInterval(kPreviewThrottleMs);
+        StepperBubble::Spec spec;
+        spec.minValue = kEmissivityMin;
+        spec.maxValue = kEmissivityMax;
+        spec.step = kEmissivityStep;
+        spec.value = current;
+        spec.dismissOnCommit = false;
+        spec.valueTextFormatter = [](double value) {
+            return QString::number(clampEmissivity(static_cast<float>(value)), 'f', 2);
+        };
+        spec.onValueChanging = [row](double value) {
+            const float emissivity = clampEmissivity(static_cast<float>(value));
+            row->setValueText(QString::number(emissivity, 'f', 2));
 
-        auto latestPreviewSliderValue = std::make_shared<int>(spec.value);
-        auto previewDirty = std::make_shared<bool>(false);
-
-        auto flushPreview = [latestPreviewSliderValue]() {
             SettingsPatch previewPatch;
-            previewPatch.values.insert(SettingKey::Emissivity,
-                                       QVariant(sliderValueToEmissivity(*latestPreviewSliderValue)));
+            previewPatch.values.insert(SettingKey::Emissivity, QVariant(emissivity));
             SettingsService::instance().preview(previewPatch);
         };
-
-        connect(previewTimer.get(), &QTimer::timeout, this,
-                [previewTimer, previewDirty, flushPreview]() {
-                    if (!*previewDirty) return;
-                    flushPreview();
-                    *previewDirty = false;
-                    previewTimer->start();
-                });
-
-        spec.onValueChanging = [row, previewTimer, latestPreviewSliderValue, previewDirty, flushPreview](
-                                   int sliderValue) {
-            *latestPreviewSliderValue = sliderValue;
-            *previewDirty = true;
-            row->setValueText(QString::number(sliderValueToEmissivity(sliderValue), 'f', 2));
-
-            if (!previewTimer->isActive()) {
-                flushPreview();
-                *previewDirty = false;
-                previewTimer->start();
-            }
-        };
-
-        spec.onValueCommitted = [this, previewTimer, previewDirty](int sliderValue) {
-            previewTimer->stop();
-            *previewDirty = false;
-
+        spec.onValueCommitted = [this](double value) {
             SettingsPatch patch;
-            patch.values.insert(SettingKey::Emissivity, QVariant(sliderValueToEmissivity(sliderValue)));
+            patch.values.insert(SettingKey::Emissivity,
+                                QVariant(clampEmissivity(static_cast<float>(value))));
             applyPatchFromUi(patch);
         };
-        spec.onDismissed = [previewTimer]() { previewTimer->stop(); };
 
-        showSliderBubble(spec, buildAnchor());
+        showStepperBubble(spec, buildAnchor());
         return;
     }
     case SettingID::SeekVisionEnabled: {
@@ -1039,23 +987,24 @@ void SettingsView::onSecondaryRowActivated() {
             kLinearAgcCelsiusMax);
 
         StepperBubble::Spec spec;
-        spec.minValue = static_cast<int>(kLinearAgcCelsiusMin);
+        spec.minValue = kLinearAgcCelsiusMin;
         spec.maxValue =
-            qMax(spec.minValue, qRound(currentMax) - kLinearAgcStep);
+            qMax(spec.minValue, static_cast<double>(qRound(currentMax)) - kLinearAgcStep);
         spec.step = kLinearAgcStep;
-        spec.value = qBound(spec.minValue, qRound(currentMin), spec.maxValue);
+        spec.value = qBound(spec.minValue, static_cast<double>(qRound(currentMin)), spec.maxValue);
         spec.dismissOnCommit = false;
-        spec.valueTextFormatter = [](int value) {
+        spec.valueTextFormatter = [](double value) {
             return formatSignedCelsius(static_cast<float>(value), 0);
         };
-        spec.onValueChanging = [row](int value) {
+        spec.onValueChanging = [row](double value) {
             row->setValueText(formatSignedCelsius(static_cast<float>(value), 0));
+
             SettingsPatch previewPatch;
             previewPatch.values.insert(SettingKey::LinearAgcMinCelsius,
                                        QVariant(static_cast<float>(value)));
             SettingsService::instance().preview(previewPatch);
         };
-        spec.onValueCommitted = [this](int value) {
+        spec.onValueCommitted = [this](double value) {
             SettingsPatch patch;
             patch.values.insert(SettingKey::LinearAgcMinCelsius,
                                 QVariant(static_cast<float>(value)));
@@ -1078,22 +1027,24 @@ void SettingsView::onSecondaryRowActivated() {
 
         StepperBubble::Spec spec;
         spec.minValue =
-            qMin(static_cast<int>(kLinearAgcCelsiusMax), qRound(currentMin) + kLinearAgcStep);
-        spec.maxValue = static_cast<int>(kLinearAgcCelsiusMax);
+            qMin(static_cast<double>(kLinearAgcCelsiusMax),
+                 static_cast<double>(qRound(currentMin)) + kLinearAgcStep);
+        spec.maxValue = kLinearAgcCelsiusMax;
         spec.step = kLinearAgcStep;
-        spec.value = qBound(spec.minValue, qRound(currentMax), spec.maxValue);
+        spec.value = qBound(spec.minValue, static_cast<double>(qRound(currentMax)), spec.maxValue);
         spec.dismissOnCommit = false;
-        spec.valueTextFormatter = [](int value) {
+        spec.valueTextFormatter = [](double value) {
             return formatSignedCelsius(static_cast<float>(value), 0);
         };
-        spec.onValueChanging = [row](int value) {
+        spec.onValueChanging = [row](double value) {
             row->setValueText(formatSignedCelsius(static_cast<float>(value), 0));
+
             SettingsPatch previewPatch;
             previewPatch.values.insert(SettingKey::LinearAgcMaxCelsius,
                                        QVariant(static_cast<float>(value)));
             SettingsService::instance().preview(previewPatch);
         };
-        spec.onValueCommitted = [this](int value) {
+        spec.onValueCommitted = [this](double value) {
             SettingsPatch patch;
             patch.values.insert(SettingKey::LinearAgcMaxCelsius,
                                 QVariant(static_cast<float>(value)));
@@ -1135,25 +1086,26 @@ void SettingsView::onSecondaryRowActivated() {
             snapshot, SettingKey::ThermographyOffsetCelsius, 0.0f);
 
         StepperBubble::Spec spec;
-        spec.minValue = kThermographyOffsetTenthsMin;
-        spec.maxValue = kThermographyOffsetTenthsMax;
-        spec.step = kThermographyOffsetTenthsStep;
-        spec.value = thermographyOffsetToTenths(currentOffset);
+        spec.minValue = kThermographyOffsetMin;
+        spec.maxValue = kThermographyOffsetMax;
+        spec.step = kThermographyOffsetStep;
+        spec.value = qBound(kThermographyOffsetMin, currentOffset, kThermographyOffsetMax);
         spec.dismissOnCommit = false;
-        spec.valueTextFormatter = [](int value) {
-            return formatSignedCelsius(thermographyTenthsToCelsius(value), 1);
+        spec.valueTextFormatter = [](double value) {
+            return formatSignedCelsius(static_cast<float>(value), 1);
         };
-        spec.onValueChanging = [row](int value) {
-            const float offset = thermographyTenthsToCelsius(value);
+        spec.onValueChanging = [row](double value) {
+            const float offset = static_cast<float>(value);
             row->setValueText(formatSignedCelsius(offset, 1));
+
             SettingsPatch previewPatch;
             previewPatch.values.insert(SettingKey::ThermographyOffsetCelsius, QVariant(offset));
             SettingsService::instance().preview(previewPatch);
         };
-        spec.onValueCommitted = [this](int value) {
+        spec.onValueCommitted = [this](double value) {
             SettingsPatch patch;
             patch.values.insert(SettingKey::ThermographyOffsetCelsius,
-                                QVariant(thermographyTenthsToCelsius(value)));
+                                QVariant(static_cast<float>(value)));
             applyPatchFromUi(patch);
         };
 
@@ -1250,55 +1202,22 @@ void SettingsView::onSecondaryRowActivated() {
         spec.step = 1;
         spec.value = current;
         spec.dismissOnCommit = true;
+        spec.changingThrottleMs = kPreviewThrottleMs;
+        spec.onValueChanging = [row](double value) {
+            row->setValueText(formatPercent(value,
+                                            kScreenBrightnessPercentMin,
+                                            kScreenBrightnessPercentMax));
 
-        auto previewTimer = std::make_shared<QTimer>();
-        previewTimer->setSingleShot(true);
-        previewTimer->setInterval(kPreviewThrottleMs);
-
-        auto latestPreviewPercent = std::make_shared<int>(spec.value);
-        auto previewDirty = std::make_shared<bool>(false);
-
-        auto flushPreview = [latestPreviewPercent]() {
+            const int percent = qRound(value);
             SettingsPatch previewPatch;
-            previewPatch.values.insert(SettingKey::ScreenBrightnessPercent,
-                                       QVariant(*latestPreviewPercent));
+            previewPatch.values.insert(SettingKey::ScreenBrightnessPercent, QVariant(percent));
             SettingsService::instance().preview(previewPatch);
         };
-
-        connect(previewTimer.get(),
-                &QTimer::timeout,
-                this,
-                [previewTimer, previewDirty, flushPreview]() {
-                    if (!*previewDirty) return;
-                    flushPreview();
-                    *previewDirty = false;
-                    previewTimer->start();
-                });
-
-        spec.onValueChanging =
-            [row, previewTimer, latestPreviewPercent, previewDirty, flushPreview](int value) {
-                *latestPreviewPercent = value;
-                *previewDirty = true;
-                row->setValueText(formatPercent(value,
-                                                kScreenBrightnessPercentMin,
-                                                kScreenBrightnessPercentMax));
-
-                if (!previewTimer->isActive()) {
-                    flushPreview();
-                    *previewDirty = false;
-                    previewTimer->start();
-                }
-            };
-
-        spec.onValueCommitted = [this, previewTimer, previewDirty](int value) {
-            previewTimer->stop();
-            *previewDirty = false;
-
+        spec.onValueCommitted = [this](double value) {
             SettingsPatch patch;
-            patch.values.insert(SettingKey::ScreenBrightnessPercent, QVariant(value));
+            patch.values.insert(SettingKey::ScreenBrightnessPercent, QVariant(qRound(value)));
             applyPatchFromUi(patch);
         };
-        spec.onDismissed = [previewTimer]() { previewTimer->stop(); };
 
         showSliderBubble(spec, buildAnchor());
         return;
@@ -1317,55 +1236,22 @@ void SettingsView::onSecondaryRowActivated() {
         spec.step = 1;
         spec.value = current;
         spec.dismissOnCommit = true;
+        spec.changingThrottleMs = kPreviewThrottleMs;
+        spec.onValueChanging = [row](double value) {
+            row->setValueText(formatPercent(value,
+                                            kAudioVolumePercentMin,
+                                            kAudioVolumePercentMax));
 
-        auto previewTimer = std::make_shared<QTimer>();
-        previewTimer->setSingleShot(true);
-        previewTimer->setInterval(kPreviewThrottleMs);
-
-        auto latestPreviewPercent = std::make_shared<int>(spec.value);
-        auto previewDirty = std::make_shared<bool>(false);
-
-        auto flushPreview = [latestPreviewPercent]() {
+            const int percent = qRound(value);
             SettingsPatch previewPatch;
-            previewPatch.values.insert(SettingKey::AudioVolumePercent,
-                                       QVariant(*latestPreviewPercent));
+            previewPatch.values.insert(SettingKey::AudioVolumePercent, QVariant(percent));
             SettingsService::instance().preview(previewPatch);
         };
-
-        connect(previewTimer.get(),
-                &QTimer::timeout,
-                this,
-                [previewTimer, previewDirty, flushPreview]() {
-                    if (!*previewDirty) return;
-                    flushPreview();
-                    *previewDirty = false;
-                    previewTimer->start();
-                });
-
-        spec.onValueChanging =
-            [row, previewTimer, latestPreviewPercent, previewDirty, flushPreview](int value) {
-                *latestPreviewPercent = value;
-                *previewDirty = true;
-                row->setValueText(formatPercent(value,
-                                                kAudioVolumePercentMin,
-                                                kAudioVolumePercentMax));
-
-                if (!previewTimer->isActive()) {
-                    flushPreview();
-                    *previewDirty = false;
-                    previewTimer->start();
-                }
-            };
-
-        spec.onValueCommitted = [this, previewTimer, previewDirty](int value) {
-            previewTimer->stop();
-            *previewDirty = false;
-
+        spec.onValueCommitted = [this](double value) {
             SettingsPatch patch;
-            patch.values.insert(SettingKey::AudioVolumePercent, QVariant(value));
+            patch.values.insert(SettingKey::AudioVolumePercent, QVariant(qRound(value)));
             applyPatchFromUi(patch);
         };
-        spec.onDismissed = [previewTimer]() { previewTimer->stop(); };
 
         showSliderBubble(spec, buildAnchor());
         return;
