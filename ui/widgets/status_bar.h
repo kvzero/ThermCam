@@ -37,11 +37,20 @@ protected:
     void paintEvent(QPaintEvent* event) override;
 
 private:
+    void onPcConnectionPoll();
+    bool readPcConnected() const;
+
     // --- Modular Drawing Actors ---
+    /** @return Left edge of the right cluster's painted bounds. */
+    qreal drawRightStatusItems(QPainter& p, const QRect& barRect, qreal rightEdge);
     void drawTime(QPainter& p, const QRect& rect);
     void drawEmissivity(QPainter& p, const QRect& rect);
-    void drawBattery(QPainter& p, const QRect& rect);
-    void drawStorageIcon(QPainter& p, const QRect& rect, QChar icon);
+
+    /** @brief Draws the self-sized battery with its painted right edge aligned. */
+    void drawBattery(QPainter& p, qreal visualRightX, const QRect& barRect);
+
+    /** @brief Draws a status glyph with its ink right edge aligned. */
+    void drawStatusIcon(QPainter& p, QChar icon, qreal visualRightX, const QRect& barRect);
 
     /** @brief Helper for high-contrast outlined text. */
     void drawOutlinedText(QPainter& p, const QRect& rect, int flags, const QString& text,
@@ -53,6 +62,7 @@ private:
     BatteryStatus m_batteryStatus;
     bool m_sdCardReady = false;
     bool m_usbDiskReady = false;
+    bool m_pcConnected = false;
     qreal m_contentsOpacity = 1.0;
 
     // --- UI Constants ---
@@ -61,10 +71,8 @@ private:
     // --- Visual Configuration Ratios ---
     const qreal kHorizontalInsetWidthRatio = 0.03;    // Left/right content inset, relative to bar width
     const qreal kLeftClusterGapWidthRatio  = 0.045;    // Gap between Time and Emissivity, relative to bar width
-    const qreal kRightItemGapWidthRatio    = 0.014;    // Gap between right-side items, relative to bar width
+    const qreal kRightVisualGapWidthRatio  = 0.031;    // Gap between adjacent right-side visual bounds
     const qreal kContentYOffsetRatio       = 0.08;     // Global downward shift of all status bar content
-    const qreal kBatterySlotWidthRatio     = 1.39;      // Battery slot width, relative to bar height
-    const qreal kStorageIconPaddingRatio   = 0.16;      // Extra width around icon glyph, relative to bar height
     const qreal kTextSizeRatio             = 0.6;      // Font size relative to bar height
 
     // --- Semantic Color Palette ---
@@ -79,6 +87,7 @@ private:
 
     static constexpr ushort ICON_SD_CARD = 0xf384;
     static constexpr ushort ICON_USB_DISK = 0xfc59;
+    static constexpr ushort ICON_PC_CONNECTION = 0xf00c;
 };
 
 #endif // STATUS_BAR_H

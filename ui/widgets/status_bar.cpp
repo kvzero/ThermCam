@@ -10,6 +10,7 @@
 #include <QDateTime>
 #include <QTimer>
 #include <QFontMetrics>
+#include <QFile>
 
 StatusBar::StatusBar(QWidget* parent) : QWidget(parent) {
     setAttribute(Qt::WA_TranslucentBackground);
@@ -46,6 +47,11 @@ StatusBar::StatusBar(QWidget* parent) : QWidget(parent) {
 
     // Immediate time populate
     onSecondTick();
+
+    QTimer* pcConnectionTimer = new QTimer(this);
+    connect(pcConnectionTimer, &QTimer::timeout, this, &StatusBar::onPcConnectionPoll);
+    pcConnectionTimer->start(1000);
+    onPcConnectionPoll();
 }
 
 void StatusBar::onPowerStatusChanged(const BatteryStatus& status) {
@@ -80,6 +86,37 @@ void StatusBar::onUsbDiskStateChanged(bool ready) {
     update();
 }
 
+void StatusBar::onPcConnectionPoll() {
+    const bool connected = readPcConnected();
+    if (m_pcConnected == connected) return;
+    m_pcConnected = connected;
+    update();
+}
+
+// TUSB320 extcon reflects the physical Type-C role. In device mode cable.0 is
+// USB=1 and cable.1 is USB-HOST=0; android_usb/UDC state can stay configured
+// after unplug, so it is not reliable for this status icon.
+bool StatusBar::readPcConnected() const {
+    auto readFlag = [](const QString& path) -> int {
+        QFile file(path);
+        if (!file.open(QIODevice::ReadOnly)) {
+            return -1;
+        }
+        bool ok = false;
+        const int value = QString::fromLatin1(file.readAll()).trimmed().toInt(&ok);
+        return ok ? value : -1;
+    };
+
+    const int usbDevice = readFlag("/sys/class/extcon/extcon0/cable.0/state");
+    const int usbHost = readFlag("/sys/class/extcon/extcon0/cable.1/state");
+
+    if (usbDevice < 0 || usbHost < 0) {
+        return false;
+    }
+
+    return usbDevice == 1 && usbHost == 0;
+}
+
 void StatusBar::paintEvent(QPaintEvent*) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
@@ -93,51 +130,22 @@ void StatusBar::paintEvent(QPaintEvent*) {
 
     const int horizontalInset = qRound(w * kHorizontalInsetWidthRatio);
     const int leftClusterGap = qRound(w * kLeftClusterGapWidthRatio);
-    const int rightItemGap = qRound(w * kRightItemGapWidthRatio);
     const int contentYOffset = qRound(h * kContentYOffsetRatio);
+    const QRect barRect(0, 0, w, h);
 
     p.save();
     p.translate(0, contentYOffset);
 
     int leftCursorX  = horizontalInset;
-    int rightCursorX = w - horizontalInset;
+    const qreal rightStatusLeftX = drawRightStatusItems(p, barRect, w - horizontalInset - 1.0);
 
-    /* 1. RIGHT STACK (Layout Order: Right -> Left) */
-
-    // SLOT R1: Battery
-    const int battW = qRound(h * kBatterySlotWidthRatio);
-    rightCursorX -= battW;
-    const QRect battRect(rightCursorX, 0, battW, h);
-    drawBattery(p, battRect);
-
-    // SLOT R2/R3: Removable Storage Icons
-    QFont iconFont("tabler-icons");
-    iconFont.setPixelSize(qRound(h * 0.64));
-    iconFont.setWeight(QFont::DemiBold);
-    const QFontMetrics iconFm(iconFont);
-    const int iconGlyphW = qMax(iconFm.horizontalAdvance(QChar(ICON_SD_CARD)),
-                                iconFm.horizontalAdvance(QChar(ICON_USB_DISK)));
-    const int iconPaddingW = qMax(2, qRound(h * kStorageIconPaddingRatio));
-    const int storageIconW = iconGlyphW + iconPaddingW;
-
-    auto placeStorageIcon = [&](QChar icon) {
-        rightCursorX -= rightItemGap;
-        rightCursorX -= storageIconW;
-        drawStorageIcon(p, QRect(rightCursorX, 0, storageIconW, h), icon);
-    };
-    if (m_sdCardReady) placeStorageIcon(QChar(ICON_SD_CARD));
-    if (m_usbDiskReady) placeStorageIcon(QChar(ICON_USB_DISK));
-
-    /* 2. LEFT STACK (Layout Order: Left -> Right) */
-
-    // Setup font for layout metrics calculation
+    // Emissivity text stops at the right cluster's painted bounds.
     QFont font("Roboto");
     font.setPixelSize(qRound(h * kTextSizeRatio));
     font.setBold(true);
     p.setFont(font);
     QFontMetrics fm(font);
 
-    // SLOT L1: Time
     const int timeAdvanceW = fm.horizontalAdvance(m_timeText);
     const int timeInkW = fm.boundingRect(m_timeText).width();
     const int timeDrawW = qMax(timeAdvanceW, timeInkW) + 3; // Reserve outline overdraw on the right edge.
@@ -145,11 +153,68 @@ void StatusBar::paintEvent(QPaintEvent*) {
     drawTime(p, timeRect);
     leftCursorX += timeDrawW + leftClusterGap;
 
-    // SLOT L2: Emissivity
-    const int maxEmissivityW = qMax(0, rightCursorX - leftCursorX);
+    const int maxEmissivityW = qMax(0, qRound(rightStatusLeftX) - leftCursorX);
     const QRect emissivityRect(leftCursorX, 0, maxEmissivityW, h);
     drawEmissivity(p, emissivityRect);
     p.restore();
+}
+
+namespace {
+QFont statusIconFont(qreal barHeight) {
+    constexpr qreal kIconSizeRatio = 0.64;
+
+    QFont iconFont("tabler-icons");
+    iconFont.setPixelSize(qRound(barHeight * kIconSizeRatio));
+    iconFont.setWeight(QFont::DemiBold);
+    return iconFont;
+}
+
+// Battery layout and drawing share this geometry.
+struct BatterySize {
+    qreal bodyH;
+    qreal bodyW;
+    qreal nippleW;
+    qreal gap;
+    qreal visualW;
+};
+
+BatterySize batterySize(qreal barHeight) {
+    constexpr qreal kBodyHeightRatio = 0.55;
+    constexpr qreal kBodyWidthRatio = 2.05;
+    constexpr qreal kNippleWidthHeightRatio = 0.1112;
+    constexpr qreal kNippleGapHeightRatio = 0.0139;
+
+    BatterySize size;
+    size.bodyH = barHeight * kBodyHeightRatio;
+    size.bodyW = size.bodyH * kBodyWidthRatio;
+    size.nippleW = barHeight * kNippleWidthHeightRatio;
+    size.gap = barHeight * kNippleGapHeightRatio;
+    size.visualW = size.bodyW + size.gap + size.nippleW;
+    return size;
+}
+} // namespace
+
+qreal StatusBar::drawRightStatusItems(QPainter& p, const QRect& barRect, qreal rightEdge) {
+    // Cursor advances by painted width, not by preallocated slots.
+    const qreal visualGap = qRound(barRect.width() * kRightVisualGapWidthRatio);
+    const QFontMetricsF iconFm(statusIconFont(barRect.height()));
+    qreal cursorX = rightEdge;
+
+    drawBattery(p, cursorX, barRect);
+    cursorX -= batterySize(barRect.height()).visualW;
+
+    auto placeStatusIcon = [&](bool visible, QChar icon) {
+        if (!visible) return;
+        cursorX -= visualGap;
+        drawStatusIcon(p, icon, cursorX, barRect);
+        cursorX -= qMax<qreal>(1.0, iconFm.boundingRect(QString(icon)).width());
+    };
+
+    placeStatusIcon(m_sdCardReady, QChar(ICON_SD_CARD));
+    placeStatusIcon(m_usbDiskReady, QChar(ICON_USB_DISK));
+    placeStatusIcon(m_pcConnected, QChar(ICON_PC_CONNECTION));
+
+    return cursorX;
 }
 
 void StatusBar::drawTime(QPainter& p, const QRect& rect) {
@@ -173,89 +238,83 @@ void StatusBar::drawEmissivity(QPainter& p, const QRect& rect) {
     drawOutlinedText(p, rect, Qt::AlignLeft | Qt::AlignVCenter, text, EMISSIVITY_TEXT_COLOR);
 }
 
-void StatusBar::drawStorageIcon(QPainter& p, const QRect& rect, QChar icon) {
-    QFont iconFont("tabler-icons");
-    iconFont.setPixelSize(qRound(height() * 0.64));
-    iconFont.setWeight(QFont::DemiBold);
+void StatusBar::drawStatusIcon(QPainter& p, QChar icon, qreal visualRightX, const QRect& barRect) {
+    const QFont iconFont = statusIconFont(barRect.height());
     p.setFont(iconFont);
-    drawOutlinedText(p, rect, Qt::AlignCenter, QString(icon));
+
+    const QString text(icon);
+    const QFontMetricsF fm(iconFont);
+    const QRectF inkRect = fm.boundingRect(text);
+
+    // Align by glyph ink bounds; Tabler icon advance includes side bearings.
+    const qreal baselineX = visualRightX - inkRect.right();
+    const qreal baselineY = barRect.center().y() - (inkRect.top() + inkRect.bottom()) / 2.0;
+    const QPointF baseline(baselineX, baselineY);
+
+    if (m_contentsOpacity < 0.02) return;
+
+    const qreal currentAlpha = m_contentsOpacity;
+    if (currentAlpha > 0.1) {
+        const int outlineAlpha = qRound(255 * (currentAlpha * currentAlpha));
+        p.setPen(QColor(0, 0, 0, outlineAlpha));
+
+        static const int dx[] = {-1, 1, -1, 1};
+        static const int dy[] = {-1, -1, 1, 1};
+        for (int i = 0; i < 4; ++i) {
+            p.drawText(baseline + QPointF(dx[i], dy[i]), text);
+        }
+    }
+
+    p.setPen(Qt::white);
+    p.drawText(baseline, text);
 }
 
-void StatusBar::drawBattery(QPainter& p, const QRect& rect) {
-    // ---------------------------------------------------------
-    // 1. Configuration: Visual Ratios (Modify these to tune UI)
-    // ---------------------------------------------------------
+void StatusBar::drawBattery(QPainter& p, qreal visualRightX, const QRect& barRect) {
+    constexpr qreal kBodyCornerRadiusRatio = 0.30;
+    constexpr qreal kNippleHeightBodyRatio = 0.40;
+    constexpr qreal kNippleChordCut = 0.30;
+    constexpr qreal kTextSizeBodyRatio = 0.80;
+    constexpr qreal kTextStretch = 110;
+    constexpr qreal kTextStrokeBodyRatio = 0.05;
+    constexpr qreal kTextOpticalOffsetRatio = 0.02;
+    constexpr qreal kBoltWidthBodyRatio = 0.55;
+    constexpr qreal kBoltHeightBodyRatio = 0.85;
+    constexpr qreal kBoltStrokeBodyRatio = 0.08;
+    constexpr qreal kErrorXSizeBodyRatio = 0.25;
+    constexpr qreal kErrorXStrokeBodyRatio = 0.15;
 
-    // --- Chassis & Positive Pole (Nipple) ---
-    const qreal kBodyHeightRatio       = 0.55;  // Vertical scale of the battery body relative to the container height
-    const qreal kBodyWidthRatio        = 2.05;  // Fixed aspect ratio (Width/Height) for the body to ensure consistent shape across resolutions
-    const qreal kBodyCornerRadiusRatio = 0.30;  // Rounding intensity: 0.5 creates a perfect semi-circle (capsule)
-    const qreal kNippleWidthRatio      = 0.08;  // Width of the positive pole relative to the total component width
-    const qreal kNippleHeightRatio     = 0.40;  // Vertical height of the pole relative to the body height
-    const qreal kNippleGapRatio        = 0.01;  // Horizontal gap between the body and pole to create a "floating" effect
-    const qreal kNippleChordCut        = 0.30;  // Amount of the circular pole to be flattened on the left side (0.0 to 1.0)
-
-    // --- Typography & Iconography ---
-    const qreal kTextSizeRatio         = 0.80;  // Font pixel size relative to the internal body height
-    const qreal kTextStretch           = 110;   // Horizontal glyph expansion (100 is original, >100 is wider/sturdier)
-    const qreal kTextStrokeRatio       = 0.05;  // Artificial boldening: stroke weight added to the path outline
-    const qreal kTextOpticalOffsetRatio = 0.02;
-    const qreal kBoltWidthRatio        = 0.55;  // Width of the lightning icon relative to the internal body height
-    const qreal kBoltHeightRatio       = 0.85;  // Height of the lightning icon relative to the internal body height
-    const qreal kBoltStrokeRatio       = 0.08;  // Additional stroke weight applied to the bolt icon outline for boldening
-    const qreal kCompoundSpacing       = 0.01;  // Padding between the bolt icon and the numeric percentage glyphs
-
-    // --- Diagnostics (Failure Indicators) ---
-    const qreal kErrorXSizeRatio       = 0.25;  // The diagonal span of the 'X' mark when isPresent is false
-    const qreal kErrorXStrokeRatio     = 0.15;  // Line weight of the 'X' mark strokes
-
-    // ---------------------------------------------------------
-    // 2. Geometry Calculation (Automatic Alignment)
-    // ---------------------------------------------------------
-    const qreal h = rect.height();
-    const qreal w = rect.width();
-
-    // Calculate vertical metrics first
-    const qreal bodyH = h * kBodyHeightRatio;
-    const qreal bodyY = rect.y() + (h - bodyH) / 2.0;
+    const qreal barHeight = barRect.height();
+    const BatterySize size = batterySize(barHeight);
+    const qreal bodyH = size.bodyH;
+    const qreal bodyW = size.bodyW;
+    const qreal nippleW = size.nippleW;
+    const qreal gap = size.gap;
+    const qreal bodyY = barRect.y() + (barHeight - bodyH) / 2.0;
     const qreal bodyRadius = bodyH * kBodyCornerRadiusRatio;
+    const qreal groupStartX = visualRightX - size.visualW;
 
-    // Determine horizontal metrics based on fixed ratios to prevent stretching
-    const qreal bodyW   = bodyH * kBodyWidthRatio; // Locked to height
-    const qreal nippleW = w * kNippleWidthRatio;
-    const qreal gap     = w * kNippleGapRatio;
-
-    // Calculate total visual span and align to the RIGHT edge
-    const qreal totalVisualW = bodyW + gap + nippleW;
-    const qreal groupStartX  = rect.right() - totalVisualW;
-
-    // Define final body and nipple rectangles
     const QRectF bodyRect(groupStartX, bodyY, bodyW, bodyH);
     QPainterPath bodyPath;
     bodyPath.addRoundedRect(bodyRect, bodyRadius, bodyRadius);
 
-    const qreal nippleH = bodyH * kNippleHeightRatio;
-    const qreal nippleY = rect.y() + (h - nippleH) / 2.0;
+    const qreal nippleH = bodyH * kNippleHeightBodyRatio;
+    const qreal nippleY = barRect.y() + (barHeight - nippleH) / 2.0;
     const QRectF nippleRect(bodyRect.right() + gap, nippleY, nippleW, nippleH);
 
-    // ---------------------------------------------------------
-    // PHASE 1: Base Layer (Surface Rendering)
-    // ---------------------------------------------------------
+    // Shell and terminal cap.
     p.setPen(Qt::NoPen);
 
-    // 1A: Draw Body Capsule (Always Surface Color)
     p.setBrush(BATT_SURFACE);
     p.drawPath(bodyPath);
 
-    // 1B: Draw Chord-cut Nipple (Conditional Coloring)
     if (m_batteryStatus.isPresent && m_batteryStatus.level == 100) {
         if (m_batteryStatus.isChargerConnected) {
-            p.setBrush(BATT_FILL_CHG); // Full & Plugged -> Green
+            p.setBrush(BATT_FILL_CHG);
         } else {
-            p.setBrush(BATT_FILL_STD); // Full & Unplugged -> White
+            p.setBrush(BATT_FILL_STD);
         }
     } else {
-        p.setBrush(BATT_SURFACE);      // Not Full -> Dark Gray
+        p.setBrush(BATT_SURFACE);
     }
 
     QPainterPath nipplePath;
@@ -266,25 +325,19 @@ void StatusBar::drawBattery(QPainter& p, const QRect& rect) {
 
     p.drawPath(nipplePath.intersected(clipPath));
 
-    // ---------------------------------------------------------
-    // PHASE 2: Presence Firewall (Battery Absent)
-    // ---------------------------------------------------------
+    // Battery-absent marker replaces level content.
     if (!m_batteryStatus.isPresent) {
-        p.setPen(QPen(BATT_MARK_ERR, bodyH * kErrorXStrokeRatio, Qt::SolidLine, Qt::RoundCap));
-        const qreal xHalf = bodyH * kErrorXSizeRatio;
+        p.setPen(QPen(BATT_MARK_ERR, bodyH * kErrorXStrokeBodyRatio, Qt::SolidLine, Qt::RoundCap));
+        const qreal xHalf = bodyH * kErrorXSizeBodyRatio;
         const QPointF c = bodyRect.center();
         p.drawLine(c.x() - xHalf, c.y() - xHalf, c.x() + xHalf, c.y() + xHalf);
         p.drawLine(c.x() + xHalf, c.y() - xHalf, c.x() - xHalf, c.y() + xHalf);
         return;
     }
 
-    // ---------------------------------------------------------
-    // PHASE 3: Dynamic Fill Layer
-    // ---------------------------------------------------------
+    // Level fill: external power takes precedence over low-battery coloring.
     QColor fillColor = BATT_FILL_STD;
 
-    // Logic: Background is Green if physically connected to power.
-    // Otherwise, it follows the battery level (Red if low, White if normal).
     if (m_batteryStatus.isChargerConnected) {
         fillColor = BATT_FILL_CHG;
     } else if (m_batteryStatus.level <= LOW_BATTERY_THRESHOLD) {
@@ -305,14 +358,11 @@ void StatusBar::drawBattery(QPainter& p, const QRect& rect) {
         p.drawPath(bodyPath.intersected(fillClipPath));
     }
 
-    // ---------------------------------------------------------
-    // PHASE 4: Content Composite (Text & Bolt Push Logic)
-    // ---------------------------------------------------------
-    // Content color follows the background: Black on White/Red, White on Green.
     const QColor contentColor = m_batteryStatus.isChargerConnected ? BATT_TEXT_CHG : BATT_TEXT_STD;
 
+    // Centered battery content, optionally with a charging bolt.
     QFont font("Roboto");
-    font.setPixelSize(bodyH * kTextSizeRatio);
+    font.setPixelSize(bodyH * kTextSizeBodyRatio);
     font.setWeight(QFont::Black);
     font.setStretch(kTextStretch);
     p.setFont(font);
@@ -321,34 +371,29 @@ void StatusBar::drawBattery(QPainter& p, const QRect& rect) {
     const QFontMetricsF fm(font);
     const qreal textWidth = fm.horizontalAdvance(valStr);
 
-    // Prepare text path for manual thickening
+    // Roboto's built-in weights are too thin at HUD size, so the percentage is stroked as a path.
     QPainterPath textPath;
     textPath.addText(0, 0, font, valStr);
     const QRectF pathBox = textPath.boundingRect();
 
-    // Logic: Show Bolt ONLY when actively charging (Current > 0).
-    // If connected but Full, the bolt remains hidden.
     if (m_batteryStatus.isCharging) {
-        const qreal boltWidth = bodyH * kBoltWidthRatio;
-        const qreal spacing    = w * kCompoundSpacing;
-        const qreal totalGroupWidth = textWidth + spacing + boltWidth; // Layout: [Text][Gap][Bolt]
+        const qreal boltWidth = bodyH * kBoltWidthBodyRatio;
+        const qreal spacing = gap;
+        const qreal totalGroupWidth = textWidth + spacing + boltWidth;
 
-        // Calculate the starting position for the whole group to be centered
         const qreal groupStartX = bodyRect.left() + (bodyRect.width() - totalGroupWidth) / 2.0;
 
-        // 4A: Draw Thickened Text (Left side of the group)
         p.save();
         qreal textX = groupStartX;
         qreal textY = bodyRect.top() + (bodyH - pathBox.height()) / 2.0 - pathBox.top();
         p.translate(textX, textY);
 
-        QPen textPen(contentColor, bodyH * kTextStrokeRatio, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+        QPen textPen(contentColor, bodyH * kTextStrokeBodyRatio, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
         p.setPen(textPen);
         p.setBrush(contentColor);
         p.drawPath(textPath);
         p.restore();
 
-        // 4B: Draw Thickened Bolt (Right side of the group)
         QPainterPath boltSourcePath;
         boltSourcePath.moveTo(0.6, 0.1); boltSourcePath.lineTo(0.2, 0.55);
         boltSourcePath.lineTo(0.5, 0.55); boltSourcePath.lineTo(0.4, 0.9);
@@ -356,26 +401,24 @@ void StatusBar::drawBattery(QPainter& p, const QRect& rect) {
         boltSourcePath.closeSubpath();
 
         QTransform boltTransform;
-        // Offset the bolt by the text width and spacing
         qreal boltX = groupStartX + textWidth + spacing;
-        boltTransform.translate(boltX, bodyRect.top() + (bodyH * (1.0 - kBoltHeightRatio) / 2.0));
-        boltTransform.scale(boltWidth, bodyH * kBoltHeightRatio);
+        boltTransform.translate(boltX, bodyRect.top() + (bodyH * (1.0 - kBoltHeightBodyRatio) / 2.0));
+        boltTransform.scale(boltWidth, bodyH * kBoltHeightBodyRatio);
         QPainterPath renderedBoltPath = boltTransform.map(boltSourcePath);
 
-        QPen boltPen(contentColor, bodyH * kBoltStrokeRatio, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+        QPen boltPen(contentColor, bodyH * kBoltStrokeBodyRatio, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
         p.setPen(boltPen);
         p.setBrush(contentColor);
         p.drawPath(renderedBoltPath);
 
     } else {
-        // Simple Absolute Geometric Center (Standard discharge or Full state)
         p.save();
         qreal textX = bodyRect.left() + (bodyRect.width() - pathBox.width()) / 2.0;
         textX -= (bodyRect.width() * kTextOpticalOffsetRatio);
         qreal textY = bodyRect.top() + (bodyH - pathBox.height()) / 2.0 - pathBox.top();
         p.translate(textX, textY);
 
-        QPen thickPen(contentColor, bodyH * kTextStrokeRatio, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+        QPen thickPen(contentColor, bodyH * kTextStrokeBodyRatio, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
         p.setPen(thickPen);
         p.setBrush(contentColor);
         p.drawPath(textPath);
@@ -385,20 +428,15 @@ void StatusBar::drawBattery(QPainter& p, const QRect& rect) {
 
 void StatusBar::drawOutlinedText(QPainter& p, const QRect& rect, int flags, const QString& text,
                                  const QColor& textColor) {
-    // 1. Performance Guard: If HUD is nearly invisible, skip rendering entirely
     if (m_contentsOpacity < 0.02) return;
 
-    // 2. Math Optimization: Use simple multiplication instead of std::pow
     const qreal currentAlpha = m_contentsOpacity;
 
-    // Draw outline only if it's visually significant
     if (currentAlpha > 0.1) {
-        // Square the alpha for aggressive outline fading (Alpha^3 total)
         const int outlineAlpha = qRound(255 * (currentAlpha * currentAlpha));
         p.setPen(QColor(0, 0, 0, outlineAlpha));
 
-        // 3. Rendering Optimization: Reduced from 8-direction to 4-diagonal
-        // For a 1px outline, 4 draws are visually indistinguishable from 8 on small screens.
+        // Four diagonal samples are enough for the one-pixel HUD outline.
         static const int dx[] = {-1, 1, -1, 1};
         static const int dy[] = {-1, -1, 1, 1};
 
@@ -407,7 +445,6 @@ void StatusBar::drawOutlinedText(QPainter& p, const QRect& rect, int flags, cons
         }
     }
 
-    // 4. Primary text rendering
     p.setPen(textColor);
     p.drawText(rect, flags, text);
 }
