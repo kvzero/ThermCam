@@ -3,8 +3,10 @@
 #include <QDebug>
 #include <QMutex>
 #include <QMutexLocker>
+#include <QtGlobal>
 #include <cstring>
 #include <functional>
+#include <utility>
 
 #include "core/event_bus.h"
 #include "seekcamera/seekcamera.h"
@@ -63,44 +65,83 @@ QString buildSeekApplyError(const char* action, seekcamera_error_t status) {
 }
 } // namespace
 
-class ThermalCamera::Impl {
+class ThermalCamera::ThermalCameraBackend {
 public:
-    explicit Impl(ThermalCamera* cameraObject) : q(cameraObject) {}
-    ~Impl() { shutdown(); }
+    ThermalCameraBackend() = default;
+    ~ThermalCameraBackend() { shutdown(); }
 
-    void init() {
-        seekcamera_error_t status = seekcamera_manager_create(&manager, SEEKCAMERA_IO_TYPE_USB);
+    ThermalCameraBackend(const ThermalCameraBackend&) = delete;
+    ThermalCameraBackend& operator=(const ThermalCameraBackend&) = delete;
+
+    void startSeekUsb() {
+        seekcamera_error_t status = seekcamera_manager_create(&m_manager, SEEKCAMERA_IO_TYPE_USB);
         if (status != SEEKCAMERA_SUCCESS) {
-            qCritical() << "ThermalCamera: failed to create manager:" << status;
+            qCritical() << "ThermalCamera: failed to create manager:" << status
+                        << seekErrorString(status);
             return;
         }
 
+        // The SDK can emit CONNECT synchronously here, so this must not run under m_mutex.
         status = seekcamera_manager_register_event_callback(
-            manager, &Impl::onEventCallback, this);
+            m_manager, &ThermalCameraBackend::onEventCallback, this);
         if (status != SEEKCAMERA_SUCCESS) {
-            qCritical() << "ThermalCamera: failed to register manager callback:" << status;
+            qCritical() << "ThermalCamera: failed to register manager callback:" << status
+                        << seekErrorString(status);
+            return;
         }
     }
 
     void shutdown() {
-        QMutexLocker lock(&mutex);
+        seekcamera_manager_t* manager = nullptr;
+        {
+            QMutexLocker lock(&m_mutex);
+            manager = m_manager;
+            m_manager = nullptr;
+            m_camera = nullptr;
+            m_frameCallbackRegistered = false;
+            m_cameraObject = nullptr;
+        }
+
         if (manager) {
             seekcamera_manager_destroy(&manager);
-            manager = nullptr;
-            camera = nullptr;
         }
     }
 
-    bool setPipelineMode(ThermalCamera::PipelineMode mode, QString* outError) {
-        QMutexLocker lock(&mutex);
-        const ThermalCamera::PipelineMode previousPipeline = cachedPipelineMode;
-        cachedPipelineMode = mode;
+    void attach(ThermalCamera* cameraObject) {
+        bool notifyConnected = false;
+        QString serial;
 
-        if (!camera) return true;
+        {
+            QMutexLocker lock(&m_mutex);
+            m_cameraObject = cameraObject;
+            if (m_camera) {
+                notifyConnected = true;
+                serial = m_connectedSerial;
+            }
+        }
+
+        registerFrameCallbackIfNeeded();
+
+        if (notifyConnected) {
+            emit cameraObject->cameraConnected(serial);
+        }
+    }
+
+    void detach() {
+        QMutexLocker lock(&m_mutex);
+        m_cameraObject = nullptr;
+    }
+
+    bool setPipelineMode(ThermalCamera::PipelineMode mode, QString* outError) {
+        QMutexLocker lock(&m_mutex);
+        const ThermalCamera::PipelineMode previousPipeline = m_cachedPipelineMode;
+        m_cachedPipelineMode = mode;
+
+        if (!m_camera) return true;
         if (!prepareSeekVisionEntryLocked(previousPipeline, outError)) return false;
         if (!applyPipelineLocked(outError)) return false;
 
-        if (cachedPipelineMode != ThermalCamera::PipelineMode::SeekVision) {
+        if (m_cachedPipelineMode != ThermalCamera::PipelineMode::SeekVision) {
             if (!applySharpenFilterLocked(outError)) return false;
             if (!applyAgcModeLocked(outError)) return false;
         }
@@ -112,10 +153,11 @@ public:
         value = qBound(kMinEmissivity, value, kMaxEmissivity);
 
         {
-            QMutexLocker lock(&mutex);
-            cachedEmissivity = value;
-            if (camera) {
-                const seekcamera_error_t status = seekcamera_set_scene_emissivity(camera, value);
+            QMutexLocker lock(&m_mutex);
+            m_cachedEmissivity = value;
+            if (m_camera) {
+                const seekcamera_error_t status =
+                    seekcamera_set_scene_emissivity(m_camera, value);
                 if (status != SEEKCAMERA_SUCCESS) {
                     qWarning() << "ThermalCamera: set emissivity failed:" << status
                                << seekErrorString(status);
@@ -127,71 +169,77 @@ public:
     }
 
     float getEmissivity() const {
-        QMutexLocker lock(&mutex);
-        return cachedEmissivity;
+        QMutexLocker lock(&m_mutex);
+        return m_cachedEmissivity;
     }
 
     bool setShutterMode(ThermalCamera::ShutterMode mode, QString* outError) {
-        QMutexLocker lock(&mutex);
-        cachedShutterMode = mode;
-        if (!camera) return true;
+        QMutexLocker lock(&m_mutex);
+        m_cachedShutterMode = mode;
+        if (!m_camera) return true;
         return applyShutterModeLocked(outError);
     }
 
     bool setThermographyOffsetCelsius(float offset, QString* outError) {
-        QMutexLocker lock(&mutex);
-        cachedThermographyOffsetCelsius = offset;
-        if (!camera) return true;
+        QMutexLocker lock(&m_mutex);
+        m_cachedThermographyOffsetCelsius = offset;
+        if (!m_camera) return true;
         return applyThermographyOffsetLocked(outError);
     }
 
     bool setSharpenFilterEnabled(bool enabled, QString* outError) {
-        QMutexLocker lock(&mutex);
-        cachedSharpenFilterEnabled = enabled;
-        if (!camera || cachedPipelineMode == ThermalCamera::PipelineMode::SeekVision) return true;
+        QMutexLocker lock(&m_mutex);
+        m_cachedSharpenFilterEnabled = enabled;
+        if (!m_camera || m_cachedPipelineMode == ThermalCamera::PipelineMode::SeekVision) {
+            return true;
+        }
         return applySharpenFilterLocked(outError);
     }
 
     bool setAgcMode(ThermalCamera::AgcMode mode, QString* outError) {
-        QMutexLocker lock(&mutex);
-        cachedAgcMode = mode;
-        if (!camera || cachedPipelineMode == ThermalCamera::PipelineMode::SeekVision) return true;
+        QMutexLocker lock(&m_mutex);
+        m_cachedAgcMode = mode;
+        if (!m_camera || m_cachedPipelineMode == ThermalCamera::PipelineMode::SeekVision) {
+            return true;
+        }
         return applyAgcModeLocked(outError);
     }
 
     bool setLinearAgcManualRangeCelsius(float minCelsius,
-                                         float maxCelsius,
-                                         QString* outError) {
-        QMutexLocker lock(&mutex);
-        cachedLinearAgcMinCelsius = minCelsius;
-        cachedLinearAgcMaxCelsius = maxCelsius;
+                                        float maxCelsius,
+                                        QString* outError) {
+        QMutexLocker lock(&m_mutex);
+        m_cachedLinearAgcMinCelsius = minCelsius;
+        m_cachedLinearAgcMaxCelsius = maxCelsius;
 
-        if (!camera || cachedPipelineMode == ThermalCamera::PipelineMode::SeekVision) return true;
-        if (cachedAgcMode != ThermalCamera::AgcMode::Linear) return true;
+        if (!m_camera || m_cachedPipelineMode == ThermalCamera::PipelineMode::SeekVision) {
+            return true;
+        }
+        if (m_cachedAgcMode != ThermalCamera::AgcMode::Linear) return true;
         return applyLinearAgcRangeLocked(outError);
     }
 
     bool triggerShutter(QString* outError) {
-        QMutexLocker lock(&mutex);
-        if (!camera) {
+        QMutexLocker lock(&m_mutex);
+        if (!m_camera) {
             if (outError) *outError = QStringLiteral("Thermal camera is unavailable");
             return false;
         }
 
-        const seekcamera_error_t status = seekcamera_shutter_trigger(camera);
+        const seekcamera_error_t status = seekcamera_shutter_trigger(m_camera);
         return reportSeekStatus("trigger shutter", status, outError);
     }
 
     bool triggerFlatSceneCorrection(QString* outError) {
-        QMutexLocker lock(&mutex);
-        if (!camera) {
+        QMutexLocker lock(&m_mutex);
+        if (!m_camera) {
             if (outError) *outError = QStringLiteral("Thermal camera is unavailable");
             return false;
         }
 
-        const bool wasActive = seekcamera_is_active(camera);
+        const bool wasActive = seekcamera_is_active(m_camera);
         if (wasActive) {
-            const seekcamera_error_t stopStatus = seekcamera_capture_session_stop(camera);
+            const seekcamera_error_t stopStatus = seekcamera_capture_session_stop(m_camera);
             if (!reportSeekStatus("stop capture session before FSC store",
                                   stopStatus,
                                   outError)) {
@@ -200,12 +248,12 @@ public:
         }
 
         const seekcamera_error_t startStatus =
-            seekcamera_capture_session_start(camera, kCaptureFrameMask);
+            seekcamera_capture_session_start(m_camera, kCaptureFrameMask);
         if (startStatus != SEEKCAMERA_SUCCESS) {
             reportSeekStatus("start capture session for FSC store", startStatus, outError);
             if (wasActive) {
                 const seekcamera_error_t restoreStatus =
-                    seekcamera_capture_session_start(camera, kCaptureFrameMask);
+                    seekcamera_capture_session_start(m_camera, kCaptureFrameMask);
                 if (restoreStatus != SEEKCAMERA_SUCCESS && outError) {
                     const QString restoreError = buildSeekApplyError(
                         "restore capture session after failed FSC start", restoreStatus);
@@ -219,15 +267,15 @@ public:
         }
 
         const seekcamera_error_t storeStatus = seekcamera_store_flat_scene_correction(
-            camera,
+            m_camera,
             SEEKCAMERA_FLAT_SCENE_CORRECTION_ID_0,
             nullptr,
             nullptr);
 
-        const seekcamera_error_t stopFscStatus = seekcamera_capture_session_stop(camera);
+        const seekcamera_error_t stopFscStatus = seekcamera_capture_session_stop(m_camera);
         const seekcamera_error_t restartStatus = wasActive
-                                                    ? seekcamera_capture_session_start(camera,
-                                                                                       kCaptureFrameMask)
+                                                    ? seekcamera_capture_session_start(
+                                                          m_camera, kCaptureFrameMask)
                                                     : SEEKCAMERA_SUCCESS;
 
         if (!reportSeekStatus("store flat-scene correction", storeStatus, outError)) {
@@ -245,22 +293,156 @@ public:
     }
 
 private:
-    static void onEventCallback(seekcamera_t* cam,
+    static void onEventCallback(seekcamera_t* camera,
                                 seekcamera_manager_event_t event,
                                 seekcamera_error_t status,
                                 void* userData) {
-        auto* self = static_cast<Impl*>(userData);
+        auto* self = static_cast<ThermalCameraBackend*>(userData);
         if (self) {
-            self->handleEvent(cam, event, status);
+            self->handleEvent(camera, event, status);
         }
     }
 
-    static void onFrameCallback(seekcamera_t* cam, seekcamera_frame_t* frame, void* userData) {
-        Q_UNUSED(cam);
-        auto* self = static_cast<Impl*>(userData);
+    static void onFrameCallback(seekcamera_t* camera,
+                                seekcamera_frame_t* frame,
+                                void* userData) {
+        Q_UNUSED(camera);
+        auto* self = static_cast<ThermalCameraBackend*>(userData);
         if (self) {
             self->handleFrame(frame);
         }
+    }
+
+    void handleEvent(seekcamera_t* camera,
+                     seekcamera_manager_event_t event,
+                     seekcamera_error_t status) {
+        ThermalCamera* notifyConnected = nullptr;
+        ThermalCamera* notifyDisconnected = nullptr;
+        QString connectedSerial;
+        QString disconnectedReason;
+
+        switch (event) {
+        case SEEKCAMERA_MANAGER_EVENT_CONNECT: {
+            seekcamera_chipid_t chipStatusBuffer;
+            const seekcamera_error_t chipStatus =
+                seekcamera_get_chipid(camera, &chipStatusBuffer);
+            connectedSerial = (chipStatus == SEEKCAMERA_SUCCESS)
+                                  ? QString::fromLatin1(chipStatusBuffer)
+                                  : QStringLiteral("Unknown");
+
+            {
+                QMutexLocker lock(&m_mutex);
+                m_camera = camera;
+                m_connectedSerial = connectedSerial;
+                m_frameCallbackRegistered = false;
+            }
+
+            {
+                QMutexLocker lock(&m_mutex);
+                applyCachedCameraStateOnConnectLocked();
+            }
+
+            registerFrameCallbackIfNeeded();
+
+            const seekcamera_error_t startStatus =
+                seekcamera_capture_session_start(camera, kCaptureFrameMask);
+            if (startStatus != SEEKCAMERA_SUCCESS) {
+                qWarning() << "ThermalCamera: capture session start failed:" << startStatus
+                           << seekErrorString(startStatus);
+            }
+
+            {
+                QMutexLocker lock(&m_mutex);
+                notifyConnected = m_cameraObject;
+            }
+            break;
+        }
+
+        case SEEKCAMERA_MANAGER_EVENT_DISCONNECT:
+            disconnectedReason = QStringLiteral("Device removed");
+            {
+                QMutexLocker lock(&m_mutex);
+                m_camera = nullptr;
+                m_frameCallbackRegistered = false;
+                notifyDisconnected = m_cameraObject;
+            }
+            break;
+
+        case SEEKCAMERA_MANAGER_EVENT_ERROR:
+            qWarning() << "ThermalCamera: manager error:" << status
+                       << seekErrorString(status);
+            disconnectedReason = QStringLiteral("Internal error");
+            {
+                QMutexLocker lock(&m_mutex);
+                notifyDisconnected = m_cameraObject;
+            }
+            break;
+
+        default:
+            break;
+        }
+
+        if (notifyConnected) {
+            emit notifyConnected->cameraConnected(connectedSerial);
+        }
+        if (notifyDisconnected) {
+            emit notifyDisconnected->cameraDisconnected(disconnectedReason);
+        }
+    }
+
+    void handleFrame(seekcamera_frame_t* frame) {
+        ThermalCamera* cameraObject = nullptr;
+
+        {
+            QMutexLocker lock(&m_mutex);
+            cameraObject = m_cameraObject;
+            if (!cameraObject) return;
+        }
+
+        if (seekcamera_frame_lock(frame) != SEEKCAMERA_SUCCESS) {
+            return;
+        }
+
+        RawFrame output;
+        extractGrayFrame(frame, &output);
+        extractThermographyPoints(frame, &output);
+
+        seekcamera_frame_unlock(frame);
+
+        if (!output.pixelData.isEmpty()) {
+            emit cameraObject->rawFrameReady(output);
+        }
+    }
+
+    bool registerFrameCallbackIfNeeded() {
+        seekcamera_t* camera = nullptr;
+        bool shouldRegister = false;
+
+        {
+            QMutexLocker lock(&m_mutex);
+            camera = m_camera;
+            shouldRegister = camera && m_cameraObject && !m_frameCallbackRegistered;
+        }
+
+        if (!shouldRegister) return true;
+
+        const seekcamera_error_t status =
+            seekcamera_register_frame_available_callback(
+                camera, &ThermalCameraBackend::onFrameCallback, this);
+        if (status != SEEKCAMERA_SUCCESS) {
+            qWarning() << "ThermalCamera: failed to register frame callback:" << status
+                       << seekErrorString(status);
+            return false;
+        }
+
+        {
+            QMutexLocker lock(&m_mutex);
+            if (m_camera == camera) {
+                m_frameCallbackRegistered = true;
+            }
+        }
+
+        return true;
     }
 
     bool reportSeekStatus(const char* action,
@@ -273,21 +455,19 @@ private:
 
     bool applyPipelineLocked(QString* outError) const {
         return reportSeekStatus("set pipeline mode",
-                                seekcamera_set_pipeline_mode(camera,
-                                                             toSeekPipelineMode(cachedPipelineMode)),
+                                seekcamera_set_pipeline_mode(
+                                    m_camera, toSeekPipelineMode(m_cachedPipelineMode)),
                                 outError);
     }
 
     bool prepareSeekVisionEntryLocked(ThermalCamera::PipelineMode previousPipeline,
                                       QString* outError) const {
         if (previousPipeline == ThermalCamera::PipelineMode::SeekVision) return true;
-        if (cachedPipelineMode != ThermalCamera::PipelineMode::SeekVision) return true;
-        if (cachedAgcMode != ThermalCamera::AgcMode::Linear) return true;
+        if (m_cachedPipelineMode != ThermalCamera::PipelineMode::SeekVision) return true;
+        if (m_cachedAgcMode != ThermalCamera::AgcMode::Linear) return true;
 
-        // SDK 4.4.x still has Linear AGC known issues on some cores (e.g. stale 320x240 header);
-        // pre-switching to HistEQ avoids carrying linear artifacts into SeekVision transitions.
         const seekcamera_error_t status =
-            seekcamera_set_agc_mode(camera, SEEKCAMERA_AGC_MODE_HISTEQ);
+            seekcamera_set_agc_mode(m_camera, SEEKCAMERA_AGC_MODE_HISTEQ);
         if (status == SEEKCAMERA_SUCCESS || status == SEEKCAMERA_ERROR_NOT_SUPPORTED) {
             return true;
         }
@@ -297,51 +477,52 @@ private:
 
     bool applyShutterModeLocked(QString* outError) const {
         return reportSeekStatus("set shutter mode",
-                                seekcamera_set_shutter_mode(camera,
-                                                            toSeekShutterMode(cachedShutterMode)),
+                                seekcamera_set_shutter_mode(
+                                    m_camera, toSeekShutterMode(m_cachedShutterMode)),
                                 outError);
     }
 
     bool applyThermographyOffsetLocked(QString* outError) const {
         return reportSeekStatus("set thermography offset",
-                                seekcamera_set_thermography_offset(camera,
-                                                                   cachedThermographyOffsetCelsius),
+                                seekcamera_set_thermography_offset(
+                                    m_camera, m_cachedThermographyOffsetCelsius),
                                 outError);
     }
 
     bool applySharpenFilterLocked(QString* outError) const {
         return reportSeekStatus("set sharpen filter",
-                                seekcamera_set_filter_state(camera,
-                                                            SEEKCAMERA_FILTER_SHARPEN_CORRECTION,
-                                                            toSeekFilterState(cachedSharpenFilterEnabled)),
+                                seekcamera_set_filter_state(
+                                    m_camera,
+                                    SEEKCAMERA_FILTER_SHARPEN_CORRECTION,
+                                    toSeekFilterState(m_cachedSharpenFilterEnabled)),
                                 outError);
     }
 
     bool applyHistEqAutoDefaultsLocked(QString* outError) const {
         return reportSeekStatus("set HistEQ gain factor mode",
                                 seekcamera_set_histeq_agc_gain_limit_factor_mode(
-                                    camera, kHistEqGainFactorModeAuto),
+                                    m_camera, kHistEqGainFactorModeAuto),
                                 outError);
     }
 
     bool applyLinearAgcRangeLocked(QString* outError) const {
         if (!reportSeekStatus("set Linear AGC lock mode",
                               seekcamera_set_linear_agc_lock_mode(
-                                  camera, SEEKCAMERA_LINEAR_AGC_LOCK_MODE_MANUAL),
+                                  m_camera, SEEKCAMERA_LINEAR_AGC_LOCK_MODE_MANUAL),
                               outError)) {
             return false;
         }
 
         if (!reportSeekStatus("set Linear AGC min",
-                              seekcamera_set_linear_agc_lock_min(camera,
-                                                                 cachedLinearAgcMinCelsius),
+                              seekcamera_set_linear_agc_lock_min(
+                                  m_camera, m_cachedLinearAgcMinCelsius),
                               outError)) {
             return false;
         }
 
         if (!reportSeekStatus("set Linear AGC max",
-                              seekcamera_set_linear_agc_lock_max(camera,
-                                                                 cachedLinearAgcMaxCelsius),
+                              seekcamera_set_linear_agc_lock_max(
+                                  m_camera, m_cachedLinearAgcMaxCelsius),
                               outError)) {
             return false;
         }
@@ -351,12 +532,13 @@ private:
 
     bool applyAgcModeLocked(QString* outError) const {
         if (!reportSeekStatus("set AGC mode",
-                              seekcamera_set_agc_mode(camera, toSeekAgcMode(cachedAgcMode)),
+                              seekcamera_set_agc_mode(
+                                  m_camera, toSeekAgcMode(m_cachedAgcMode)),
                               outError)) {
             return false;
         }
 
-        if (cachedAgcMode == ThermalCamera::AgcMode::Linear) {
+        if (m_cachedAgcMode == ThermalCamera::AgcMode::Linear) {
             return applyLinearAgcRangeLocked(outError);
         }
 
@@ -373,7 +555,8 @@ private:
 
         applyOrLog("emissivity", [this](QString* outError) {
             return reportSeekStatus("set emissivity",
-                                    seekcamera_set_scene_emissivity(camera, cachedEmissivity),
+                                    seekcamera_set_scene_emissivity(
+                                        m_camera, m_cachedEmissivity),
                                     outError);
         });
 
@@ -389,7 +572,7 @@ private:
             return applyThermographyOffsetLocked(outError);
         });
 
-        if (cachedPipelineMode != ThermalCamera::PipelineMode::SeekVision) {
+        if (m_cachedPipelineMode != ThermalCamera::PipelineMode::SeekVision) {
             applyOrLog("sharpen filter", [this](QString* outError) {
                 return applySharpenFilterLocked(outError);
             });
@@ -397,81 +580,6 @@ private:
             applyOrLog("agc mode", [this](QString* outError) {
                 return applyAgcModeLocked(outError);
             });
-        }
-    }
-
-    void handleEvent(seekcamera_t* cam,
-                     seekcamera_manager_event_t event,
-                     seekcamera_error_t status) {
-        QString connectedSerial;
-        QString disconnectedReason;
-        bool shouldEmitConnected = false;
-        bool shouldEmitDisconnected = false;
-
-        {
-            QMutexLocker lock(&mutex);
-
-            switch (event) {
-            case SEEKCAMERA_MANAGER_EVENT_CONNECT: {
-                camera = cam;
-                applyCachedCameraStateOnConnectLocked();
-
-                seekcamera_register_frame_available_callback(
-                    cam, &Impl::onFrameCallback, this);
-
-                const seekcamera_error_t startStatus =
-                    seekcamera_capture_session_start(cam, kCaptureFrameMask);
-                if (startStatus != SEEKCAMERA_SUCCESS) {
-                    qWarning() << "ThermalCamera: capture session start failed:" << startStatus;
-                }
-
-                seekcamera_chipid_t chipid;
-                const seekcamera_error_t chipStatus = seekcamera_get_chipid(cam, &chipid);
-                connectedSerial = (chipStatus == SEEKCAMERA_SUCCESS)
-                                      ? QString::fromLatin1(chipid)
-                                      : QStringLiteral("Unknown");
-                shouldEmitConnected = true;
-                break;
-            }
-
-            case SEEKCAMERA_MANAGER_EVENT_DISCONNECT:
-                camera = nullptr;
-                disconnectedReason = QStringLiteral("Device removed");
-                shouldEmitDisconnected = true;
-                break;
-
-            case SEEKCAMERA_MANAGER_EVENT_ERROR:
-                qWarning() << "ThermalCamera: manager error:" << status;
-                disconnectedReason = QStringLiteral("Internal error");
-                shouldEmitDisconnected = true;
-                break;
-
-            default:
-                break;
-            }
-        }
-
-        if (shouldEmitConnected) {
-            emit q->cameraConnected(connectedSerial);
-        }
-        if (shouldEmitDisconnected) {
-            emit q->cameraDisconnected(disconnectedReason);
-        }
-    }
-
-    void handleFrame(seekcamera_frame_t* frame) {
-        if (seekcamera_frame_lock(frame) != SEEKCAMERA_SUCCESS) {
-            return;
-        }
-
-        RawFrame output;
-        extractGrayFrame(frame, &output);
-        extractThermographyPoints(frame, &output);
-
-        seekcamera_frame_unlock(frame);
-
-        if (!output.pixelData.isEmpty()) {
-            emit q->rawFrameReady(output);
         }
     }
 
@@ -502,7 +610,8 @@ private:
 
         uchar* dstBase = reinterpret_cast<uchar*>(out->pixelData.data());
         for (size_t y = 0; y < height; ++y) {
-            const uchar* srcRow = reinterpret_cast<const uchar*>(seekframe_get_row(grayFrame, y));
+            const uchar* srcRow =
+                reinterpret_cast<const uchar*>(seekframe_get_row(grayFrame, y));
             if (!srcRow) {
                 out->pixelData.clear();
                 return;
@@ -542,37 +651,63 @@ private:
     }
 
 private:
-    ThermalCamera* q = nullptr;
+    seekcamera_manager_t* m_manager = nullptr;
+    seekcamera_t* m_camera = nullptr;
 
-    seekcamera_manager_t* manager = nullptr;
-    seekcamera_t* camera = nullptr;
+    mutable QMutex m_mutex;
+    ThermalCamera* m_cameraObject = nullptr;
+    QString m_connectedSerial;
 
-    mutable QMutex mutex;
-    float cachedEmissivity = 0.95f;
-    ThermalCamera::PipelineMode cachedPipelineMode = ThermalCamera::PipelineMode::SeekVision;
-    ThermalCamera::ShutterMode cachedShutterMode = ThermalCamera::ShutterMode::Auto;
-    float cachedThermographyOffsetCelsius = 0.0f;
-    bool cachedSharpenFilterEnabled = false;
-    ThermalCamera::AgcMode cachedAgcMode = ThermalCamera::AgcMode::HistEq;
-    float cachedLinearAgcMinCelsius = 20.0f;
-    float cachedLinearAgcMaxCelsius = 80.0f;
+    float m_cachedEmissivity = 0.95f;
+    ThermalCamera::PipelineMode m_cachedPipelineMode = ThermalCamera::PipelineMode::SeekVision;
+    ThermalCamera::ShutterMode m_cachedShutterMode = ThermalCamera::ShutterMode::Auto;
+    float m_cachedThermographyOffsetCelsius = 0.0f;
+    bool m_cachedSharpenFilterEnabled = false;
+    ThermalCamera::AgcMode m_cachedAgcMode = ThermalCamera::AgcMode::HistEq;
+    float m_cachedLinearAgcMinCelsius = 20.0f;
+    float m_cachedLinearAgcMaxCelsius = 80.0f;
+
+    bool m_frameCallbackRegistered = false;
 };
 
-ThermalCamera::ThermalCamera(QObject *parent)
+ThermalCamera::StartupHandle::StartupHandle(
+    std::unique_ptr<ThermalCamera::ThermalCameraBackend> backend)
+    : m_backend(std::move(backend)) {}
+
+ThermalCamera::StartupHandle::~StartupHandle() = default;
+
+ThermalCamera::StartupHandle::StartupHandle(StartupHandle&& other) noexcept = default;
+
+ThermalCamera::StartupHandle&
+ThermalCamera::StartupHandle::operator=(StartupHandle&& other) noexcept = default;
+
+ThermalCamera::StartupHandle ThermalCamera::startSeekUsbEarly() {
+    auto backend = std::make_unique<ThermalCameraBackend>();
+    backend->startSeekUsb();
+    return StartupHandle(std::move(backend));
+}
+
+ThermalCamera::ThermalCamera(QObject* parent)
     : QObject(parent),
-      m_impl(new Impl(this)) {
-    m_impl->init();
+      m_backend(std::make_unique<ThermalCameraBackend>()) {
+    m_backend->startSeekUsb();
+    m_backend->attach(this);
+}
+
+ThermalCamera::ThermalCamera(StartupHandle startup, QObject* parent)
+    : QObject(parent),
+      m_backend(std::move(startup.m_backend)) {
+    m_backend->attach(this);
 }
 
 ThermalCamera::~ThermalCamera() {
-    delete m_impl;
-    m_impl = nullptr;
+    m_backend->detach();
 }
 
 bool ThermalCamera::setPipelineMode(PipelineMode mode, QString* outError) {
     QString localError;
     QString* errSink = outError ? outError : &localError;
-    const bool ok = m_impl->setPipelineMode(mode, errSink);
+    const bool ok = m_backend->setPipelineMode(mode, errSink);
     if (!ok && !outError) {
         qWarning() << "ThermalCamera: set pipeline mode failed:" << localError;
     }
@@ -580,42 +715,42 @@ bool ThermalCamera::setPipelineMode(PipelineMode mode, QString* outError) {
 }
 
 void ThermalCamera::setEmissivity(float value) {
-    m_impl->setEmissivity(value);
+    m_backend->setEmissivity(value);
 }
 
 float ThermalCamera::getEmissivity() const {
-    return m_impl->getEmissivity();
+    return m_backend->getEmissivity();
 }
 
 bool ThermalCamera::setShutterMode(ShutterMode mode, QString* outError) {
-    return m_impl->setShutterMode(mode, outError);
+    return m_backend->setShutterMode(mode, outError);
 }
 
 bool ThermalCamera::setThermographyOffsetCelsius(float offset, QString* outError) {
-    return m_impl->setThermographyOffsetCelsius(offset, outError);
+    return m_backend->setThermographyOffsetCelsius(offset, outError);
 }
 
 bool ThermalCamera::setSharpenFilterEnabled(bool enabled, QString* outError) {
-    return m_impl->setSharpenFilterEnabled(enabled, outError);
+    return m_backend->setSharpenFilterEnabled(enabled, outError);
 }
 
 bool ThermalCamera::setAgcMode(AgcMode mode, QString* outError) {
-    return m_impl->setAgcMode(mode, outError);
+    return m_backend->setAgcMode(mode, outError);
 }
 
 bool ThermalCamera::setLinearAgcManualRangeCelsius(float minCelsius,
-                                                    float maxCelsius,
-                                                    QString* outError) {
-    return m_impl->setLinearAgcManualRangeCelsius(minCelsius, maxCelsius, outError);
+                                                   float maxCelsius,
+                                                   QString* outError) {
+    return m_backend->setLinearAgcManualRangeCelsius(minCelsius, maxCelsius, outError);
 }
 
 void ThermalCamera::triggerShutter() {
     QString error;
-    if (!m_impl->triggerShutter(&error)) {
+    if (!m_backend->triggerShutter(&error)) {
         qWarning() << "ThermalCamera: trigger shutter failed:" << error;
     }
 }
 
 bool ThermalCamera::triggerFlatSceneCorrection(QString* outError) {
-    return m_impl->triggerFlatSceneCorrection(outError);
+    return m_backend->triggerFlatSceneCorrection(outError);
 }

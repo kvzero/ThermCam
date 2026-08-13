@@ -3,8 +3,9 @@
 
 #include <QObject>
 
+#include "hardware/imaging/thermal_camera.h"
+
 /* Forward declarations to minimize header dependencies */
-class ThermalCamera;
 class KeyManager;
 class HapticProvider;
 class SystemControl;
@@ -20,10 +21,11 @@ public:
     static HardwareManager& instance();
 
     /**
-     * @brief Initialize all hardware components in correct order.
-     * @return true if critical hardware (Camera/RGA) is ready.
+     * @brief Initialize HardwareManager-owned subsystems.
+     * @return true after best-effort subsystem initialization completes.
      */
     bool init();
+    void createCamera(ThermalCamera::StartupHandle startup);
 
     /* Component Accessors */
     ThermalCamera* camera() const { return m_camera; }
@@ -35,7 +37,7 @@ public:
 
 private:
     explicit HardwareManager(QObject* parent = nullptr);
-    ~HardwareManager() = default;
+    ~HardwareManager() override;
 
     HardwareManager(const HardwareManager&) = delete;
     HardwareManager& operator=(const HardwareManager&) = delete;

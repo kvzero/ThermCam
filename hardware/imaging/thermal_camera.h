@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QtGlobal>
 #include <QString>
+#include <memory>
 
 #include "core/types.h"
 
@@ -17,7 +18,34 @@
  */
 class ThermalCamera : public QObject {
     Q_OBJECT
+private:
+    class ThermalCameraBackend;
+
 public:
+    /**
+     * @brief Move-only owner for a Seek USB backend started before QApplication.
+     *
+     * ThermalCamera adopts this handle after QApplication exists; the handle is
+     * not a second public camera API.
+     */
+    class StartupHandle {
+    public:
+        ~StartupHandle();
+
+        StartupHandle(StartupHandle&& other) noexcept;
+        StartupHandle& operator=(StartupHandle&& other) noexcept;
+
+        StartupHandle(const StartupHandle&) = delete;
+        StartupHandle& operator=(const StartupHandle&) = delete;
+
+    private:
+        explicit StartupHandle(std::unique_ptr<ThermalCameraBackend> backend);
+
+        std::unique_ptr<ThermalCameraBackend> m_backend;
+
+        friend class ThermalCamera;
+    };
+
     /**
      * @brief Camera-side image processing pipeline modes.
      */
@@ -38,7 +66,10 @@ public:
     };
 
     explicit ThermalCamera(QObject *parent = nullptr);
+    explicit ThermalCamera(StartupHandle startup, QObject *parent = nullptr);
     ~ThermalCamera() override;
+
+    static StartupHandle startSeekUsbEarly();
 
     bool setPipelineMode(PipelineMode mode, QString* outError = nullptr);
     void setEmissivity(float value);
@@ -61,8 +92,7 @@ signals:
     void rawFrameReady(const RawFrame& frame);
 
 private:
-    class Impl;
-    Impl* m_impl = nullptr;
+    std::unique_ptr<ThermalCameraBackend> m_backend;
 };
 
 #endif // THERMAL_CAMERA_H

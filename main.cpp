@@ -1,11 +1,13 @@
 #include <QApplication>
 #include <QFontDatabase>
 #include <QDebug>
+#include <utility>
 
 #include "core/global_context.h"
 #include "core/settings_store.h"
 #include "core/types.h"
 #include "hardware/hardware_manager.h"
+#include "hardware/imaging/thermal_camera.h"
 #include "services/settings_service.h"
 #include "ui/app.h"
 
@@ -28,9 +30,11 @@ static void loadLocalFont(const QString &path) {
 
 int main(int argc, char *argv[])
 {
+    // Start the Seek backend early to reduce camera-ready latency after the UI comes up.
+    ThermalCamera::StartupHandle cameraStartup = ThermalCamera::startSeekUsbEarly();
+
     QApplication a(argc, argv);
 
-    /* F**K U FFMPEG*/
     av_log_set_level(AV_LOG_FATAL);
 
     /* Mandatory for Signal/Slot data passing */
@@ -38,6 +42,8 @@ int main(int argc, char *argv[])
     qRegisterMetaType<VisualFrame>();
     qRegisterMetaType<BatteryStatus>();
     qRegisterMetaType<CaptureMode>();
+
+    HardwareManager::instance().createCamera(std::move(cameraStartup));
 
     loadLocalFont(FONT_PATH_ROBOTO);
     loadLocalFont(FONT_PATH_SANS);

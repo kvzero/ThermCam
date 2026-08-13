@@ -8,6 +8,7 @@
 #include "hardware/sensor/battery_monitor.h"
 #include "hardware/storage/storage_manager.h"
 #include <QDebug>
+#include <utility>
 
 HardwareManager& HardwareManager::instance() {
     static HardwareManager inst;
@@ -15,6 +16,12 @@ HardwareManager& HardwareManager::instance() {
 }
 
 HardwareManager::HardwareManager(QObject* parent) : QObject(parent) {}
+
+HardwareManager::~HardwareManager() = default;
+
+void HardwareManager::createCamera(ThermalCamera::StartupHandle startup) {
+    m_camera = new ThermalCamera(std::move(startup), this);
+}
 
 bool HardwareManager::init() {
     qInfo() << "HardwareManager: Initializing subsystems...";
@@ -45,10 +52,6 @@ bool HardwareManager::init() {
     if (!m_storage->init()) {
         qWarning() << "HardwareManager: StorageManager init failed (Netlink error?)";
     }
-
-    m_camera = new ThermalCamera(this);
-    // Note: Seek SDK might take some time to detect USB device,
-    // we assume the object creation is enough to start its internal manager.
 
     connect(&EventBus::instance(), &EventBus::hapticRequested,
             m_haptic, &HapticProvider::playEffect);
