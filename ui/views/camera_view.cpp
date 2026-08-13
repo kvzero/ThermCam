@@ -479,12 +479,6 @@ void CameraView::paintEvent(QPaintEvent*) {
         p.drawImage(rect(), m_currentFrame.image);
     } else {
         p.fillRect(rect(), Qt::black);
-        QFont iconFont("tabler-icons");
-        iconFont.setPixelSize(qRound(qMin(width(), height()) * 0.22));
-        iconFont.setWeight(QFont::DemiBold);
-        p.setFont(iconFont);
-        p.setPen(QColor(170, 170, 170, 150));
-        p.drawText(rect(), Qt::AlignCenter, QString(QChar(0xf83f)));
     }
 
     const bool shouldDrawMarkers = hasFrame && (!m_hideMarkerWhenHudHidden || m_hudVisible);

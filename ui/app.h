@@ -8,6 +8,9 @@
 
 class QStackedWidget;
 class BaseView;
+class QGraphicsOpacityEffect;
+class QPropertyAnimation;
+class QShowEvent;
 
 class GalleryView;
 class SettingsView;
@@ -70,6 +73,7 @@ protected:
      * Overlays are resized to cover specific areas or the full screen.
      */
     void resizeEvent(QResizeEvent* event) override;
+    void showEvent(QShowEvent* event) override;
 
 private:
     void initLayer_Stack();
@@ -93,6 +97,12 @@ private:
     TextModal* m_textModal = nullptr;
     ClockModal* m_clockModal = nullptr;
     ToastManager* m_toastManager = nullptr;
+
+    /* Startup black curtain: fades away once the fullscreen window is visible. */
+    QWidget* m_startupMask = nullptr;
+    QGraphicsOpacityEffect* m_startupMaskOpacity = nullptr;
+    QPropertyAnimation* m_startupMaskFade = nullptr;
+    bool m_startupMaskFadeStarted = false;
 };
 
 #endif // APP_H

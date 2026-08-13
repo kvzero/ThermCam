@@ -11,8 +11,12 @@
 #include "ui/overlays/transition_layer.h"
 
 #include <QApplication>
+#include <QGraphicsOpacityEffect>
+#include <QPropertyAnimation>
 #include <QStackedWidget>
 #include <QResizeEvent>
+#include <QShowEvent>
+#include <QTimer>
 #include <QDebug>
 #include <cstdlib>
 #include <utility>
@@ -90,6 +94,23 @@ void App::initLayer_Overlays() {
     // Toast Notifications
     m_toastManager = new ToastManager(this);
     m_toastManager->hide();
+
+    m_startupMask = new QWidget(this);
+    m_startupMask->setStyleSheet("background-color: black;");
+    m_startupMaskOpacity = new QGraphicsOpacityEffect(m_startupMask);
+    m_startupMaskOpacity->setOpacity(1.0);
+    m_startupMask->setGraphicsEffect(m_startupMaskOpacity);
+
+    m_startupMaskFade = new QPropertyAnimation(m_startupMaskOpacity, "opacity", this);
+    m_startupMaskFade->setDuration(500);
+    m_startupMaskFade->setStartValue(1.0);
+    m_startupMaskFade->setEndValue(0.0);
+    connect(m_startupMaskFade, &QPropertyAnimation::finished, this, [this]() {
+        m_startupMask->hide();
+    });
+
+    m_startupMask->show();
+    m_startupMask->raise();
 
     connect(&EventBus::instance(), &EventBus::toastRequested, this, &App::showToast);
 }
@@ -301,4 +322,20 @@ void App::resizeEvent(QResizeEvent* event) {
     if (m_textModal) m_textModal->resize(s);
     if (m_clockModal) m_clockModal->resize(s);
     if (m_toastManager) m_toastManager->resize(s.width(), qRound(s.height() * 0.2));
+    if (m_startupMask) m_startupMask->resize(s);
+}
+
+void App::showEvent(QShowEvent* event) {
+    QWidget::showEvent(event);
+
+    if (m_startupMaskFadeStarted || !m_startupMask || !m_startupMaskFade) return;
+    m_startupMaskFadeStarted = true;
+
+    m_startupMask->setGeometry(rect());
+    m_startupMask->raise();
+
+    // Let the black frame reach the display before beginning the fade.
+    QTimer::singleShot(0, this, [this]() {
+        m_startupMaskFade->start();
+    });
 }
