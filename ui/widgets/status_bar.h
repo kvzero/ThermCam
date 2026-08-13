@@ -2,7 +2,10 @@
 #define STATUS_BAR_H
 
 #include <QWidget>
+#include <QList>
 #include "core/types.h"
+
+class QSocketNotifier;
 
 /**
  * @brief Top-level status bar that visualizes system states.
@@ -12,7 +15,7 @@ class StatusBar : public QWidget {
     Q_OBJECT
 public:
     explicit StatusBar(QWidget* parent = nullptr);
-    virtual ~StatusBar() = default;
+    ~StatusBar() override;
 
     /** @brief Updates the visual transparency of the bar's content. */
     void setContentsOpacity(qreal opacity) { m_contentsOpacity = opacity; update(); }
@@ -37,8 +40,8 @@ protected:
     void paintEvent(QPaintEvent* event) override;
 
 private:
-    void onPcConnectionPoll();
-    bool readPcConnected() const;
+    void initUdcMonitoring();
+    void refreshPcConnection();
 
     // --- Modular Drawing Actors ---
     /** @return Left edge of the right cluster's painted bounds. */
@@ -64,6 +67,10 @@ private:
     bool m_usbDiskReady = false;
     bool m_pcConnected = false;
     qreal m_contentsOpacity = 1.0;
+
+    // UDC state files send POLLPRI through sysfs_notify on USB state changes.
+    QList<int> m_udcStateFds;
+    QList<QSocketNotifier*> m_udcStateNotifiers;
 
     // --- UI Constants ---
     static constexpr int LOW_BATTERY_THRESHOLD = 20;

@@ -10,7 +10,12 @@
 #include <QDateTime>
 #include <QTimer>
 #include <QFontMetrics>
+#include <QDir>
 #include <QFile>
+#include <QSocketNotifier>
+
+#include <fcntl.h>
+#include <unistd.h>
 
 StatusBar::StatusBar(QWidget* parent) : QWidget(parent) {
     setAttribute(Qt::WA_TranslucentBackground);
@@ -48,10 +53,17 @@ StatusBar::StatusBar(QWidget* parent) : QWidget(parent) {
     // Immediate time populate
     onSecondTick();
 
-    QTimer* pcConnectionTimer = new QTimer(this);
-    connect(pcConnectionTimer, &QTimer::timeout, this, &StatusBar::onPcConnectionPoll);
-    pcConnectionTimer->start(1000);
-    onPcConnectionPoll();
+    initUdcMonitoring();
+}
+
+StatusBar::~StatusBar() {
+    for (QSocketNotifier* notifier : m_udcStateNotifiers) {
+        const int fd = notifier->socket();
+        delete notifier;
+        if (fd >= 0) {
+            ::close(fd);
+        }
+    }
 }
 
 void StatusBar::onPowerStatusChanged(const BatteryStatus& status) {
@@ -86,35 +98,48 @@ void StatusBar::onUsbDiskStateChanged(bool ready) {
     update();
 }
 
-void StatusBar::onPcConnectionPoll() {
-    const bool connected = readPcConnected();
+void StatusBar::initUdcMonitoring() {
+    const QDir udcDir("/sys/class/udc");
+    const QFileInfoList udcs = udcDir.entryInfoList(
+        QDir::Dirs | QDir::NoDotAndDotDot);
+
+    for (const QFileInfo& udc : udcs) {
+        const QString statePath = udc.filePath() + "/state";
+        const int fd = ::open(statePath.toLocal8Bit().constData(), O_RDONLY | O_NONBLOCK);
+        if (fd < 0) {
+            continue;
+        }
+
+        auto* notifier = new QSocketNotifier(fd, QSocketNotifier::Exception, this);
+        connect(notifier, &QSocketNotifier::activated, this,
+                [this](auto...) { refreshPcConnection(); });
+        m_udcStateFds.append(fd);
+        m_udcStateNotifiers.append(notifier);
+    }
+
+    refreshPcConnection();
+}
+
+void StatusBar::refreshPcConnection() {
+    // A UDC reaches "configured" only after a USB host has enumerated this device.
+    // Type-C/extcon attachment alone also occurs with chargers and power banks.
+    bool connected = false;
+    for (const int fd : m_udcStateFds) {
+        if (::lseek(fd, 0, SEEK_SET) < 0) {
+            continue;
+        }
+
+        char buffer[64];
+        const ssize_t bytesRead = ::read(fd, buffer, sizeof(buffer));
+        if (bytesRead > 0 && QByteArray(buffer, bytesRead).trimmed() == "configured") {
+            connected = true;
+            break;
+        }
+    }
+
     if (m_pcConnected == connected) return;
     m_pcConnected = connected;
     update();
-}
-
-// TUSB320 extcon reflects the physical Type-C role. In device mode cable.0 is
-// USB=1 and cable.1 is USB-HOST=0; android_usb/UDC state can stay configured
-// after unplug, so it is not reliable for this status icon.
-bool StatusBar::readPcConnected() const {
-    auto readFlag = [](const QString& path) -> int {
-        QFile file(path);
-        if (!file.open(QIODevice::ReadOnly)) {
-            return -1;
-        }
-        bool ok = false;
-        const int value = QString::fromLatin1(file.readAll()).trimmed().toInt(&ok);
-        return ok ? value : -1;
-    };
-
-    const int usbDevice = readFlag("/sys/class/extcon/extcon0/cable.0/state");
-    const int usbHost = readFlag("/sys/class/extcon/extcon0/cable.1/state");
-
-    if (usbDevice < 0 || usbHost < 0) {
-        return false;
-    }
-
-    return usbDevice == 1 && usbHost == 0;
 }
 
 void StatusBar::paintEvent(QPaintEvent*) {
