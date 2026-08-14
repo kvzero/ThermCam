@@ -183,7 +183,7 @@ bool ClockModal::onPrimaryAction() {
     if (!error.isEmpty()) {
         qWarning() << "[ClockModal] Commit failed:" << error;
     }
-    emit EventBus::instance().toastRequested("SET TIME FAILED", ToastLevel::Warning);
+    emit EventBus::instance().toastRequested("SET TIME FAILED", ToastLevel::Error);
     return false;
 }
 

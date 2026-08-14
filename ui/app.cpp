@@ -321,7 +321,7 @@ void App::resizeEvent(QResizeEvent* event) {
     // if (m_quickSettings) m_quickSettings->resize(s.width(), m_quickSettings->height()); // Height managed internally
     if (m_textModal) m_textModal->resize(s);
     if (m_clockModal) m_clockModal->resize(s);
-    if (m_toastManager) m_toastManager->resize(s.width(), qRound(s.height() * 0.2));
+    if (m_toastManager) m_toastManager->resize(s);
     if (m_startupMask) m_startupMask->resize(s);
 }
 

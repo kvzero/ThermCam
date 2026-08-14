@@ -1071,10 +1071,10 @@ void SettingsView::onSecondaryRowActivated() {
                 QString error;
                 if (!SettingsService::instance().triggerFlatSceneCorrection(&error)) {
                     qWarning() << "[Settings] Flat-scene correction failed:" << error;
-                    app->showToast("FLAT-SCENE CORRECTION FAILED", ToastLevel::Warning);
+                    app->showToast("FLAT-SCENE CORRECTION FAILED", ToastLevel::Error);
                     return;
                 }
-                app->showToast("FLAT-SCENE CORRECTION TRIGGERED", ToastLevel::Info);
+                app->showToast("FLAT-SCENE CORRECTION TRIGGERED", ToastLevel::Success);
             },
             ModalLevel::Critical,
             TextModalSize::Large);
@@ -1287,7 +1287,7 @@ void SettingsView::onSecondaryRowActivated() {
             [this, app, targetName, sdCard]() {
                 auto* storage = HardwareManager::instance().storage();
                 if (!storage) {
-                    app->showToast("STORAGE UNAVAILABLE", ToastLevel::Warning);
+                    app->showToast("STORAGE UNAVAILABLE", ToastLevel::Error);
                     return;
                 }
 
@@ -1300,9 +1300,9 @@ void SettingsView::onSecondaryRowActivated() {
                 if (!ok) {
                     qWarning() << "[Settings] Safe eject failed:" << targetName
                                << "reason:" << error;
-                    app->showToast(targetName + " eject failed", ToastLevel::Warning);
+                    app->showToast(targetName + " eject failed", ToastLevel::Error);
                 } else {
-                    app->showToast(targetName + " can be removed", ToastLevel::Info);
+                    app->showToast(targetName + " can be removed", ToastLevel::Success);
                 }
 
                 if (m_mode == PanelMode::Expanded &&
@@ -1326,7 +1326,7 @@ void SettingsView::onSecondaryRowActivated() {
                            [this, app, targetName, sdCard]() {
                                auto* storage = HardwareManager::instance().storage();
                                if (!storage) {
-                                   app->showToast("STORAGE UNAVAILABLE", ToastLevel::Warning);
+                                   app->showToast("STORAGE UNAVAILABLE", ToastLevel::Error);
                                    return;
                                }
 
@@ -1339,9 +1339,9 @@ void SettingsView::onSecondaryRowActivated() {
                                if (!ok) {
                                    qWarning() << "[Settings] Format failed:" << targetName
                                               << "reason:" << error;
-                                   app->showToast(targetName + " format failed", ToastLevel::Warning);
+                                   app->showToast(targetName + " format failed", ToastLevel::Error);
                                } else {
-                                   app->showToast(targetName + " formatted", ToastLevel::Info);
+                                   app->showToast(targetName + " formatted", ToastLevel::Success);
                                }
 
                                if (m_mode == PanelMode::Expanded &&
@@ -1717,5 +1717,5 @@ void SettingsView::onSettingsApplyCompleted(const SettingsService::ApplyResult& 
         return;
     }
 
-    app->showToast("SET FAILED", ToastLevel::Warning);
+    app->showToast("SET FAILED", ToastLevel::Error);
 }

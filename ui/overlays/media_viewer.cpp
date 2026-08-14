@@ -76,7 +76,7 @@ MediaViewer::MediaViewer(QObject* parent) : QObject(parent) {
     });
 
     connect(m_player, &VideoPlayer::errorOccurred, this, [this](const QString& msg) {
-        emit EventBus::instance().toastRequested(msg, ToastLevel::Warning);
+        emit EventBus::instance().toastRequested(msg, ToastLevel::Error);
         syncVideoBarState();
     });
 }

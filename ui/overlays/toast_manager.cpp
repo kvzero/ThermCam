@@ -1,280 +1,433 @@
 #include "toast_manager.h"
-#include "core/global_context.h"
 
 #include <QApplication>
-#include <QEvent>
-#include <QPainter>
-#include <QResizeEvent>
-#include <QPaintEvent>
+#include <QFontMetrics>
 #include <QLinearGradient>
-#include <QEasingCurve>
 #include <QMouseEvent>
+#include <QPainter>
+#include <QPainterPath>
+#include <QPen>
+#include <QTimer>
+#include <QVariantAnimation>
+
+#include <algorithm>
 #include <cmath>
+
+namespace {
+constexpr qreal kToastWidthRatio = 0.72;
+constexpr qreal kTextSizeRatio = 0.45;
+constexpr qreal kHorizontalPaddingRatio = 0.4;
+constexpr qreal kIconSizeRatio = 0.55;
+constexpr qreal kIconGapRatio = 0.4;
+
+QColor accentColor(ToastLevel level) {
+    switch (level) {
+    case ToastLevel::Success:
+        return QColor("#41D7A1");
+    case ToastLevel::Warning:
+        return QColor("#FFB454");
+    case ToastLevel::Error:
+        return QColor("#FF6670");
+    case ToastLevel::Info:
+    default:
+        return QColor("#5EB8FF");
+    }
+}
+
+int toastBaselineHeight(int screenHeight) {
+    return qMax(qRound(92.0), qRound(screenHeight * 0.20));
+}
+
+int contentMetricHeight(int screenHeight) {
+    return qBound(qRound(56.0), qRound(screenHeight * 0.125), qRound(72.0));
+}
+
+void drawToastIcon(QPainter& painter, const QRectF& rect, ToastLevel level, const QColor& accent) {
+    const qreal stroke = qMax<qreal>(1.8, rect.width() * 0.105);
+    painter.setPen(QPen(accent, stroke, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    painter.setBrush(Qt::NoBrush);
+
+    if (level == ToastLevel::Warning) {
+        QPainterPath triangle;
+        triangle.moveTo(rect.center().x(), rect.top());
+        triangle.lineTo(rect.right(), rect.bottom());
+        triangle.lineTo(rect.left(), rect.bottom());
+        triangle.closeSubpath();
+        painter.drawPath(triangle);
+        painter.drawLine(QPointF(rect.center().x(), rect.top() + rect.height() * 0.35),
+                         QPointF(rect.center().x(), rect.top() + rect.height() * 0.62));
+        painter.drawPoint(QPointF(rect.center().x(), rect.top() + rect.height() * 0.78));
+        return;
+    }
+
+    painter.drawEllipse(rect);
+    const QPointF center = rect.center();
+    if (level == ToastLevel::Success) {
+        QPainterPath check;
+        check.moveTo(rect.left() + rect.width() * 0.24, center.y());
+        check.lineTo(rect.left() + rect.width() * 0.43, rect.bottom() - rect.height() * 0.25);
+        check.lineTo(rect.right() - rect.width() * 0.20, rect.top() + rect.height() * 0.25);
+        painter.drawPath(check);
+    } else if (level == ToastLevel::Error) {
+        painter.drawLine(QPointF(rect.left() + rect.width() * 0.29, rect.top() + rect.height() * 0.29),
+                         QPointF(rect.right() - rect.width() * 0.29, rect.bottom() - rect.height() * 0.29));
+        painter.drawLine(QPointF(rect.right() - rect.width() * 0.29, rect.top() + rect.height() * 0.29),
+                         QPointF(rect.left() + rect.width() * 0.29, rect.bottom() - rect.height() * 0.29));
+    } else {
+        painter.drawLine(QPointF(center.x(), rect.top() + rect.height() * 0.43),
+                         QPointF(center.x(), rect.bottom() - rect.height() * 0.23));
+        painter.drawPoint(QPointF(center.x(), rect.top() + rect.height() * 0.26));
+    }
+}
+
+class ToastCard final : public QWidget {
+public:
+    ToastCard(const QString& message, ToastLevel level, QWidget* parent)
+        : QWidget(parent), m_message(message), m_level(level) {
+        setAttribute(Qt::WA_TranslucentBackground);
+    }
+
+    int preferredHeight(int width, int screenHeight) const {
+        // Card height may grow for wrapped text, while content metrics stay fixed so
+        // every toast level keeps the same typography, icon size, and horizontal grid.
+        const int baselineHeight = toastBaselineHeight(screenHeight);
+        const int metricHeight = contentMetricHeight(screenHeight);
+        const int horizontalPadding = qRound(metricHeight * kHorizontalPaddingRatio);
+        const int iconSize = qRound(metricHeight * kIconSizeRatio);
+        const int iconGap = qRound(metricHeight * kIconGapRatio);
+        const int textWidth = width - horizontalPadding * 2 - iconSize - iconGap;
+
+        QFont font("Roboto");
+        font.setWeight(QFont::DemiBold);
+        font.setPixelSize(qRound(metricHeight * kTextSizeRatio));
+        const QFontMetrics metrics(font);
+        const int textHeight = metrics.boundingRect(QRect(0, 0, textWidth, 1000),
+                                                    Qt::TextWordWrap, m_message).height();
+        return qMax(baselineHeight, textHeight + qRound(metricHeight * 0.70));
+    }
+
+    void setVisualState(qreal opacity, qreal scale) {
+        if (qFuzzyCompare(m_opacity, opacity) && qFuzzyCompare(m_scale, scale)) return;
+        m_opacity = opacity;
+        m_scale = scale;
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent*) override {
+        if (width() <= 0 || height() <= 0 || m_opacity <= 0.0) return;
+
+        QPainter painter(this);
+        painter.setRenderHint(QPainter::Antialiasing);
+        painter.setOpacity(m_opacity);
+
+        const QRectF cardRect = QRectF(rect()).adjusted(2.0, 2.0, -2.0, -2.0);
+        painter.translate(cardRect.center());
+        painter.scale(m_scale, m_scale);
+        painter.translate(-cardRect.center());
+
+        const qreal cornerRadius = cardRect.width() * 0.05;
+        const QColor accent = accentColor(m_level);
+
+        QPainterPath cardPath;
+        cardPath.addRoundedRect(cardRect, cornerRadius, cornerRadius);
+
+        QLinearGradient glass(cardRect.topLeft(), cardRect.bottomLeft());
+        glass.setColorAt(0.0, QColor(31, 40, 50, 238));
+        glass.setColorAt(1.0, QColor(8, 13, 19, 236));
+        painter.fillPath(cardPath, glass);
+
+        QLinearGradient tint(cardRect.topLeft(), QPointF(cardRect.right(), cardRect.top()));
+        QColor tintStart = accent;
+        tintStart.setAlpha(36);
+        tint.setColorAt(0.0, tintStart);
+        tint.setColorAt(0.62, QColor(255, 255, 255, 0));
+        painter.fillPath(cardPath, tint);
+
+        QColor border = accent;
+        border.setAlpha(135);
+        painter.setPen(QPen(border, 1.6));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawPath(cardPath);
+
+        const int metricHeight = contentMetricHeight(parentWidget() ? parentWidget()->height() : height());
+        const int horizontalPadding = qRound(metricHeight * kHorizontalPaddingRatio);
+        const int iconSize = qRound(metricHeight * kIconSizeRatio);
+        const int iconGap = qRound(metricHeight * kIconGapRatio);
+        const QRectF iconRect(cardRect.left() + horizontalPadding,
+                              cardRect.center().y() - iconSize / 2.0,
+                              iconSize, iconSize);
+        drawToastIcon(painter, iconRect, m_level, accent);
+
+        QFont font("Roboto");
+        font.setWeight(QFont::DemiBold);
+        font.setPixelSize(qRound(metricHeight * kTextSizeRatio));
+        painter.setFont(font);
+        painter.setPen(QColor(246, 249, 252));
+        const QRectF textRect(iconRect.right() + iconGap, cardRect.top(),
+                              cardRect.right() - horizontalPadding - iconRect.right() - iconGap,
+                              cardRect.height());
+        painter.drawText(textRect.toRect(), Qt::AlignLeft | Qt::AlignVCenter | Qt::TextWordWrap,
+                         m_message);
+    }
+
+private:
+    QString m_message;
+    ToastLevel m_level = ToastLevel::Info;
+    qreal m_opacity = 0.0;
+    qreal m_scale = 0.8;
+};
+} // namespace
+
+struct ToastManager::ToastEntry {
+    ToastCard* card = nullptr;
+    // Layout space, visual transform, and physical drag are intentionally independent:
+    // only heightProgress reflows neighbouring entries.
+    qreal heightProgress = 0.0;
+    qreal visualProgress = 0.0;
+    qreal dragOffsetY = 0.0;
+    bool isDismissing = false;
+    QVariantAnimation* heightAnimation = nullptr;
+    QVariantAnimation* visualAnimation = nullptr;
+    QVariantAnimation* dragAnimation = nullptr;
+    QTimer* dismissTimer = nullptr;
+};
 
 ToastManager::ToastManager(QWidget* parent) : QWidget(parent) {
     hide();
     setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    setAttribute(Qt::WA_TranslucentBackground);
+    // The transparent overlay never consumes normal input. The application filter
+    // below captures only presses that begin on a visible toast card.
     qApp->installEventFilter(this);
-
-    m_anim = new QPropertyAnimation(this, "offsetY", this);
-    m_anim->setEasingCurve(QEasingCurve::OutCubic);
-    m_anim->setDuration(ANIM_DURATION_MS);
-
-    m_autoHideTimer = new QTimer(this);
-    m_autoHideTimer->setSingleShot(true);
-    connect(m_autoHideTimer, &QTimer::timeout, this, &ToastManager::animateOut);
 }
 
 ToastManager::~ToastManager() {
     qApp->removeEventFilter(this);
+    qDeleteAll(m_entries);
 }
 
 void ToastManager::showToast(const QString& msg, ToastLevel level) {
-    m_queue.enqueue({msg, level});
+    if (msg.isEmpty()) return;
 
-    if (!m_isShowing) {
-        processQueue();
+    while (activeEntryCount() >= 3) {
+        auto it = std::find_if(m_entries.cbegin(), m_entries.cend(),
+                               [](const ToastEntry* entry) { return !entry->isDismissing; });
+        if (it == m_entries.cend()) break;
+        dismissEntry(*it);
+    }
+
+    auto* entry = new ToastEntry;
+    entry->card = new ToastCard(msg, level, this);
+
+    entry->heightAnimation = new QVariantAnimation(this);
+    entry->heightAnimation->setDuration(200);
+    entry->heightAnimation->setEasingCurve(QEasingCurve::OutCubic);
+    connect(entry->heightAnimation, &QVariantAnimation::valueChanged, this,
+            [this, entry](const QVariant& value) {
+                if (!m_entries.contains(entry)) return;
+                entry->heightProgress = value.toReal();
+                relayoutEntries();
+            });
+
+    entry->visualAnimation = new QVariantAnimation(this);
+    entry->visualAnimation->setDuration(100);
+    entry->visualAnimation->setEasingCurve(QEasingCurve::OutCubic);
+    connect(entry->visualAnimation, &QVariantAnimation::valueChanged, this,
+            [this, entry](const QVariant& value) {
+                if (!m_entries.contains(entry)) return;
+                entry->visualProgress = value.toReal();
+                relayoutEntries();
+            });
+
+    entry->dragAnimation = new QVariantAnimation(this);
+    entry->dragAnimation->setDuration(280);
+    entry->dragAnimation->setEasingCurve(QEasingCurve::OutBack);
+    connect(entry->dragAnimation, &QVariantAnimation::valueChanged, this,
+            [this, entry](const QVariant& value) {
+                if (!m_entries.contains(entry)) return;
+                entry->dragOffsetY = value.toReal();
+                relayoutEntries();
+            });
+
+    entry->dismissTimer = new QTimer(this);
+    entry->dismissTimer->setSingleShot(true);
+    connect(entry->dismissTimer, &QTimer::timeout, this,
+            [this, entry] { dismissEntry(entry); });
+
+    m_entries.append(entry);
+    show();
+    raise();
+    startEntry(entry);
+}
+
+void ToastManager::startEntry(ToastEntry* entry) {
+    entry->heightAnimation->setStartValue(0.0);
+    entry->heightAnimation->setEndValue(1.0);
+    entry->heightAnimation->start();
+
+    entry->visualAnimation->setStartValue(0.0);
+    entry->visualAnimation->setEndValue(1.0);
+    entry->visualAnimation->start();
+    entry->dismissTimer->start(3000);
+}
+
+void ToastManager::dismissEntry(ToastEntry* entry) {
+    if (!entry || entry->isDismissing || !m_entries.contains(entry)) return;
+
+    entry->isDismissing = true;
+    entry->dismissTimer->stop();
+    entry->dragAnimation->stop();
+
+    entry->heightAnimation->stop();
+    entry->heightAnimation->setStartValue(entry->heightProgress);
+    entry->heightAnimation->setEndValue(0.0);
+    entry->heightAnimation->start();
+
+    entry->visualAnimation->stop();
+    entry->visualAnimation->setStartValue(entry->visualProgress);
+    entry->visualAnimation->setEndValue(0.0);
+    entry->visualAnimation->start();
+
+    QTimer::singleShot(400, this, [this, entry] { removeEntry(entry); });
+}
+
+void ToastManager::removeEntry(ToastEntry* entry) {
+    if (!entry || !m_entries.removeOne(entry)) return;
+
+    if (m_dragEntry == entry) {
+        m_dragEntry = nullptr;
+    }
+
+    entry->heightAnimation->stop();
+    entry->visualAnimation->stop();
+    entry->dragAnimation->stop();
+    entry->dismissTimer->stop();
+    entry->heightAnimation->deleteLater();
+    entry->visualAnimation->deleteLater();
+    entry->dragAnimation->deleteLater();
+    entry->dismissTimer->deleteLater();
+    entry->card->deleteLater();
+    delete entry;
+
+    if (m_entries.isEmpty()) {
+        hide();
+    } else {
+        relayoutEntries();
     }
 }
 
-void ToastManager::processQueue() {
-    if (m_queue.isEmpty()) {
-        m_isShowing = false;
-        m_dragActive = false;
-        hide();
+void ToastManager::relayoutEntries() {
+    const int screenHeight = parentWidget() ? parentWidget()->height() : height();
+    const int toastWidth = qRound(width() * kToastWidthRatio);
+    const int toastX = (width() - toastWidth) / 2;
+    int y = qRound(screenHeight * 0.0275);
+
+    for (ToastEntry* entry : m_entries) {
+        const int cardHeight = entry->card->preferredHeight(toastWidth, screenHeight);
+        const int slotHeight = qRound(cardHeight * entry->heightProgress);
+        const qreal enterOffset = entry->isDismissing ? 0.0
+                                                      : -16.0 * (1.0 - entry->visualProgress);
+        const qreal visualScale = 0.8 + entry->visualProgress * 0.2;
+
+        entry->card->setGeometry(toastX, y + qRound(enterOffset + entry->dragOffsetY),
+                                 toastWidth, cardHeight);
+        entry->card->setVisualState(entry->visualProgress, visualScale);
+        entry->card->setVisible(entry->visualProgress > 0.0);
+
+        y += slotHeight + qRound(8.0 * entry->heightProgress);
+    }
+}
+
+ToastManager::ToastEntry* ToastManager::entryAt(const QPoint& globalPosition) const {
+    for (auto it = m_entries.crbegin(); it != m_entries.crend(); ++it) {
+        ToastEntry* entry = *it;
+        if (entry->isDismissing || !entry->card->isVisible()) continue;
+
+        const QRect cardRect(entry->card->mapToGlobal(QPoint(0, 0)), entry->card->size());
+        if (cardRect.contains(globalPosition)) return entry;
+    }
+    return nullptr;
+}
+
+void ToastManager::beginDrag(ToastEntry* entry, int globalY) {
+    m_dragEntry = entry;
+    m_dragStartGlobalY = globalY;
+    m_dragStartOffsetY = entry->dragOffsetY;
+    entry->dismissTimer->stop();
+    entry->dragAnimation->stop();
+    entry->card->raise();
+}
+
+void ToastManager::updateDrag(int globalY) {
+    if (!m_dragEntry) return;
+
+    const int physicalDeltaY = globalY - m_dragStartGlobalY;
+    if (physicalDeltaY < 0) {
+        m_dragEntry->dragOffsetY = m_dragStartOffsetY + physicalDeltaY;
+    } else {
+        const qreal dampedDelta = 3.0 * std::sqrt(qreal(physicalDeltaY));
+        m_dragEntry->dragOffsetY = m_dragStartOffsetY + dampedDelta;
+    }
+    relayoutEntries();
+}
+
+void ToastManager::finishDrag() {
+    if (!m_dragEntry) return;
+
+    ToastEntry* entry = m_dragEntry;
+    m_dragEntry = nullptr;
+
+    const int screenHeight = parentWidget() ? parentWidget()->height() : height();
+    const int toastWidth = qRound(width() * kToastWidthRatio);
+    const int cardHeight = entry->card->preferredHeight(toastWidth, screenHeight);
+    if (entry->dragOffsetY - m_dragStartOffsetY < -cardHeight * 0.40) {
+        dismissEntry(entry);
         return;
     }
 
-    m_current = m_queue.dequeue();
-    m_isShowing = true;
-
-    const int screenH = GlobalContext::instance().screenSize().height();
-    m_contentH = qRound(screenH * HEIGHT_RATIO);
-    m_baseY    = qRound(screenH * TOP_MARGIN_RATIO);
-
-    setOffsetY(-m_contentH - m_baseY);
-
-    show();
-    raise();
-    animateIn();
+    entry->dragAnimation->setStartValue(entry->dragOffsetY);
+    entry->dragAnimation->setEndValue(0.0);
+    entry->dragAnimation->start();
+    entry->dismissTimer->start(2000);
 }
 
-void ToastManager::animateIn() {
-    m_dragActive = false;
-    m_anim->stop();
-    disconnect(m_anim, &QPropertyAnimation::finished, this, &ToastManager::processQueue);
-
-    m_anim->setStartValue(m_offsetY);
-    m_anim->setEndValue(0);
-    m_anim->start();
-
-    m_autoHideTimer->start(DISPLAY_DURATION_MS);
+int ToastManager::activeEntryCount() const {
+    return std::count_if(m_entries.cbegin(), m_entries.cend(),
+                         [](const ToastEntry* entry) { return !entry->isDismissing; });
 }
 
-void ToastManager::animateOut() {
-    m_dragActive = false;
-    m_anim->stop();
-    connect(m_anim, &QPropertyAnimation::finished, this, &ToastManager::processQueue, Qt::UniqueConnection);
-
-    const int targetOutY = -m_contentH - m_baseY - DISMISS_OFFSET_PX;
-    m_anim->setStartValue(m_offsetY);
-    m_anim->setEndValue(targetOutY);
-    m_anim->start();
-}
-
-bool ToastManager::eventFilter(QObject* watched, QEvent* event) {
-    if (m_sendingSyntheticRelease || !m_isShowing || !isVisible()) {
-        return false;
-    }
+bool ToastManager::eventFilter(QObject*, QEvent* event) {
+    if (!isVisible()) return false;
 
     if (event->type() == QEvent::MouseButtonPress) {
         auto* mouse = static_cast<QMouseEvent*>(event);
-        if (mouse->button() == Qt::LeftButton &&
-            visualRectGlobal().contains(mouse->globalPos())) {
-            beginDrag(mouse->globalPos().y());
-            return true;
-        }
-        return false;
+        if (mouse->button() != Qt::LeftButton) return false;
+
+        ToastEntry* entry = entryAt(mouse->globalPos());
+        if (!entry) return false;
+        beginDrag(entry, mouse->globalPos().y());
+        return true;
     }
 
-    if (event->type() == QEvent::MouseMove) {
+    if (event->type() == QEvent::MouseMove && m_dragEntry) {
         auto* mouse = static_cast<QMouseEvent*>(event);
-        if (!(mouse->buttons() & Qt::LeftButton)) {
-            return false;
-        }
-
-        if (m_dragActive) {
-            updateDrag(mouse->globalPos().y());
-            return true;
-        }
-
-        if (visualRectGlobal().contains(mouse->globalPos())) {
-            releaseCurrentMouseReceiver(watched, mouse);
-            beginDrag(mouse->globalPos().y());
-            return true;
-        }
-        return false;
+        if (!(mouse->buttons() & Qt::LeftButton)) return false;
+        updateDrag(mouse->globalPos().y());
+        return true;
     }
 
-    if (event->type() == QEvent::MouseButtonRelease) {
+    if (event->type() == QEvent::MouseButtonRelease && m_dragEntry) {
         auto* mouse = static_cast<QMouseEvent*>(event);
-        if (mouse->button() == Qt::LeftButton && m_dragActive) {
-            finishDrag();
-            return true;
-        }
+        if (mouse->button() != Qt::LeftButton) return false;
+        finishDrag();
+        return true;
     }
 
     return false;
 }
 
-void ToastManager::beginDrag(int globalY) {
-    m_autoHideTimer->stop();
-    m_anim->stop();
-    disconnect(m_anim, &QPropertyAnimation::finished, this, &ToastManager::processQueue);
-
-    m_dragActive = true;
-    m_dragStartGlobalY = globalY;
-    m_dragStartOffsetY = m_offsetY;
-}
-
-void ToastManager::updateDrag(int globalY) {
-    const int totalPhysicalDy = globalY - m_dragStartGlobalY;
-
-    int newVisualOffsetY = 0;
-
-    // --- Absolute Mapping Logic ---
-    if (totalPhysicalDy < 0) {
-        // Upward movement: Linear mapping
-        newVisualOffsetY = m_dragStartOffsetY + totalPhysicalDy;
-    } else {
-        // Downward movement: Apply damping to the TOTAL displacement
-        // This prevents jitter because the result is deterministic for any finger position
-        const double dampedDelta = DAMPING_FACTOR * std::sqrt(static_cast<double>(totalPhysicalDy));
-        newVisualOffsetY = m_dragStartOffsetY + static_cast<int>(dampedDelta);
-    }
-
-    setOffsetY(newVisualOffsetY);
-}
-
-void ToastManager::finishDrag() {
-    if (!m_dragActive) return;
-
-    m_dragActive = false;
-    // Calculate the final displacement based on the currentOffsetY vs startOffsetY
-    const int finalVisualDelta = m_offsetY - m_dragStartOffsetY;
-
-    // If the widget was pushed up beyond the threshold, dismiss it
-    const int dismissThreshold = -qRound(m_contentH * DISMISS_THRESHOLD_RATIO);
-
-    if (finalVisualDelta < dismissThreshold) {
-        animateOut();
-    } else {
-        m_anim->stop();
-        disconnect(m_anim, &QPropertyAnimation::finished, this, &ToastManager::processQueue);
-
-        m_anim->setStartValue(m_offsetY);
-        m_anim->setEndValue(0);
-        m_anim->start();
-
-        m_autoHideTimer->start(RESUME_DURATION_MS);
-    }
-}
-
-void ToastManager::cancelDrag() {
-    m_dragActive = false;
-    m_anim->stop();
-    disconnect(m_anim, &QPropertyAnimation::finished, this, &ToastManager::processQueue);
-
-    m_anim->setStartValue(m_offsetY);
-    m_anim->setEndValue(0);
-    m_anim->start();
-
-    if (isVisible()) {
-        m_autoHideTimer->start(RESUME_DURATION_MS);
-    }
-}
-
-void ToastManager::releaseCurrentMouseReceiver(QObject* receiver, const QMouseEvent* sourceEvent) {
-    if (!receiver || !sourceEvent) return;
-
-    // Outside-slide takeover happens mid mouse-grab. Finish the current Qt
-    // receiver first so scrollers and pressed widgets do not lose release.
-    QMouseEvent releaseEvent(QEvent::MouseButtonRelease,
-                             sourceEvent->localPos(),
-                             sourceEvent->windowPos(),
-                             sourceEvent->screenPos(),
-                             Qt::LeftButton,
-                             sourceEvent->buttons() & ~Qt::LeftButton,
-                             sourceEvent->modifiers());
-    m_sendingSyntheticRelease = true;
-    QCoreApplication::sendEvent(receiver, &releaseEvent);
-    m_sendingSyntheticRelease = false;
-}
-
-void ToastManager::setOffsetY(int y) {
-    m_offsetY = y;
-    move(0, m_baseY + m_offsetY);
-    update();
-}
-
-QRect ToastManager::getVisualRect() const {
-    const int pillW = qRound(width() * WIDTH_RATIO);
-    return QRect((width() - pillW) / 2, 0, pillW, m_contentH);
-}
-
-QRect ToastManager::visualRectGlobal() const {
-    const QRect visual = getVisualRect();
-    return QRect(mapToGlobal(visual.topLeft()), visual.size());
-}
-
 void ToastManager::resizeEvent(QResizeEvent* event) {
     QWidget::resizeEvent(event);
-
-    const int screenH = GlobalContext::instance().screenSize().height();
-    m_contentH = qRound(screenH * HEIGHT_RATIO);
-    m_baseY    = qRound(screenH * TOP_MARGIN_RATIO);
-}
-
-void ToastManager::paintEvent(QPaintEvent*) {
-    QPainter p(this);
-    p.setRenderHint(QPainter::Antialiasing);
-
-    const int pillW = qRound(width() * WIDTH_RATIO);
-    const int pillX = (width() - pillW) / 2;
-    const QRect pillRect(pillX, 0, pillW, m_contentH);
-
-    p.setBrush(QColor(25, 25, 25, 230));
-    p.setPen(Qt::NoPen);
-    p.drawRoundedRect(pillRect, m_contentH / 2.0, m_contentH / 2.0);
-
-    if (m_current.level != ToastLevel::Info) {
-        const QColor colorTop = (m_current.level == ToastLevel::Warning) ? QColor("#FFB74D") : QColor("#FF5252");
-        const QColor colorBot = (m_current.level == ToastLevel::Warning) ? QColor("#E65100") : QColor("#B71C1C");
-
-        const int barW = qMax(3, qRound(pillW * 0.015));
-        const int barH = qRound(m_contentH * 0.5);
-        const int barX = pillX + (m_contentH / 2);
-        const int barY = (m_contentH - barH) / 2;
-        const QRect barRect(barX, barY, barW, barH);
-
-        p.setBrush(QColor(colorTop.red(), colorTop.green(), colorTop.blue(), 60));
-        p.drawRoundedRect(barRect.adjusted(-2, -2, 2, 2), barW / 2.0, barW / 2.0);
-
-        QLinearGradient grad(barRect.topLeft(), barRect.bottomLeft());
-        grad.setColorAt(0, colorTop);
-        grad.setColorAt(1, colorBot);
-        p.setBrush(grad);
-        p.drawRoundedRect(barRect, barW / 2.0, barW / 2.0);
-    }
-
-    p.setPen(Qt::white);
-    QFont font = p.font();
-    font.setBold(true);
-    font.setPixelSize(qRound(m_contentH * 0.4));
-    p.setFont(font);
-
-    const int textIndent = (m_current.level == ToastLevel::Info) ? (m_contentH / 2) : qRound(m_contentH * 0.85);
-    const QRect textRect = pillRect.adjusted(textIndent, 0, -m_contentH / 2, 0);
-
-    p.drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, m_current.message);
+    relayoutEntries();
 }

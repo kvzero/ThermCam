@@ -1,4 +1,5 @@
 #include "capture_service.h"
+#include "core/event_bus.h"
 #include "core/settings_store.h"
 #include "services/capture_worker.h"
 #include "services/settings_service.h"
@@ -241,15 +242,25 @@ void CaptureService::onVideoStopped(const QString& path) {
         return;
     }
 
+    bool saved = false;
     if (!path.isEmpty()) {
         QString flushError;
-        if (!StorageManager::instance().flushMediaPath(path, &flushError)) {
+        saved = StorageManager::instance().flushMediaPath(path, &flushError);
+        if (!saved) {
             qWarning() << "[Capture] Video flush failed:" << path << "reason:" << flushError;
         }
     }
 
     m_state = RecordingState::Idle;
     emit recordingStopped();
+
+    if (saved) {
+        const QString destination = path.startsWith(QStringLiteral("/mnt/udisk/"))
+                                        ? QStringLiteral("USB DISK")
+                                        : QStringLiteral("SD CARD");
+        emit EventBus::instance().toastRequested(
+            QStringLiteral("VIDEO SAVED TO %1").arg(destination), ToastLevel::Success);
+    }
 }
 
 void CaptureService::onStorageSpaceCritical() {

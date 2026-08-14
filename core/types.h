@@ -7,12 +7,13 @@
 #include <QtGlobal>
 
 /**
- * @brief Global notification priority levels.
+ * @brief Visual styles for global toast notifications.
  */
 enum class ToastLevel {
-    Info,      /**< Standard feedback  */
-    Warning,   /**< Attention required  */
-    Critical   /**< Failure / Danger */
+    Info,      /**< Informational feedback. */
+    Success,   /**< Completed operation. */
+    Warning,   /**< Non-fatal condition requiring attention. */
+    Error      /**< Failed operation. */
 };
 
 /**
