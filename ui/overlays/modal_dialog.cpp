@@ -342,7 +342,7 @@ bool ModalBase::tryPrimaryAction() {
     if (!onPrimaryAction()) return false;
 
     if (m_spec.level == ModalLevel::Critical) {
-        emit EventBus::instance().hapticRequested(4);
+        emit EventBus::instance().hapticRequested(6); // Sharp Click - 30%
     }
 
     if (m_spec.onPrimaryAction) m_spec.onPrimaryAction();

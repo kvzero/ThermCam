@@ -197,8 +197,7 @@ void ModeSelector::cancelPress() {
 void ModeSelector::longPressed() {
     if (m_state != State::Normal) return;
 
-    // Strong haptic feedback for long-press trigger
-    EventBus::instance().hapticRequested(4);
+    EventBus::instance().hapticRequested(4); // Sharp Click - 100%
 
     m_state = State::Picking;
     m_isStickyPicking = true;

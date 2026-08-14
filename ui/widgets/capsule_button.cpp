@@ -143,7 +143,7 @@ void CapsuleButton::startLongPressTimer() {
 }
 
 void CapsuleButton::longPressed() {
-    emit EventBus::instance().hapticRequested(4);
+    emit EventBus::instance().hapticRequested(4); // Sharp Click - 100%
 
     if (m_currentZone == ActiveZone::None) return;
 

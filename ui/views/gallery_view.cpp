@@ -468,7 +468,7 @@ void GalleryView::triggerLongPressAt(const QPoint& start) {
     if (m_isSelectionMode) return;
 
     m_longPressTriggered = true;
-    emit EventBus::instance().hapticRequested(4);
+    emit EventBus::instance().hapticRequested(4); // Sharp Click - 100%
     m_topBar->setSelectionMode(true);
     m_isSelectionMode = true;
 

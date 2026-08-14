@@ -78,6 +78,7 @@ CameraView::CameraView(QWidget* parent) : BaseView(parent) {
     connect(m_paletteOpenTimer, &QTimer::timeout, this, [this]() {
         if (!m_paletteSelector || m_paletteSelector->isPresented()) return;
         m_paletteSelector->present(m_currentPalette);
+        emit EventBus::instance().hapticRequested(6); // Sharp Click - 30%
         refreshPalettePreviews();
     });
 
@@ -122,7 +123,7 @@ CameraView::CameraView(QWidget* parent) : BaseView(parent) {
     connect(&SettingsService::instance(), &SettingsService::paletteChanged, this,
             [this](int paletteId) {
                 if (paletteId < 0 || paletteId >= static_cast<int>(ThermalPalette::Id::Count)) return;
-                applyPalette(static_cast<ThermalPalette::Id>(paletteId), false);
+                applyPalette(static_cast<ThermalPalette::Id>(paletteId));
                 if (m_paletteSelector && m_paletteSelector->isPresented()) {
                     refreshPalettePreviews();
                 }
@@ -133,7 +134,7 @@ CameraView::CameraView(QWidget* parent) : BaseView(parent) {
 
     connect(m_paletteSelector, &PaletteSelector::previewSelectionChanged, this,
             [this](ThermalPalette::Id id) {
-                applyPalette(id, false);
+                applyPalette(id);
                 refreshPalettePreviews();
             });
 
@@ -144,7 +145,6 @@ CameraView::CameraView(QWidget* parent) : BaseView(parent) {
                                     QVariant::fromValue(static_cast<int>(id)));
                 SettingsService::instance().apply(patch);
 
-                m_lastHapticPalette = ThermalPalette::Id::Count;
                 setHudVisible(true, true);
             });
 
@@ -186,7 +186,7 @@ void CameraView::onExit() {
     disconnectHardware();
 }
 
-void CameraView::applyPalette(ThermalPalette::Id palette, bool emitHaptic) {
+void CameraView::applyPalette(ThermalPalette::Id palette) {
     if (palette == ThermalPalette::Id::Count) return;
     if (static_cast<int>(palette) >= static_cast<int>(ThermalPalette::Id::Count)) {
         return;
@@ -195,10 +195,6 @@ void CameraView::applyPalette(ThermalPalette::Id palette, bool emitHaptic) {
     m_currentPalette = palette;
     m_processor->setPalette(palette);
 
-    if (emitHaptic && palette != m_lastHapticPalette) {
-        emit EventBus::instance().hapticRequested(4);
-        m_lastHapticPalette = palette;
-    }
 }
 
 void CameraView::openPaletteSelector() {
@@ -206,7 +202,6 @@ void CameraView::openPaletteSelector() {
     if (m_paletteSelector->isPresented() || m_paletteOpenTimer->isActive()) return;
 
     setHudVisible(false, true);
-    m_lastHapticPalette = m_currentPalette;
     m_paletteOpenTimer->start(m_hudCfg.PALETTE_SHOW_DELAY_MS);
 }
 
@@ -225,7 +220,6 @@ void CameraView::closePaletteSelector(bool commitSelection) {
     m_paletteSelector->dismiss(commitSelection);
 
     if (!commitSelection) {
-        m_lastHapticPalette = ThermalPalette::Id::Count;
         setHudVisible(true, true);
     }
 }
@@ -435,6 +429,7 @@ void CameraView::triggerDoubleTapShutter() {
     auto* camera = HardwareManager::instance().camera();
     if (!camera) return;
     camera->triggerShutter();
+    emit EventBus::instance().hapticRequested(33); // Double Click 3 - 60%
 }
 
 /* --- Transition Anchor --- */

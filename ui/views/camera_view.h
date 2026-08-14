@@ -57,7 +57,7 @@ protected:
     void paintEvent(QPaintEvent* event) override;
 
 private:
-    void applyPalette(ThermalPalette::Id palette, bool emitHaptic);
+    void applyPalette(ThermalPalette::Id palette);
     void connectHardware();
     void disconnectHardware();
     void updateHudLayout();
@@ -108,7 +108,6 @@ private:
     QPoint m_modeSelectorHiddenPos;
     bool m_hudVisible = true;
     ThermalPalette::Id m_currentPalette = ThermalPalette::Id::Spectra;
-    ThermalPalette::Id m_lastHapticPalette = ThermalPalette::Id::Count;
 
     /* Layer 3: Zero-Widget Shutter Animation Engine */
     qreal m_shutterProgress = 0.0;
