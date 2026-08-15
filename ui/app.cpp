@@ -93,6 +93,9 @@ void App::initLayer_Overlays() {
     m_textModal = new TextModal(this);
     m_textModal->hide();
 
+    m_warningModal = new WarningModal(this);
+    m_warningModal->hide();
+
     m_clockModal = new ClockModal(this);
     m_clockModal->hide();
 
@@ -132,6 +135,7 @@ void App::connectHardwareKeys() {
 
 void App::handleHardwareKeyPressed() {
     if ((m_textModal && m_textModal->isVisible()) ||
+        (m_warningModal && m_warningModal->isVisible()) ||
         (m_clockModal && m_clockModal->isVisible())) {
         return;
     }
@@ -143,6 +147,7 @@ void App::handleHardwareKeyPressed() {
 
 void App::handleHardwareKeyShortPress() {
     if ((m_textModal && m_textModal->isVisible()) ||
+        (m_warningModal && m_warningModal->isVisible()) ||
         (m_clockModal && m_clockModal->isVisible())) {
         return;
     }
@@ -153,7 +158,7 @@ void App::handleHardwareKeyShortPress() {
 }
 
 void App::handleHardwareKeyLongPress() {
-    showTextModal("TURN OFF\nTHE CAMERA?", []() {
+    showTextModal("POWER OFF CAMERA?", "The camera will turn off now.", []() {
         if (std::system("poweroff") != 0) {
             qWarning() << "[System] Shutdown command failed.";
         }
@@ -162,6 +167,7 @@ void App::handleHardwareKeyLongPress() {
 }
 
 void App::showTextModal(const QString& title,
+                        const QString& body,
                         std::function<void()> onPrimaryAction,
                         ModalLevel level,
                         TextModalSize size) {
@@ -174,9 +180,28 @@ void App::showTextModal(const QString& title,
         spec.dismissOnMaskTap = true;
         spec.onPrimaryAction = std::move(onPrimaryAction);
 
-        m_textModal->setMessage(title);
+        m_textModal->setContent(title, body);
         m_textModal->setSize(size);
         m_textModal->present(spec);
+    }
+    if (m_toastManager && m_toastManager->isVisible()) {
+        m_toastManager->raise();
+    }
+}
+
+void App::showWarningModal(const QString& title,
+                           const QString& body,
+                           std::function<void()> onPrimaryAction) {
+    if (m_warningModal) {
+        ModalSpec spec;
+        spec.level = ModalLevel::Critical;
+        spec.primaryText = "CONFIRM";
+        spec.secondaryText = "CANCEL";
+        spec.dismissOnMaskTap = true;
+        spec.onPrimaryAction = std::move(onPrimaryAction);
+
+        m_warningModal->setContent(title, body);
+        m_warningModal->present(spec);
     }
     if (m_toastManager && m_toastManager->isVisible()) {
         m_toastManager->raise();
@@ -359,6 +384,7 @@ void App::resizeEvent(QResizeEvent* event) {
     // Layer 2: System Overlays
     // if (m_quickSettings) m_quickSettings->resize(s.width(), m_quickSettings->height()); // Height managed internally
     if (m_textModal) m_textModal->resize(s);
+    if (m_warningModal) m_warningModal->resize(s);
     if (m_clockModal) m_clockModal->resize(s);
     if (m_toastManager) m_toastManager->resize(s);
     if (m_startupMask) m_startupMask->resize(s);

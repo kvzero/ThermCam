@@ -169,17 +169,38 @@ public:
     ~TextModal() override = default;
 
     /* --- Public API --- */
-    void setMessage(const QString& message);
+    void setContent(const QString& title, const QString& body);
     void setSize(TextModalSize size);
 
 protected:
     ContentLayout contentLayoutHint(const QSize& viewportSize) const override;
     void paintContent(QPainter& p, const QRect& contentRect) override;
+    void paintTextContent(QPainter& p,
+                          const QRect& contentRect,
+                          Qt::Alignment alignment) const;
 
 private:
     /* --- Runtime State --- */
-    QString m_message;
+    QString m_title;
+    QString m_body;
     TextModalSize m_size = TextModalSize::Normal;
+};
+
+/**
+ * @brief High-risk confirmation with a warning icon and side-by-side text.
+ *
+ * WarningModal keeps the ModalBase shell and TextModal typography, but owns
+ * the warning-specific icon and content layout used for destructive actions.
+ */
+class WarningModal : public TextModal {
+    Q_OBJECT
+public:
+    explicit WarningModal(QWidget* parent = nullptr);
+    ~WarningModal() override = default;
+
+protected:
+    ContentLayout contentLayoutHint(const QSize& viewportSize) const override;
+    void paintContent(QPainter& p, const QRect& contentRect) override;
 };
 
 #endif // MODAL_DIALOG_H

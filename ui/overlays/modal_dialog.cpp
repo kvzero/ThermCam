@@ -10,15 +10,6 @@
 #include <QPainterPath>
 #include <QRadialGradient>
 #include <QEasingCurve>
-#include <QStringList>
-
-namespace {
-constexpr qreal kTextModalLineGapRatio = 0.20; // Extra gap between wrapped lines.
-
-QStringList splitModalTextLines(const QString& text) {
-    return text.split(QLatin1Char('\n'), Qt::KeepEmptyParts);
-}
-} // namespace
 
 ModalBase::ModalBase(QWidget* parent) : QWidget(parent) {
     hide();
@@ -372,9 +363,10 @@ void ModalBase::onPopAnimFinished() {
 
 TextModal::TextModal(QWidget* parent) : ModalBase(parent) {}
 
-void TextModal::setMessage(const QString& message) {
-    if (m_message == message) return;
-    m_message = message;
+void TextModal::setContent(const QString& title, const QString& body) {
+    if (m_title == title && m_body == body) return;
+    m_title = title;
+    m_body = body;
     update();
 }
 
@@ -393,56 +385,131 @@ ModalBase::ContentLayout TextModal::contentLayoutHint(const QSize& /*viewportSiz
 }
 
 void TextModal::paintContent(QPainter& p, const QRect& contentRect) {
-    const qreal fontRatio = (m_size == TextModalSize::Large) ? 0.15 : 0.19;
-    const int fontPx = qRound(contentRect.height() * fontRatio);
+    paintTextContent(p, contentRect, Qt::AlignHCenter);
+}
+
+void TextModal::paintTextContent(QPainter& p,
+                                 const QRect& contentRect,
+                                 Qt::Alignment alignment) const {
     const int opticalYOffset = qRound(contentRect.height() * 0.02);
+    const bool hasBody = !m_body.isEmpty();
+    const int textFlags = alignment | Qt::TextWordWrap;
 
-    QFont font("Roboto");
-    font.setBold(true);
-    font.setPixelSize(fontPx);
-    p.setFont(font);
-    p.setPen(Qt::white);
+    QFont titleFont("Roboto");
+    titleFont.setBold(true);
+    titleFont.setPixelSize(qRound(contentRect.height()
+                                      * ((m_size == TextModalSize::Large) ? 0.144 : 0.19)));
 
-    const QStringList logicalLines = splitModalTextLines(m_message);
-    if (logicalLines.size() <= 1) {
+    if (!hasBody) {
+        p.setFont(titleFont);
+        p.setPen(Qt::white);
         p.drawText(contentRect.translated(0, opticalYOffset),
-                   Qt::AlignCenter | Qt::TextWordWrap,
-                   m_message);
+                   textFlags | Qt::AlignVCenter,
+                   m_title);
         return;
     }
 
-    QFontMetrics fm(font);
-    const int maxW = contentRect.width();
+    QFont bodyFont("Roboto");
+    bodyFont.setPixelSize(qRound(contentRect.height()
+                                     * ((m_size == TextModalSize::Large) ? 0.106 : 0.14)));
 
-    QVector<int> paragraphHeights;
-    paragraphHeights.reserve(logicalLines.size());
-    int textHNoGap = 0;
-    for (int i = 0; i < logicalLines.size(); ++i) {
-        const QString& textLine = logicalLines[i];
-        const QRect wrapped = fm.boundingRect(QRect(0, 0, maxW, 10000),
-                                              Qt::AlignHCenter | Qt::TextWordWrap,
-                                              textLine);
-        const int paraH = qMax(fm.height(), wrapped.height());
-        paragraphHeights.push_back(paraH);
-        textHNoGap += paraH;
-    }
+    const QRect measurementRect(0, 0, contentRect.width(), contentRect.height());
+    const QFontMetrics titleMetrics(titleFont);
+    const QFontMetrics bodyMetrics(bodyFont);
+    const int titleHeight = qMax(titleMetrics.height(),
+                                 titleMetrics.boundingRect(measurementRect,
+                                                           textFlags,
+                                                           m_title).height());
+    const int bodyHeight = qMax(bodyMetrics.height(),
+                                bodyMetrics.boundingRect(measurementRect,
+                                                         textFlags,
+                                                         m_body).height());
+    const int sectionGap = qRound(contentRect.height() * 0.08);
+    const int totalHeight = titleHeight + sectionGap + bodyHeight;
+    int y = contentRect.top() + (contentRect.height() - totalHeight) / 2 + opticalYOffset;
 
-    const int lineCount = logicalLines.size();
-    const int desiredGap = qRound(fm.height() * kTextModalLineGapRatio);
-    const int maxGapBudget = qMax(0, contentRect.height() - textHNoGap);
-    const int lineGap = (lineCount > 1)
-                            ? qMin(desiredGap, maxGapBudget / (lineCount - 1))
-                            : 0;
-    const int totalH = textHNoGap + (lineCount - 1) * lineGap;
+    p.setFont(titleFont);
+    p.setPen(Qt::white);
+    p.drawText(QRect(contentRect.left(), y, contentRect.width(), titleHeight),
+               textFlags,
+               m_title);
 
-    int y = contentRect.top() + (contentRect.height() - totalH) / 2 + opticalYOffset;
-    for (int i = 0; i < lineCount; ++i) {
-        const int paraH = paragraphHeights[i];
-        if (!logicalLines[i].isEmpty()) {
-            p.drawText(QRect(contentRect.left(), y, maxW, paraH),
-                       Qt::AlignHCenter | Qt::TextWordWrap,
-                       logicalLines[i]);
-        }
-        y += paraH + lineGap;
-    }
+    y += titleHeight + sectionGap;
+    p.setFont(bodyFont);
+    p.setPen(QColor(255, 255, 255, 210));
+    p.drawText(QRect(contentRect.left(), y, contentRect.width(), bodyHeight),
+               textFlags,
+               m_body);
+}
+
+WarningModal::WarningModal(QWidget* parent) : TextModal(parent) {
+    setSize(TextModalSize::Large);
+}
+
+ModalBase::ContentLayout WarningModal::contentLayoutHint(const QSize& /*viewportSize*/) const {
+    ContentLayout out;
+    out.screenRatio = QSizeF(0.706, 0.458);
+    return out;
+}
+
+void WarningModal::paintContent(QPainter& p, const QRect& contentRect) {
+    const qreal iconLeftInsetRatio = 0.02;
+    const qreal buttonEdgeGapRatio = 0.05;
+    const qreal iconWidth = qMin(contentRect.width() * 0.18,
+                                 contentRect.height() * 0.55);
+    const qreal iconHeight = iconWidth * 0.88;
+    const qreal iconLeft = contentRect.left() + contentRect.width() * iconLeftInsetRatio;
+    const qreal iconTop = contentRect.center().y() - iconHeight / 2.0;
+    const QRectF iconRect(iconLeft, iconTop, iconWidth, iconHeight);
+
+    const qreal centerX = iconRect.center().x();
+    const qreal left = iconRect.left();
+    const qreal right = iconRect.right();
+    const qreal top = iconRect.top();
+    const qreal bottom = iconRect.bottom();
+
+    const qreal cornerRadius = iconWidth * 0.095;
+    QPainterPath triangle;
+    triangle.moveTo(centerX, top + cornerRadius);
+    triangle.lineTo(right - cornerRadius, bottom - cornerRadius);
+    triangle.lineTo(left + cornerRadius, bottom - cornerRadius);
+    triangle.closeSubpath();
+
+    const QColor warningYellow(245, 190, 25);
+    p.setPen(QPen(warningYellow,
+                  cornerRadius * 2.0,
+                  Qt::SolidLine,
+                  Qt::RoundCap,
+                  Qt::RoundJoin));
+    p.setBrush(warningYellow);
+    p.drawPath(triangle);
+
+    const qreal stemTop = top + iconHeight * 0.27;
+    const qreal stemBottom = top + iconHeight * 0.62;
+    QPainterPath stem;
+    stem.moveTo(centerX - iconWidth * 0.115, stemTop + iconHeight * 0.03);
+    stem.quadTo(centerX - iconWidth * 0.10, stemTop,
+                centerX - iconWidth * 0.06, stemTop);
+    stem.lineTo(centerX + iconWidth * 0.06, stemTop);
+    stem.quadTo(centerX + iconWidth * 0.10, stemTop,
+                centerX + iconWidth * 0.115, stemTop + iconHeight * 0.03);
+    stem.lineTo(centerX + iconWidth * 0.065, stemBottom);
+    stem.quadTo(centerX + iconWidth * 0.05, stemBottom + iconHeight * 0.03,
+                centerX, stemBottom + iconHeight * 0.03);
+    stem.quadTo(centerX - iconWidth * 0.05, stemBottom + iconHeight * 0.03,
+                centerX - iconWidth * 0.065, stemBottom);
+    stem.closeSubpath();
+
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(27, 27, 27));
+    p.drawPath(stem);
+    const qreal dotRadius = iconWidth * 0.095;
+    p.drawEllipse(QPointF(centerX, top + iconHeight * 0.79), dotRadius, dotRadius);
+
+    const int textLeft = qRound(iconRect.right() + contentRect.width() * buttonEdgeGapRatio);
+    const QRect textRect(textLeft,
+                         contentRect.top(),
+                         contentRect.right() - textLeft + 1,
+                         contentRect.height());
+    paintTextContent(p, textRect, Qt::AlignHCenter);
 }

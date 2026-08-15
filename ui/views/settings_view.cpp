@@ -741,8 +741,9 @@ void SettingsView::onSecondaryRowActivated() {
     if (item.id == SettingID::TriggerFlatSceneCorrection) {
         if (!app) return;
         app->showTextModal(
-            QStringLiteral("WARNING: Risk of image ghosting!\n"
-                           "Fully cover lens with a flat object before continuing."),
+            QStringLiteral("FLAT-SCENE CORRECTION"),
+            QStringLiteral("Cover the lens with a uniform surface before continuing.\n"
+                           "Incorrect setup may cause ghosting."),
             [app]() {
                 QString error;
                 if (!SettingsService::instance().triggerFlatSceneCorrection(&error)) {
@@ -783,8 +784,8 @@ void SettingsView::onSecondaryRowActivated() {
                                           : QStringLiteral("USB Disk");
         if (!app) return;
         app->showTextModal(
-            QStringLiteral("Safely eject %1?\nWait for completion before unplugging.")
-                .arg(targetName),
+            QStringLiteral("EJECT %1?").arg(targetName.toUpper()),
+            QStringLiteral("Wait for confirmation before removing it."),
             [this, app, targetName, sdCard]() {
                 auto* storage = HardwareManager::instance().storage();
                 if (!storage) {
@@ -809,16 +810,26 @@ void SettingsView::onSecondaryRowActivated() {
                 refreshStorageRowsIfVisible();
             },
             ModalLevel::Normal,
-            TextModalSize::Large);
+            TextModalSize::Normal);
         return;
     }
     if (item.id == SettingID::SdCardFormat || item.id == SettingID::UsbDiskFormat) {
         const bool sdCard = (item.id == SettingID::SdCardFormat);
         const QString targetName = sdCard ? QStringLiteral("SD Card")
                                           : QStringLiteral("USB Disk");
+        const StorageVolume targetVolume = sdCard ? StorageVolume::SdCard
+                                                  : StorageVolume::UsbDisk;
         if (!app) return;
-        app->showTextModal(QStringLiteral("Format %1?\nAll files will be erased.").arg(targetName),
-                           [this, app, targetName, sdCard]() {
+        auto* storage = HardwareManager::instance().storage();
+        const QString fileSystem = storage ? storage->formatFileSystemName(targetVolume)
+                                           : QString();
+        const QString warningBody = fileSystem.isEmpty()
+            ? QStringLiteral("All files will be deleted.")
+            : QStringLiteral("All files will be deleted.\nIt will be formatted as %1.")
+                  .arg(fileSystem);
+        app->showWarningModal(QStringLiteral("FORMAT %1?").arg(targetName.toUpper()),
+                              warningBody,
+                              [this, app, targetName, targetVolume]() {
                                auto* storage = HardwareManager::instance().storage();
                                if (!storage) {
                                    app->showToast("STORAGE UNAVAILABLE", ToastLevel::Error);
@@ -826,9 +837,6 @@ void SettingsView::onSecondaryRowActivated() {
                                }
 
                                QString error;
-                               const StorageVolume targetVolume = sdCard
-                                                                      ? StorageVolume::SdCard
-                                                                      : StorageVolume::UsbDisk;
                                const bool ok = storage->formatVolume(targetVolume, &error);
 
                                if (!ok) {
@@ -839,10 +847,8 @@ void SettingsView::onSecondaryRowActivated() {
                                    app->showToast(targetName + " formatted", ToastLevel::Success);
                                }
 
-                               refreshStorageRowsIfVisible();
-                           },
-                           ModalLevel::Critical,
-                           TextModalSize::Large);
+                                  refreshStorageRowsIfVisible();
+                              });
         return;
     }
     if (item.id == SettingID::SdCardCapacity || item.id == SettingID::UsbDiskCapacity) {

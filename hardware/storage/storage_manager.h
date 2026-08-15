@@ -76,6 +76,12 @@ public:
     bool formatVolume(StorageVolume volume, QString* outError = nullptr);
 
     /**
+     * @brief Returns the filesystem that @p volume will use after formatting.
+     * @return "FAT32", "exFAT", or an empty string when capacity is unavailable.
+     */
+    QString formatFileSystemName(StorageVolume volume);
+
+    /**
      * @brief Read-only status snapshot for one physical volume.
      */
     StorageVolumeStatus volumeStatus(StorageVolume volume) const;

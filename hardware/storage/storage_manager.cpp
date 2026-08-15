@@ -28,6 +28,10 @@ constexpr quint64 kFat32BoundaryMB = 32ull * 1024ull;
 constexpr int kFormatCommandTimeoutMs = 180000;
 const QString kRemovableMountOptions = "noexec,nodev,noatime,nodiratime";
 
+bool usesFat32ForCapacity(quint64 capacityMB) {
+    return capacityMB <= kFat32BoundaryMB;
+}
+
 QString volumeName(StorageVolume volume) {
     switch (volume) {
     case StorageVolume::SdCard:
@@ -92,6 +96,17 @@ bool StorageManager::isUsbDiskReady() const {
     return m_usbDiskStatus.ready;
 }
 
+QString StorageManager::formatFileSystemName(StorageVolume volume) {
+    if (volume == StorageVolume::Nand) return {};
+
+    evaluateStorageState();
+    const quint64 totalMB = statusForVolume(volume).totalMB;
+    if (totalMB == 0) return {};
+
+    return usesFat32ForCapacity(totalMB) ? QStringLiteral("FAT32")
+                                          : QStringLiteral("exFAT");
+}
+
 /**
  * @brief Format one removable medium according to capacity policy and remount it.
  *
@@ -150,7 +165,7 @@ bool StorageManager::formatVolume(StorageVolume volume, QString* outError) {
         return false;
     }
 
-    const bool useFat32 = (totalMB <= kFat32BoundaryMB);
+    const bool useFat32 = usesFat32ForCapacity(totalMB);
     const QString fsType = useFat32 ? "vfat" : "exfat";
     const QString mkfsProgram = useFat32 ? "/usr/sbin/mkfs.vfat" : "/usr/sbin/mkfs.exfat";
     const QStringList mkfsArgs = useFat32

@@ -20,6 +20,7 @@ class SettingsView;
 class ToastManager;
 class TransitionLayer;
 class TextModal;
+class WarningModal;
 class ClockModal;
 
 /**
@@ -63,9 +64,13 @@ public:
     /* --- Accessors for System Overlays --- */
     // QuickSettings* quickSettings() const;
     void showTextModal(const QString& title,
+                       const QString& body,
                        std::function<void()> onPrimaryAction,
                        ModalLevel level = ModalLevel::Critical,
                        TextModalSize size = TextModalSize::Normal);
+    void showWarningModal(const QString& title,
+                          const QString& body,
+                          std::function<void()> onPrimaryAction);
     void showClockModal(std::function<bool(const QDateTime&, QString*)> onCommit);
     void showToast(const QString& message, ToastLevel level);
 
@@ -104,6 +109,7 @@ private:
     /* Layer 2: Global System Overlays */
     // QuickSettings* m_quickSettings = nullptr;
     TextModal* m_textModal = nullptr;
+    WarningModal* m_warningModal = nullptr;
     ClockModal* m_clockModal = nullptr;
     ToastManager* m_toastManager = nullptr;
 
