@@ -76,7 +76,7 @@ signals:
     void settingsItemRequested(SettingID item,
                                const QRect& sourceAnchor,
                                TransitionMode transitionMode);
-    void paletteSelectorRequested();
+    void paletteSelectorRequested(bool returnToSettings);
 
 private:
     explicit EventBus(QObject *parent = nullptr);

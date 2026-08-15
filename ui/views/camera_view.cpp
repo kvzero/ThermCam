@@ -98,7 +98,7 @@ CameraView::CameraView(QWidget* parent) : BaseView(parent) {
             });
 
     connect(&EventBus::instance(), &EventBus::paletteSelectorRequested, this,
-            [this]() { openPaletteSelector(); });
+            [this](bool returnToSettings) { openPaletteSelector(returnToSettings); });
 
     connect(m_paletteSelector, &PaletteSelector::previewSelectionChanged, this,
             [this](ThermalPalette::Id id) {
@@ -108,12 +108,22 @@ CameraView::CameraView(QWidget* parent) : BaseView(parent) {
 
     connect(m_paletteSelector, &PaletteSelector::selectionCommitted, this,
             [this](ThermalPalette::Id id) {
+                const bool returnToSettings = m_returnToSettingsAfterPalette;
+                m_returnToSettingsAfterPalette = false;
+
                 SettingsPatch patch;
                 patch.values.insert(SettingKey::Palette,
                                     QVariant::fromValue(static_cast<int>(id)));
                 SettingsService::instance().apply(patch);
 
                 setHudVisible(true, true);
+
+                if (returnToSettings) {
+                    QTimer::singleShot(0, this, []() {
+                        emit EventBus::instance().settingsItemRequested(
+                            SettingID::Palette, QRect(), TransitionMode::Instant);
+                    });
+                }
             });
 
     updateHudLayout();
@@ -147,6 +157,7 @@ void CameraView::onExit() {
     if (m_paletteOpenTimer) {
         m_paletteOpenTimer->stop();
     }
+    m_returnToSettingsAfterPalette = false;
     if (m_paletteSelector && m_paletteSelector->isPresented()) {
         m_paletteSelector->dismiss(false);
     }
@@ -165,10 +176,11 @@ void CameraView::applyPalette(ThermalPalette::Id palette) {
 
 }
 
-void CameraView::openPaletteSelector() {
+void CameraView::openPaletteSelector(bool returnToSettings) {
     if (!m_paletteSelector || !m_paletteOpenTimer) return;
     if (m_paletteSelector->isPresented() || m_paletteOpenTimer->isActive()) return;
 
+    m_returnToSettingsAfterPalette = returnToSettings;
     setHudVisible(false, true);
     m_paletteOpenTimer->start(m_hudCfg.PALETTE_SHOW_DELAY_MS);
 }
@@ -180,6 +192,9 @@ void CameraView::closePaletteSelector(bool commitSelection) {
 
     if (!m_paletteSelector || !m_paletteSelector->isPresented()) {
         if (!commitSelection) {
+            m_returnToSettingsAfterPalette = false;
+        }
+        if (!commitSelection) {
             setHudVisible(true, true);
         }
         return;
@@ -188,6 +203,7 @@ void CameraView::closePaletteSelector(bool commitSelection) {
     m_paletteSelector->dismiss(commitSelection);
 
     if (!commitSelection) {
+        m_returnToSettingsAfterPalette = false;
         setHudVisible(true, true);
     }
 }

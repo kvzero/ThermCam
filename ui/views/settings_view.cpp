@@ -774,7 +774,7 @@ void SettingsView::onSecondaryRowActivated() {
     }
     if (item.id == SettingID::Palette) {
         emit EventBus::instance().cameraRequested(QRect(), TransitionMode::Instant);
-        emit EventBus::instance().paletteSelectorRequested();
+        emit EventBus::instance().paletteSelectorRequested(true);
         return;
     }
     if (item.id == SettingID::SdCardSafeEject || item.id == SettingID::UsbDiskSafeEject) {

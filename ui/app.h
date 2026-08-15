@@ -95,6 +95,8 @@ private:
     BaseView* m_galleryView = nullptr;
     SettingsView* m_settingsView = nullptr;
     std::optional<SettingID> m_pendingSettingsItem;
+    bool m_deferPendingSettingsItem = false;
+    quint64 m_settingsItemRequestSerial = 0;
 
     /* Layer 1: Visual Transitions */
     TransitionLayer* m_transitionLayer = nullptr;

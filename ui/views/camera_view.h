@@ -63,7 +63,7 @@ private:
     void updateHudLayout();
     void applyHudState(bool visible);
     void stopHudAnimations();
-    void openPaletteSelector();
+    void openPaletteSelector(bool returnToSettings = false);
     void closePaletteSelector(bool commitSelection);
     void refreshPalettePreviews();
     void beginViewGesture(const QPoint& pos);
@@ -107,6 +107,7 @@ private:
     QPoint m_modeSelectorVisiblePos;
     QPoint m_modeSelectorHiddenPos;
     bool m_hudVisible = true;
+    bool m_returnToSettingsAfterPalette = false;
     ThermalPalette::Id m_currentPalette = ThermalPalette::Id::Spectra;
 
     /* Layer 3: Zero-Widget Shutter Animation Engine */

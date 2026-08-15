@@ -212,12 +212,15 @@ void App::showToast(const QString& msg, ToastLevel level){
 void App::openSettingsItem(SettingID item,
                            const QRect& sourceAnchor,
                            TransitionMode transitionMode) {
+    ++m_settingsItemRequestSerial;
+
     if (activeView() == m_settingsView) {
         m_settingsView->openItem(item);
         return;
     }
 
     m_pendingSettingsItem = item;
+    m_deferPendingSettingsItem = (transitionMode == TransitionMode::Instant);
     switchView(View_Settings, sourceAnchor, transitionMode);
 }
 
@@ -227,8 +230,22 @@ void App::activateView(ViewType type, BaseView* previousView) {
     activeView()->onEnter();
 
     if (type == View_Settings && m_pendingSettingsItem.has_value()) {
-        m_settingsView->openItem(*m_pendingSettingsItem);
+        const SettingID item = *m_pendingSettingsItem;
         m_pendingSettingsItem.reset();
+        const bool deferOpen = m_deferPendingSettingsItem;
+        m_deferPendingSettingsItem = false;
+        const quint64 requestSerial = m_settingsItemRequestSerial;
+
+        if (deferOpen) {
+            QTimer::singleShot(150, this, [this, item, requestSerial]() {
+                if (requestSerial == m_settingsItemRequestSerial &&
+                    activeView() == m_settingsView) {
+                    m_settingsView->openItem(item);
+                }
+            });
+        } else {
+            m_settingsView->openItem(item);
+        }
     }
 }
 
