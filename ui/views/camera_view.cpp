@@ -23,46 +23,14 @@
 #include <QVariant>
 #include <cmath>
 
-namespace {
-bool isFahrenheitFromSnapshot(const SettingsSnapshot& snapshot) {
-    bool ok = false;
-    const int raw = snapshot.values
-                        .value(SettingKey::TemperatureUnit,
-                               QVariant::fromValue(static_cast<int>(TemperatureUnit::Celsius)))
-                        .toInt(&ok);
-    if (!ok) return false;
-    return raw == static_cast<int>(TemperatureUnit::Fahrenheit);
-}
-
-ThermalPalette::Id paletteFromSnapshot(const SettingsSnapshot& snapshot) {
-    bool ok = false;
-    const int raw = snapshot.values
-                        .value(SettingKey::Palette,
-                               QVariant::fromValue(static_cast<int>(ThermalPalette::Id::Spectra)))
-                        .toInt(&ok);
-    if (!ok) return ThermalPalette::Id::Spectra;
-    if (raw < 0 || raw >= static_cast<int>(ThermalPalette::Id::Count)) {
-        return ThermalPalette::Id::Spectra;
-    }
-    return static_cast<ThermalPalette::Id>(raw);
-}
-
-bool boolSettingFromSnapshot(const SettingsSnapshot& snapshot,
-                             SettingKey key,
-                             bool fallback) {
-    const QVariant value = snapshot.values.value(key, QVariant(fallback));
-    if (!value.canConvert<bool>()) return fallback;
-    return value.toBool();
-}
-} // namespace
-
 CameraView::CameraView(QWidget* parent) : BaseView(parent) {
     /* --- Logic --- */
     m_processor = new ThermalProcessor(this);
     m_processor->setTargetSize(GlobalContext::instance().screenSize());
 
     const SettingsSnapshot snapshot = SettingsStore::instance().current();
-    m_currentPalette = paletteFromSnapshot(snapshot);
+    m_currentPalette = static_cast<ThermalPalette::Id>(
+        snapshot.values.value(SettingKey::Palette).toInt());
     m_processor->setPalette(m_currentPalette);
 
     /* --- HUD Widgets --- */
@@ -102,9 +70,10 @@ CameraView::CameraView(QWidget* parent) : BaseView(parent) {
     m_shutterAnim->setEasingCurve(QEasingCurve::OutCubic);
 
     /* --- Runtime Event Wiring --- */
-    m_isFahrenheit = isFahrenheitFromSnapshot(snapshot);
+    m_isFahrenheit = snapshot.values.value(SettingKey::TemperatureUnit).toInt() ==
+                     static_cast<int>(TemperatureUnit::Fahrenheit);
     m_hideMarkerWhenHudHidden =
-        boolSettingFromSnapshot(snapshot, SettingKey::HideMarkerWhenHudHidden, false);
+        snapshot.values.value(SettingKey::HideMarkerWhenHudHidden).toBool();
 
     connect(&SettingsService::instance(), &SettingsService::unitChanged, this,
             [this](bool isFahrenheit) {
@@ -122,7 +91,6 @@ CameraView::CameraView(QWidget* parent) : BaseView(parent) {
 
     connect(&SettingsService::instance(), &SettingsService::paletteChanged, this,
             [this](int paletteId) {
-                if (paletteId < 0 || paletteId >= static_cast<int>(ThermalPalette::Id::Count)) return;
                 applyPalette(static_cast<ThermalPalette::Id>(paletteId));
                 if (m_paletteSelector && m_paletteSelector->isPresented()) {
                     refreshPalettePreviews();

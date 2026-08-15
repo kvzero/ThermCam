@@ -8,6 +8,7 @@
 #include "hardware/imaging/thermal_camera.h"
 #include "hardware/storage/storage_manager.h"
 #include "ui/app.h"
+#include "ui/settings_catalog.h"
 
 #include <QMouseEvent>
 #include <QPainter>
@@ -17,215 +18,8 @@
 
 namespace {
 
-const QVector<PrimaryItemData> kMenuBlueprint = {
-    {
-        QString(QChar(0xf837)), QColor(72, 104, 255), "Camera",
-        {
-            {SettingID::Emissivity, "Emissivity", QColor(255, 255, 255), ActionType::Action},
-            {SettingID::ShutterAutoEnabled, "Auto Shutter", QColor(255, 255, 255), ActionType::Toggle},
-            {SettingID::SeekVisionEnabled, "Auto SeekVision", QColor(255, 255, 255), ActionType::Toggle},
-            {SettingID::LegacySharpenEnabled, "Sharpen Filter", QColor(255, 255, 255), ActionType::Toggle, SecondaryVisibility::RequiresLegacyMode},
-            {SettingID::AgcMode, "AGC Mode", QColor(255, 255, 255), ActionType::Action, SecondaryVisibility::RequiresLegacyMode},
-            {SettingID::LinearAgcMin, "- Linear AGC Min", QColor(255, 255, 255), ActionType::Action, SecondaryVisibility::RequiresLegacyLinearAgc},
-            {SettingID::LinearAgcMax, "- Linear AGC Max", QColor(255, 255, 255), ActionType::Action, SecondaryVisibility::RequiresLegacyLinearAgc},
-            {SettingID::ThermographyOffset, "Temperature Offset", QColor(255, 255, 255), ActionType::Action},
-            {SettingID::TriggerFlatSceneCorrection, "Flat-Scene Correction", QColor(255, 255, 255), ActionType::Action}
-        }
-    },
-    {
-        QString(QChar(0xf02c)), QColor(28, 158, 112), "View",
-        {
-            {SettingID::Palette, "Palette", QColor(255, 255, 255), ActionType::Action},
-            {SettingID::OSDOverlay, "Save Marker Overlay", QColor(255, 255, 255), ActionType::Toggle},
-            {SettingID::HideMarkerWhenHudHidden, "Hide Marker with HUD", QColor(255, 255, 255), ActionType::Toggle},
-            {SettingID::TemperatureUnit, "Temperature Unit", QColor(255, 255, 255), ActionType::Action}
-        }
-    },
-    {
-        QString(QChar(0xfaf7)), QColor(84, 132, 214), "Storage",
-        {
-            {SettingID::StoragePriority, "Priority", QColor(255, 255, 255), ActionType::Action, SecondaryVisibility::Always},
-            {SettingID::SdCardCapacity, "SD Card", QColor(255, 255, 255), ActionType::Value, SecondaryVisibility::RequiresSdCard},
-            {SettingID::SdCardSafeEject, "Eject SD Card", QColor(255, 210, 120), ActionType::Action, SecondaryVisibility::RequiresSdCard},
-            {SettingID::SdCardFormat, "Format SD Card", QColor(228, 72, 72), ActionType::Action, SecondaryVisibility::RequiresSdCard},
-            {SettingID::UsbDiskCapacity, "USB Disk", QColor(255, 255, 255), ActionType::Value, SecondaryVisibility::RequiresUsbDisk},
-            {SettingID::UsbDiskSafeEject, "Eject USB Disk", QColor(255, 210, 120), ActionType::Action, SecondaryVisibility::RequiresUsbDisk},
-            {SettingID::UsbDiskFormat, "Format USB Disk", QColor(228, 72, 72), ActionType::Action, SecondaryVisibility::RequiresUsbDisk}
-        }
-    },
-    {
-        QString(QChar(0xea03)), QColor(182, 102, 45), "System",
-        {
-            {SettingID::ScreenBrightness, "Screen Brightness", QColor(255, 255, 255), ActionType::Value},
-            {SettingID::AudioVolume, "Audio Volume", QColor(255, 255, 255), ActionType::Value},
-            {SettingID::Clock, "Date & Time", QColor(255, 255, 255), ActionType::Action}
-        }
-    }
-};
-
 const QString kTopBarBackIcon = QString(QChar(0xea60));
 const QString kTopBarCloseIcon = QString(QChar(0xeb55));
-
-constexpr float kEmissivityMin = 0.01f;
-constexpr float kEmissivityMax = 1.00f;
-constexpr float kEmissivityStep = 0.01f;
-constexpr int kPreviewThrottleMs = 50;
-constexpr float kThermographyOffsetMin = -10.0f;
-constexpr float kThermographyOffsetMax = 10.0f;
-constexpr float kThermographyOffsetStep = 0.1f;
-constexpr float kLinearAgcCelsiusMin = -40.0f;
-constexpr float kLinearAgcCelsiusMax = 600.0f;
-constexpr float kLinearAgcStep = 1.0f;
-constexpr int kScreenBrightnessPercentMin = 1;
-constexpr int kScreenBrightnessPercentMax = 100;
-constexpr int kAudioVolumePercentMin = 0;
-constexpr int kAudioVolumePercentMax = 100;
-const uint kScreenBrightnessIconCodepoint[] = {0x10108};
-const QString kScreenBrightnessIconGlyph = QString::fromUcs4(kScreenBrightnessIconCodepoint, 1);
-const QString kAudioVolumeIconGlyph = QString(QChar(0xeb51));
-
-float clampEmissivity(float value) {
-    return qBound(kEmissivityMin, value, kEmissivityMax);
-}
-
-QVariant defaultValueForKey(SettingKey key) {
-    for (const auto& desc : kSettingRegistry) {
-        if (desc.key == key) return desc.defaultValue;
-    }
-    return QVariant();
-}
-
-int normalizeTemperatureUnitInt(int value) {
-    const int c = static_cast<int>(TemperatureUnit::Celsius);
-    const int f = static_cast<int>(TemperatureUnit::Fahrenheit);
-    return (value == f) ? f : c;
-}
-
-QString formatTemperatureUnit(int unitValue) {
-    const QChar degree(0x00B0);
-    return QString(degree) +
-           QString((normalizeTemperatureUnitInt(unitValue) ==
-                    static_cast<int>(TemperatureUnit::Fahrenheit))
-                       ? QLatin1Char('F')
-                       : QLatin1Char('C'));
-}
-
-int normalizeStoragePriorityInt(int value) {
-    const int sd = static_cast<int>(StoragePriority::SdFirst);
-    const int usb = static_cast<int>(StoragePriority::UsbFirst);
-    return (value == usb) ? usb : sd;
-}
-
-QString formatStoragePriority(int priorityValue) {
-    return (normalizeStoragePriorityInt(priorityValue) ==
-            static_cast<int>(StoragePriority::UsbFirst))
-               ? QStringLiteral("USB Disk First")
-               : QStringLiteral("SD Card First");
-}
-
-int clampPercentInt(int value, int minValue, int maxValue) {
-    return qBound(minValue, value, maxValue);
-}
-
-QString formatPercent(int value, int minValue, int maxValue) {
-    return QStringLiteral("%1%").arg(clampPercentInt(value, minValue, maxValue));
-}
-
-QString formatPercent(double value, int minValue, int maxValue) {
-    return formatPercent(qRound(value), minValue, maxValue);
-}
-
-bool boolSettingFromSnapshot(const SettingsSnapshot& snapshot, SettingKey key, bool fallback) {
-    const QVariant value = snapshot.values.value(key, QVariant(fallback));
-    if (!value.canConvert<bool>()) return fallback;
-    return value.toBool();
-}
-
-float floatSettingFromSnapshot(const SettingsSnapshot& snapshot, SettingKey key, float fallback) {
-    bool ok = false;
-    const float value = snapshot.values.value(key, QVariant(fallback)).toFloat(&ok);
-    return ok ? value : fallback;
-}
-
-int intSettingFromSnapshot(const SettingsSnapshot& snapshot, SettingKey key, int fallback) {
-    bool ok = false;
-    const int value = snapshot.values.value(key, QVariant(fallback)).toInt(&ok);
-    return ok ? value : fallback;
-}
-
-int normalizeAgcModeInt(int value) {
-    const int linear = static_cast<int>(AgcMode::LinearManual);
-    return (value == linear) ? linear : static_cast<int>(AgcMode::HistEqAuto);
-}
-
-bool seekVisionEnabledFromSnapshot(const SettingsSnapshot& snapshot) {
-    return boolSettingFromSnapshot(snapshot, SettingKey::SeekVisionEnabled, true);
-}
-
-bool linearAgcSelectedFromSnapshot(const SettingsSnapshot& snapshot) {
-    bool ok = false;
-    const int parsed = snapshot.values
-                           .value(SettingKey::AgcMode, defaultValueForKey(SettingKey::AgcMode))
-                           .toInt(&ok);
-    const int mode = normalizeAgcModeInt(ok ? parsed : static_cast<int>(AgcMode::HistEqAuto));
-    return (mode == static_cast<int>(AgcMode::LinearManual));
-}
-
-bool visibilityDependsOnSettings(SecondaryVisibility visibility) {
-    return visibility == SecondaryVisibility::RequiresLegacyMode ||
-           visibility == SecondaryVisibility::RequiresLegacyLinearAgc;
-}
-
-bool visibilityDependsOnStorage(SecondaryVisibility visibility) {
-    return visibility == SecondaryVisibility::RequiresSdCard ||
-           visibility == SecondaryVisibility::RequiresUsbDisk;
-}
-
-bool primaryHasVisibilityDependency(int primaryIndex,
-                                    bool includeSettingsDependency,
-                                    bool includeStorageDependency) {
-    if (primaryIndex < 0 || primaryIndex >= kMenuBlueprint.size()) return false;
-
-    const auto& items = kMenuBlueprint[primaryIndex].subItems;
-    for (const auto& item : items) {
-        const bool settingsDependency = visibilityDependsOnSettings(item.visibility);
-        const bool storageDependency = visibilityDependsOnStorage(item.visibility);
-        if ((includeSettingsDependency && settingsDependency) ||
-            (includeStorageDependency && storageDependency)) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-bool primaryVisibilityAffectedBySettingsChange(int primaryIndex,
-                                               const QSet<SettingKey>& changedKeys) {
-    if (!changedKeys.contains(SettingKey::SeekVisionEnabled) &&
-        !changedKeys.contains(SettingKey::AgcMode)) {
-        return false;
-    }
-    return primaryHasVisibilityDependency(primaryIndex, true, false);
-}
-
-bool primaryVisibilityAffectedByStorageState(int primaryIndex) {
-    return primaryHasVisibilityDependency(primaryIndex, false, true);
-}
-
-QString formatAgcMode(int modeValue) {
-    return (normalizeAgcModeInt(modeValue) == static_cast<int>(AgcMode::LinearManual))
-               ? QStringLiteral("Linear")
-               : QStringLiteral("Auto (HistEQ)");
-}
-
-QString formatSignedCelsius(float value, int precision) {
-    const QChar degree(0x00B0);
-    const QString sign = (value > 0.0001f) ? QStringLiteral("+") : QString();
-    return QStringLiteral("%1%2%3C")
-        .arg(sign)
-        .arg(QString::number(value, 'f', precision))
-        .arg(QString(degree));
-}
 
 QString formatStorageCapacityValue(quint64 mb) {
     if (mb >= 1024) {
@@ -241,50 +35,6 @@ QString formatStorageCapacity(const StorageVolumeStatus& status) {
     return QString("%1 / %2")
         .arg(formatStorageCapacityValue(usedMB))
         .arg(formatStorageCapacityValue(status.totalMB));
-}
-
-std::vector<SecondaryItemData> visibleSecondaryItems(int primaryIndex,
-                                                     const SettingsSnapshot& snapshot) {
-    if (primaryIndex < 0 || primaryIndex >= kMenuBlueprint.size()) {
-        return {};
-    }
-
-    const auto& full = kMenuBlueprint[primaryIndex].subItems;
-    std::vector<SecondaryItemData> visible;
-    if (full.empty()) return visible;
-
-    auto* storage = HardwareManager::instance().storage();
-    const bool sdReady = storage && storage->isSdCardReady();
-    const bool usbReady = storage && storage->isUsbDiskReady();
-    const bool legacyMode = !seekVisionEnabledFromSnapshot(snapshot);
-    const bool linearAgcMode = linearAgcSelectedFromSnapshot(snapshot);
-
-    for (const auto& item : full) {
-        bool show = false;
-        switch (item.visibility) {
-        case SecondaryVisibility::Always:
-            show = true;
-            break;
-        case SecondaryVisibility::RequiresSdCard:
-            show = sdReady;
-            break;
-        case SecondaryVisibility::RequiresUsbDisk:
-            show = usbReady;
-            break;
-        case SecondaryVisibility::RequiresLegacyMode:
-            show = legacyMode;
-            break;
-        case SecondaryVisibility::RequiresLegacyLinearAgc:
-            show = legacyMode && linearAgcMode;
-            break;
-        }
-
-        if (show) {
-            visible.push_back(item);
-        }
-    }
-
-    return visible;
 }
 
 } // namespace
@@ -449,8 +199,8 @@ SettingsView::SettingsView(QWidget* parent) : BaseView(parent) {
     connect(&SettingsStore::instance(), &SettingsStore::settingsChanged, this,
             [this](const SettingsChangeEvent& change) {
                 if (m_mode == PanelMode::Expanded &&
-                    primaryVisibilityAffectedBySettingsChange(m_activePrimary,
-                                                              change.changedKeys)) {
+                    SettingsCatalog::sectionVisibilityAffectedBySettingsChange(
+                        m_activePrimary, change.changedKeys)) {
                     rebuildSecondaryRows(m_activePrimary);
                     m_rightScroll = qBound<qreal>(0.0, m_rightScroll, rightMaxScroll());
                     relayoutRows();
@@ -460,18 +210,10 @@ SettingsView::SettingsView(QWidget* parent) : BaseView(parent) {
             });
 
     if (auto* storage = HardwareManager::instance().storage()) {
-        auto refreshStorageRows = [this]() {
-            if (m_mode != PanelMode::Expanded) return;
-            if (!primaryVisibilityAffectedByStorageState(m_activePrimary)) return;
-            rebuildSecondaryRows(m_activePrimary);
-            m_rightScroll = qBound<qreal>(0.0, m_rightScroll, rightMaxScroll());
-            relayoutRows();
-        };
-
         connect(storage, &StorageManager::sdCardStateChanged, this,
-                [refreshStorageRows](bool /*ready*/) { refreshStorageRows(); });
+                [this](bool /*ready*/) { refreshStorageRowsIfVisible(); });
         connect(storage, &StorageManager::usbDiskStateChanged, this,
-                [refreshStorageRows](bool /*ready*/) { refreshStorageRows(); });
+                [this](bool /*ready*/) { refreshStorageRowsIfVisible(); });
     }
 
     buildPrimaryRows();
@@ -491,11 +233,30 @@ void SettingsView::onEnter() {
 
     rebuildSecondaryRows(0);
     for (auto* row : m_primaryRows) row->setSelected(false);
-    m_topBar->setTitle("Settings");
+    m_topBar->setTitle(QStringLiteral("Settings"));
     relayoutRows();
     refreshSecondaryRowsFromStore();
     m_scrollIndicator->forceHide();
     update();
+}
+
+void SettingsView::openItem(SettingID item) {
+    expandPrimary(SettingsCatalog::sectionIndexForItem(item));
+
+    int rowIndex = -1;
+    for (int index = 0; index < m_secondaryRows.size(); ++index) {
+        if (m_secondaryRows[index]->data().id == item) {
+            rowIndex = index;
+            break;
+        }
+    }
+    if (rowIndex < 0) return;
+
+    const qreal visibleHeight = qMax(0, height() - topBarHeight());
+    const qreal target = rowIndex * rowHeight() - (visibleHeight - rowHeight()) * 0.5;
+    setRightScroll(qBound<qreal>(0.0, target, rightMaxScroll()));
+    refreshTopMask();
+    relayoutRows();
 }
 
 void SettingsView::onExit() {
@@ -895,178 +656,93 @@ void SettingsView::onSecondaryRowActivated() {
 
     auto* app = qobject_cast<App*>(window());
 
-    switch (item.id) {
-    case SettingID::Emissivity: {
-        const SettingsSnapshot snapshot = SettingsStore::instance().current();
-        bool ok = false;
-        const float emissivity = clampEmissivity(
-            snapshot.values.value(SettingKey::Emissivity, defaultValueForKey(SettingKey::Emissivity))
-                .toFloat(&ok));
-        const float current = ok ? emissivity : 0.95f;
-
+    const SettingsSnapshot snapshot = SettingsStore::instance().current();
+    switch (item.editor) {
+    case SettingsEditor::Toggle: {
+        const bool current = snapshot.values.value(*item.settingKey).toBool();
+        SettingsPatch patch;
+        patch.values.insert(*item.settingKey, !current);
+        applyPatchFromUi(patch);
+        return;
+    }
+    case SettingsEditor::Stepper: {
+        const SettingsNumberEditor editor = SettingsCatalog::numberEditor(item.id, snapshot);
         StepperBubble::Spec spec;
-        spec.minValue = kEmissivityMin;
-        spec.maxValue = kEmissivityMax;
-        spec.step = kEmissivityStep;
-        spec.value = current;
-        spec.dismissOnCommit = false;
-        spec.valueTextFormatter = [](double value) {
-            return QString::number(clampEmissivity(static_cast<float>(value)), 'f', 2);
+        spec.minValue = editor.minimum;
+        spec.maxValue = editor.maximum;
+        spec.step = editor.step;
+        spec.value = editor.value;
+        spec.dismissOnCommit = editor.dismissOnCommit;
+        spec.valueTextFormatter = [id = item.id](double value) {
+            return SettingsCatalog::editedValueText(id, value);
         };
-        spec.onValueChanging = [row](double value) {
-            const float emissivity = clampEmissivity(static_cast<float>(value));
-            row->setValueText(QString::number(emissivity, 'f', 2));
-
-            SettingsPatch previewPatch;
-            previewPatch.values.insert(SettingKey::Emissivity, QVariant(emissivity));
-            SettingsService::instance().preview(previewPatch);
-        };
-        spec.onValueCommitted = [this](double value) {
+        spec.onValueChanging = [row, item](double value) {
+            row->setValueText(SettingsCatalog::editedValueText(item.id, value));
             SettingsPatch patch;
-            patch.values.insert(SettingKey::Emissivity,
-                                QVariant(clampEmissivity(static_cast<float>(value))));
+            patch.values.insert(*item.settingKey,
+                                SettingsCatalog::numberValue(item.id, value));
+            SettingsService::instance().preview(patch);
+        };
+        spec.onValueCommitted = [this, item](double value) {
+            SettingsPatch patch;
+            patch.values.insert(*item.settingKey,
+                                SettingsCatalog::numberValue(item.id, value));
             applyPatchFromUi(patch);
         };
-
         showStepperBubble(spec, buildAnchor());
         return;
     }
-    case SettingID::SeekVisionEnabled: {
-        const SettingsSnapshot snapshot = SettingsStore::instance().current();
-        const bool current = boolSettingFromSnapshot(snapshot, SettingKey::SeekVisionEnabled, true);
-        SettingsPatch patch;
-        patch.values.insert(SettingKey::SeekVisionEnabled, QVariant(!current));
-        applyPatchFromUi(patch);
-        return;
-    }
-    case SettingID::LegacySharpenEnabled: {
-        const SettingsSnapshot snapshot = SettingsStore::instance().current();
-        const bool current =
-            boolSettingFromSnapshot(snapshot, SettingKey::LegacySharpenEnabled, false);
-        SettingsPatch patch;
-        patch.values.insert(SettingKey::LegacySharpenEnabled, QVariant(!current));
-        applyPatchFromUi(patch);
-        return;
-    }
-    case SettingID::AgcMode: {
-        const SettingsSnapshot snapshot = SettingsStore::instance().current();
-        bool ok = false;
-        const int parsed = snapshot.values
-                               .value(SettingKey::AgcMode, defaultValueForKey(SettingKey::AgcMode))
-                               .toInt(&ok);
-        const int mode = normalizeAgcModeInt(ok ? parsed : static_cast<int>(AgcMode::HistEqAuto));
-
-        RadioListBubble::Spec spec;
-        spec.items = {
-            {"auto_histeq", "Auto (HistEQ AGC)"},
-            {"linear_manual", "Linear"}
-        };
-        spec.selectedIndex = (mode == static_cast<int>(AgcMode::LinearManual)) ? 1 : 0;
-        spec.dismissOnSelection = true;
-        spec.onSelected = [this](int selectedIndex, const QString& /*id*/) {
-            const int modeValue = (selectedIndex == 1)
-                                      ? static_cast<int>(AgcMode::LinearManual)
-                                      : static_cast<int>(AgcMode::HistEqAuto);
+    case SettingsEditor::Slider: {
+        const SettingsNumberEditor editor = SettingsCatalog::numberEditor(item.id, snapshot);
+        SliderBubble::Spec spec;
+        spec.iconGlyph = editor.iconGlyph;
+        spec.minValue = editor.minimum;
+        spec.maxValue = editor.maximum;
+        spec.step = editor.step;
+        spec.value = editor.value;
+        spec.dismissOnCommit = editor.dismissOnCommit;
+        spec.changingThrottleMs = editor.previewThrottleMs;
+        spec.onValueChanging = [row, item](double value) {
+            row->setValueText(SettingsCatalog::editedValueText(item.id, value));
             SettingsPatch patch;
-            patch.values.insert(SettingKey::AgcMode, QVariant(modeValue));
+            patch.values.insert(*item.settingKey,
+                                SettingsCatalog::numberValue(item.id, value));
+            SettingsService::instance().preview(patch);
+        };
+        spec.onValueCommitted = [this, item](double value) {
+            SettingsPatch patch;
+            patch.values.insert(*item.settingKey,
+                                SettingsCatalog::numberValue(item.id, value));
             applyPatchFromUi(patch);
         };
-
+        showSliderBubble(spec, buildAnchor());
+        return;
+    }
+    case SettingsEditor::Choice: {
+        const SettingsChoiceEditor editor = SettingsCatalog::choiceEditor(item.id, snapshot);
+        RadioListBubble::Spec spec;
+        for (const SettingsChoiceOption& option : editor.options) {
+            spec.items.append({option.id, option.title});
+        }
+        spec.selectedIndex = editor.selectedIndex;
+        spec.dismissOnSelection = true;
+        spec.onSelected = [this, item](int index, const QString&) {
+            SettingsPatch patch;
+            patch.values.insert(*item.settingKey, SettingsCatalog::choiceValue(item.id, index));
+            applyPatchFromUi(patch);
+        };
         showRadioListBubble(spec, buildAnchor());
         return;
     }
-    case SettingID::LinearAgcMin: {
-        const SettingsSnapshot snapshot = SettingsStore::instance().current();
-        const float currentMin = qBound(
-            kLinearAgcCelsiusMin,
-            floatSettingFromSnapshot(snapshot, SettingKey::LinearAgcMinCelsius, 20.0f),
-            kLinearAgcCelsiusMax);
-        const float currentMax = qBound(
-            kLinearAgcCelsiusMin,
-            floatSettingFromSnapshot(snapshot, SettingKey::LinearAgcMaxCelsius, 80.0f),
-            kLinearAgcCelsiusMax);
-
-        StepperBubble::Spec spec;
-        spec.minValue = kLinearAgcCelsiusMin;
-        spec.maxValue =
-            qMax(spec.minValue, static_cast<double>(qRound(currentMax)) - kLinearAgcStep);
-        spec.step = kLinearAgcStep;
-        spec.value = qBound(spec.minValue, static_cast<double>(qRound(currentMin)), spec.maxValue);
-        spec.dismissOnCommit = false;
-        spec.valueTextFormatter = [](double value) {
-            return formatSignedCelsius(static_cast<float>(value), 0);
-        };
-        spec.onValueChanging = [row](double value) {
-            row->setValueText(formatSignedCelsius(static_cast<float>(value), 0));
-
-            SettingsPatch previewPatch;
-            previewPatch.values.insert(SettingKey::LinearAgcMinCelsius,
-                                       QVariant(static_cast<float>(value)));
-            SettingsService::instance().preview(previewPatch);
-        };
-        spec.onValueCommitted = [this](double value) {
-            SettingsPatch patch;
-            patch.values.insert(SettingKey::LinearAgcMinCelsius,
-                                QVariant(static_cast<float>(value)));
-            applyPatchFromUi(patch);
-        };
-
-        showStepperBubble(spec, buildAnchor());
-        return;
+    case SettingsEditor::Action:
+        break;
     }
-    case SettingID::LinearAgcMax: {
-        const SettingsSnapshot snapshot = SettingsStore::instance().current();
-        const float currentMin = qBound(
-            kLinearAgcCelsiusMin,
-            floatSettingFromSnapshot(snapshot, SettingKey::LinearAgcMinCelsius, 20.0f),
-            kLinearAgcCelsiusMax);
-        const float currentMax = qBound(
-            kLinearAgcCelsiusMin,
-            floatSettingFromSnapshot(snapshot, SettingKey::LinearAgcMaxCelsius, 80.0f),
-            kLinearAgcCelsiusMax);
 
-        StepperBubble::Spec spec;
-        spec.minValue =
-            qMin(static_cast<double>(kLinearAgcCelsiusMax),
-                 static_cast<double>(qRound(currentMin)) + kLinearAgcStep);
-        spec.maxValue = kLinearAgcCelsiusMax;
-        spec.step = kLinearAgcStep;
-        spec.value = qBound(spec.minValue, static_cast<double>(qRound(currentMax)), spec.maxValue);
-        spec.dismissOnCommit = false;
-        spec.valueTextFormatter = [](double value) {
-            return formatSignedCelsius(static_cast<float>(value), 0);
-        };
-        spec.onValueChanging = [row](double value) {
-            row->setValueText(formatSignedCelsius(static_cast<float>(value), 0));
-
-            SettingsPatch previewPatch;
-            previewPatch.values.insert(SettingKey::LinearAgcMaxCelsius,
-                                       QVariant(static_cast<float>(value)));
-            SettingsService::instance().preview(previewPatch);
-        };
-        spec.onValueCommitted = [this](double value) {
-            SettingsPatch patch;
-            patch.values.insert(SettingKey::LinearAgcMaxCelsius,
-                                QVariant(static_cast<float>(value)));
-            applyPatchFromUi(patch);
-        };
-
-        showStepperBubble(spec, buildAnchor());
-        return;
-    }
-    case SettingID::ShutterAutoEnabled: {
-        const SettingsSnapshot snapshot = SettingsStore::instance().current();
-        const bool current = boolSettingFromSnapshot(snapshot, SettingKey::ShutterAutoEnabled, true);
-        SettingsPatch patch;
-        patch.values.insert(SettingKey::ShutterAutoEnabled, QVariant(!current));
-        applyPatchFromUi(patch);
-        return;
-    }
-    case SettingID::TriggerFlatSceneCorrection: {
+    if (item.id == SettingID::TriggerFlatSceneCorrection) {
         if (!app) return;
         app->showTextModal(
             QStringLiteral("WARNING: Risk of image ghosting!\n"
-                        "Fully cover lens with a flat object before continuing."),
+                           "Fully cover lens with a flat object before continuing."),
             [app]() {
                 QString error;
                 if (!SettingsService::instance().triggerFlatSceneCorrection(&error)) {
@@ -1080,183 +756,7 @@ void SettingsView::onSecondaryRowActivated() {
             TextModalSize::Large);
         return;
     }
-    case SettingID::ThermographyOffset: {
-        const SettingsSnapshot snapshot = SettingsStore::instance().current();
-        const float currentOffset = floatSettingFromSnapshot(
-            snapshot, SettingKey::ThermographyOffsetCelsius, 0.0f);
-
-        StepperBubble::Spec spec;
-        spec.minValue = kThermographyOffsetMin;
-        spec.maxValue = kThermographyOffsetMax;
-        spec.step = kThermographyOffsetStep;
-        spec.value = qBound(kThermographyOffsetMin, currentOffset, kThermographyOffsetMax);
-        spec.dismissOnCommit = false;
-        spec.valueTextFormatter = [](double value) {
-            return formatSignedCelsius(static_cast<float>(value), 1);
-        };
-        spec.onValueChanging = [row](double value) {
-            const float offset = static_cast<float>(value);
-            row->setValueText(formatSignedCelsius(offset, 1));
-
-            SettingsPatch previewPatch;
-            previewPatch.values.insert(SettingKey::ThermographyOffsetCelsius, QVariant(offset));
-            SettingsService::instance().preview(previewPatch);
-        };
-        spec.onValueCommitted = [this](double value) {
-            SettingsPatch patch;
-            patch.values.insert(SettingKey::ThermographyOffsetCelsius,
-                                QVariant(static_cast<float>(value)));
-            applyPatchFromUi(patch);
-        };
-
-        showStepperBubble(spec, buildAnchor());
-        return;
-    }
-    case SettingID::TemperatureUnit: {
-        const SettingsSnapshot snapshot = SettingsStore::instance().current();
-        bool ok = false;
-        const int parsed = snapshot.values
-                               .value(SettingKey::TemperatureUnit,
-                                      defaultValueForKey(SettingKey::TemperatureUnit))
-                               .toInt(&ok);
-        const int unitValue = normalizeTemperatureUnitInt(ok ? parsed
-                                                             : static_cast<int>(TemperatureUnit::Celsius));
-
-        RadioListBubble::Spec spec;
-        spec.items = {
-            {"celsius", formatTemperatureUnit(static_cast<int>(TemperatureUnit::Celsius))},
-            {"fahrenheit", formatTemperatureUnit(static_cast<int>(TemperatureUnit::Fahrenheit))}
-        };
-        spec.selectedIndex = (unitValue == static_cast<int>(TemperatureUnit::Fahrenheit)) ? 1 : 0;
-        spec.dismissOnSelection = true;
-        spec.onSelected = [this](int selectedIndex, const QString& /*id*/) {
-            const int unit = (selectedIndex == 1)
-                                 ? static_cast<int>(TemperatureUnit::Fahrenheit)
-                                 : static_cast<int>(TemperatureUnit::Celsius);
-            SettingsPatch patch;
-            patch.values.insert(SettingKey::TemperatureUnit, QVariant(unit));
-            applyPatchFromUi(patch);
-        };
-
-        showRadioListBubble(spec, buildAnchor());
-        return;
-    }
-    case SettingID::StoragePriority: {
-        const SettingsSnapshot snapshot = SettingsStore::instance().current();
-        bool ok = false;
-        const int parsed = snapshot.values
-                               .value(SettingKey::StoragePriority,
-                                      defaultValueForKey(SettingKey::StoragePriority))
-                               .toInt(&ok);
-        const int priorityValue = normalizeStoragePriorityInt(
-            ok ? parsed : static_cast<int>(StoragePriority::SdFirst));
-
-        RadioListBubble::Spec spec;
-        spec.items = {
-            {"sd_first", "SD Card First"},
-            {"usb_first", "USB Disk First"}
-        };
-        spec.selectedIndex =
-            (priorityValue == static_cast<int>(StoragePriority::UsbFirst)) ? 1 : 0;
-        spec.dismissOnSelection = true;
-        spec.onSelected = [this](int selectedIndex, const QString& /*id*/) {
-            const int priority = (selectedIndex == 1)
-                                     ? static_cast<int>(StoragePriority::UsbFirst)
-                                     : static_cast<int>(StoragePriority::SdFirst);
-            SettingsPatch patch;
-            patch.values.insert(SettingKey::StoragePriority, QVariant(priority));
-            applyPatchFromUi(patch);
-        };
-
-        showRadioListBubble(spec, buildAnchor());
-        return;
-    }
-    case SettingID::OSDOverlay: {
-        const SettingsSnapshot snapshot = SettingsStore::instance().current();
-        const bool current = boolSettingFromSnapshot(snapshot, SettingKey::SaveMarkerInMedia, true);
-        SettingsPatch patch;
-        patch.values.insert(SettingKey::SaveMarkerInMedia, QVariant(!current));
-        applyPatchFromUi(patch);
-        return;
-    }
-    case SettingID::HideMarkerWhenHudHidden: {
-        const SettingsSnapshot snapshot = SettingsStore::instance().current();
-        const bool current =
-            boolSettingFromSnapshot(snapshot, SettingKey::HideMarkerWhenHudHidden, false);
-        SettingsPatch patch;
-        patch.values.insert(SettingKey::HideMarkerWhenHudHidden, QVariant(!current));
-        applyPatchFromUi(patch);
-        return;
-    }
-    case SettingID::ScreenBrightness: {
-        const SettingsSnapshot snapshot = SettingsStore::instance().current();
-        const int current = clampPercentInt(
-            intSettingFromSnapshot(snapshot, SettingKey::ScreenBrightnessPercent, 80),
-            kScreenBrightnessPercentMin,
-            kScreenBrightnessPercentMax);
-
-        SliderBubble::Spec spec;
-        spec.iconGlyph = kScreenBrightnessIconGlyph;
-        spec.minValue = kScreenBrightnessPercentMin;
-        spec.maxValue = kScreenBrightnessPercentMax;
-        spec.step = 1;
-        spec.value = current;
-        spec.dismissOnCommit = true;
-        spec.changingThrottleMs = kPreviewThrottleMs;
-        spec.onValueChanging = [row](double value) {
-            row->setValueText(formatPercent(value,
-                                            kScreenBrightnessPercentMin,
-                                            kScreenBrightnessPercentMax));
-
-            const int percent = qRound(value);
-            SettingsPatch previewPatch;
-            previewPatch.values.insert(SettingKey::ScreenBrightnessPercent, QVariant(percent));
-            SettingsService::instance().preview(previewPatch);
-        };
-        spec.onValueCommitted = [this](double value) {
-            SettingsPatch patch;
-            patch.values.insert(SettingKey::ScreenBrightnessPercent, QVariant(qRound(value)));
-            applyPatchFromUi(patch);
-        };
-
-        showSliderBubble(spec, buildAnchor());
-        return;
-    }
-    case SettingID::AudioVolume: {
-        const SettingsSnapshot snapshot = SettingsStore::instance().current();
-        const int current = clampPercentInt(
-            intSettingFromSnapshot(snapshot, SettingKey::AudioVolumePercent, 50),
-            kAudioVolumePercentMin,
-            kAudioVolumePercentMax);
-
-        SliderBubble::Spec spec;
-        spec.iconGlyph = kAudioVolumeIconGlyph;
-        spec.minValue = kAudioVolumePercentMin;
-        spec.maxValue = kAudioVolumePercentMax;
-        spec.step = 1;
-        spec.value = current;
-        spec.dismissOnCommit = true;
-        spec.changingThrottleMs = kPreviewThrottleMs;
-        spec.onValueChanging = [row](double value) {
-            row->setValueText(formatPercent(value,
-                                            kAudioVolumePercentMin,
-                                            kAudioVolumePercentMax));
-
-            const int percent = qRound(value);
-            SettingsPatch previewPatch;
-            previewPatch.values.insert(SettingKey::AudioVolumePercent, QVariant(percent));
-            SettingsService::instance().preview(previewPatch);
-        };
-        spec.onValueCommitted = [this](double value) {
-            SettingsPatch patch;
-            patch.values.insert(SettingKey::AudioVolumePercent, QVariant(qRound(value)));
-            applyPatchFromUi(patch);
-        };
-
-        showSliderBubble(spec, buildAnchor());
-        return;
-    }
-    case SettingID::Clock: {
+    if (item.id == SettingID::Clock) {
         if (!app) return;
         app->showClockModal([](const QDateTime& dateTime, QString* outError) {
             auto* system = HardwareManager::instance().systemControl();
@@ -1272,18 +772,19 @@ void SettingsView::onSecondaryRowActivated() {
         });
         return;
     }
-    case SettingID::Palette:
+    if (item.id == SettingID::Palette) {
         emit EventBus::instance().cameraRequested(QRect(), TransitionMode::Instant);
         emit EventBus::instance().paletteSelectorRequested();
         return;
-    case SettingID::SdCardSafeEject:
-    case SettingID::UsbDiskSafeEject: {
+    }
+    if (item.id == SettingID::SdCardSafeEject || item.id == SettingID::UsbDiskSafeEject) {
         const bool sdCard = (item.id == SettingID::SdCardSafeEject);
         const QString targetName = sdCard ? QStringLiteral("SD Card")
                                           : QStringLiteral("USB Disk");
         if (!app) return;
         app->showTextModal(
-            QString("Safely eject %1?\nWait for completion before unplugging.").arg(targetName),
+            QStringLiteral("Safely eject %1?\nWait for completion before unplugging.")
+                .arg(targetName),
             [this, app, targetName, sdCard]() {
                 auto* storage = HardwareManager::instance().storage();
                 if (!storage) {
@@ -1305,24 +806,18 @@ void SettingsView::onSecondaryRowActivated() {
                     app->showToast(targetName + " can be removed", ToastLevel::Success);
                 }
 
-                if (m_mode == PanelMode::Expanded &&
-                    primaryVisibilityAffectedByStorageState(m_activePrimary)) {
-                    rebuildSecondaryRows(m_activePrimary);
-                    m_rightScroll = qBound<qreal>(0.0, m_rightScroll, rightMaxScroll());
-                    relayoutRows();
-                }
+                refreshStorageRowsIfVisible();
             },
             ModalLevel::Normal,
             TextModalSize::Large);
         return;
     }
-    case SettingID::SdCardFormat:
-    case SettingID::UsbDiskFormat: {
+    if (item.id == SettingID::SdCardFormat || item.id == SettingID::UsbDiskFormat) {
         const bool sdCard = (item.id == SettingID::SdCardFormat);
         const QString targetName = sdCard ? QStringLiteral("SD Card")
                                           : QStringLiteral("USB Disk");
         if (!app) return;
-        app->showTextModal(QString("Format %1?\nAll files will be erased.").arg(targetName),
+        app->showTextModal(QStringLiteral("Format %1?\nAll files will be erased.").arg(targetName),
                            [this, app, targetName, sdCard]() {
                                auto* storage = HardwareManager::instance().storage();
                                if (!storage) {
@@ -1344,19 +839,13 @@ void SettingsView::onSecondaryRowActivated() {
                                    app->showToast(targetName + " formatted", ToastLevel::Success);
                                }
 
-                               if (m_mode == PanelMode::Expanded &&
-                                   primaryVisibilityAffectedByStorageState(m_activePrimary)) {
-                                   rebuildSecondaryRows(m_activePrimary);
-                                   m_rightScroll = qBound<qreal>(0.0, m_rightScroll, rightMaxScroll());
-                                   relayoutRows();
-                               }
+                               refreshStorageRowsIfVisible();
                            },
                            ModalLevel::Critical,
                            TextModalSize::Large);
         return;
     }
-    case SettingID::SdCardCapacity:
-    case SettingID::UsbDiskCapacity:
+    if (item.id == SettingID::SdCardCapacity || item.id == SettingID::UsbDiskCapacity) {
         return;
     }
 }
@@ -1378,9 +867,9 @@ void SettingsView::buildPrimaryRows() {
     for (auto* row : m_primaryRows) delete row;
     m_primaryRows.clear();
 
-    for (const auto& item : kMenuBlueprint) {
+    for (int index = 0; index < SettingsCatalog::sectionCount(); ++index) {
         auto* row = new SettingsPrimaryRow(this);
-        row->setData(item);
+        row->setData(SettingsCatalog::sectionAt(index));
         connect(row, &SettingsPrimaryRow::activated, this, &SettingsView::onPrimaryRowActivated);
         m_primaryRows.append(row);
     }
@@ -1391,9 +880,13 @@ void SettingsView::rebuildSecondaryRows(int primaryIndex) {
     for (auto* row : m_secondaryRows) delete row;
     m_secondaryRows.clear();
 
-    if (primaryIndex < 0 || primaryIndex >= kMenuBlueprint.size()) return;
-
-    const auto items = visibleSecondaryItems(primaryIndex, SettingsStore::instance().current());
+    auto* storage = HardwareManager::instance().storage();
+    const bool sdCardReady = storage && storage->isSdCardReady();
+    const bool usbDiskReady = storage && storage->isUsbDiskReady();
+    const auto items = SettingsCatalog::visibleItems(primaryIndex,
+                                                      SettingsStore::instance().current(),
+                                                      sdCardReady,
+                                                      usbDiskReady);
     for (const auto& item : items) {
         auto* row = new SettingsSecondaryRow(this);
         row->setData(item);
@@ -1506,7 +999,7 @@ void SettingsView::collapseToSingle() {
 
     m_mode = PanelMode::Single;
     m_activePrimary = -1;
-    m_topBar->setTitle("Settings");
+    m_topBar->setTitle(QStringLiteral("Settings"));
     for (auto* row : m_primaryRows) row->setSelected(false);
 
     m_splitAnim->stop();
@@ -1517,8 +1010,6 @@ void SettingsView::collapseToSingle() {
 }
 
 void SettingsView::expandPrimary(int primaryIndex) {
-    if (primaryIndex < 0 || primaryIndex >= kMenuBlueprint.size()) return;
-
     m_activePrimary = primaryIndex;
     for (int i = 0; i < m_primaryRows.size(); ++i) {
         m_primaryRows[i]->setSelected(i == m_activePrimary);
@@ -1527,7 +1018,7 @@ void SettingsView::expandPrimary(int primaryIndex) {
     rebuildSecondaryRows(primaryIndex);
     m_rightScroll = 0.0;
     refreshTopMask();
-    m_topBar->setTitle(kMenuBlueprint[primaryIndex].title);
+    m_topBar->setTitle(SettingsCatalog::sectionTitle(primaryIndex));
 
     if (m_mode == PanelMode::Single) {
         m_mode = PanelMode::Expanded;
@@ -1561,136 +1052,36 @@ void SettingsView::refreshSecondaryRowsFromSnapshot(const SettingsSnapshot& snap
         row->setValueText(QString());
         row->setToggleOn(false);
 
-        switch (item.id) {
-        case SettingID::Emissivity: {
-            bool ok = false;
-            const float parsed =
-                snapshot.values.value(SettingKey::Emissivity, defaultValueForKey(SettingKey::Emissivity))
-                    .toFloat(&ok);
-            const float value = clampEmissivity(ok ? parsed : 0.95f);
-            row->setValueText(QString::number(value, 'f', 2));
-            break;
+        if (item.editor == SettingsEditor::Toggle) {
+            row->setToggleOn(snapshot.values.value(*item.settingKey).toBool());
+            continue;
         }
-        case SettingID::SeekVisionEnabled: {
-            const bool enabled = boolSettingFromSnapshot(snapshot, SettingKey::SeekVisionEnabled, true);
-            row->setToggleOn(enabled);
-            break;
-        }
-        case SettingID::LegacySharpenEnabled: {
-            const bool enabled =
-                boolSettingFromSnapshot(snapshot, SettingKey::LegacySharpenEnabled, false);
-            row->setToggleOn(enabled);
-            break;
-        }
-        case SettingID::AgcMode: {
-            bool ok = false;
-            const int parsed = snapshot.values
-                                   .value(SettingKey::AgcMode, defaultValueForKey(SettingKey::AgcMode))
-                                   .toInt(&ok);
-            const int mode = normalizeAgcModeInt(
-                ok ? parsed : static_cast<int>(AgcMode::HistEqAuto));
-            row->setValueText(formatAgcMode(mode));
-            break;
-        }
-        case SettingID::LinearAgcMin: {
-            const float value =
-                floatSettingFromSnapshot(snapshot, SettingKey::LinearAgcMinCelsius, 20.0f);
-            row->setValueText(formatSignedCelsius(value, 0));
-            break;
-        }
-        case SettingID::LinearAgcMax: {
-            const float value =
-                floatSettingFromSnapshot(snapshot, SettingKey::LinearAgcMaxCelsius, 80.0f);
-            row->setValueText(formatSignedCelsius(value, 0));
-            break;
-        }
-        case SettingID::ShutterAutoEnabled: {
-            const bool enabled = boolSettingFromSnapshot(snapshot, SettingKey::ShutterAutoEnabled, true);
-            row->setToggleOn(enabled);
-            break;
-        }
-        case SettingID::ThermographyOffset: {
-            const float value =
-                floatSettingFromSnapshot(snapshot, SettingKey::ThermographyOffsetCelsius, 0.0f);
-            row->setValueText(formatSignedCelsius(value, 1));
-            break;
-        }
-        case SettingID::TemperatureUnit: {
-            bool ok = false;
-            const int parsed = snapshot.values
-                                   .value(SettingKey::TemperatureUnit,
-                                          defaultValueForKey(SettingKey::TemperatureUnit))
-                                   .toInt(&ok);
-            const int unit = normalizeTemperatureUnitInt(
-                ok ? parsed : static_cast<int>(TemperatureUnit::Celsius));
-            row->setValueText(formatTemperatureUnit(unit));
-            break;
-        }
-        case SettingID::StoragePriority: {
-            bool ok = false;
-            const int parsed = snapshot.values
-                                   .value(SettingKey::StoragePriority,
-                                          defaultValueForKey(SettingKey::StoragePriority))
-                                   .toInt(&ok);
-            const int priority = normalizeStoragePriorityInt(
-                ok ? parsed : static_cast<int>(StoragePriority::SdFirst));
-            row->setValueText(formatStoragePriority(priority));
-            break;
-        }
-        case SettingID::SdCardCapacity:
+
+        if (item.id == SettingID::SdCardCapacity) {
             row->setValueText(formatStorageCapacity(sdStatus));
-            break;
-        case SettingID::SdCardSafeEject:
-            break;
-        case SettingID::UsbDiskCapacity:
+            continue;
+        }
+        if (item.id == SettingID::UsbDiskCapacity) {
             row->setValueText(formatStorageCapacity(usbStatus));
-            break;
-        case SettingID::UsbDiskSafeEject:
-            break;
-        case SettingID::OSDOverlay: {
-            const bool enabled = boolSettingFromSnapshot(snapshot, SettingKey::SaveMarkerInMedia, true);
-            row->setToggleOn(enabled);
-            break;
+            continue;
         }
-        case SettingID::HideMarkerWhenHudHidden: {
-            const bool enabled =
-                boolSettingFromSnapshot(snapshot, SettingKey::HideMarkerWhenHudHidden, false);
-            row->setToggleOn(enabled);
-            break;
-        }
-        case SettingID::ScreenBrightness: {
-            const int value = clampPercentInt(
-                intSettingFromSnapshot(snapshot, SettingKey::ScreenBrightnessPercent, 80),
-                kScreenBrightnessPercentMin,
-                kScreenBrightnessPercentMax);
-            row->setValueText(formatPercent(value,
-                                            kScreenBrightnessPercentMin,
-                                            kScreenBrightnessPercentMax));
-            break;
-        }
-        case SettingID::AudioVolume: {
-            const int value = clampPercentInt(
-                intSettingFromSnapshot(snapshot, SettingKey::AudioVolumePercent, 50),
-                kAudioVolumePercentMin,
-                kAudioVolumePercentMax);
-            row->setValueText(formatPercent(value,
-                                            kAudioVolumePercentMin,
-                                            kAudioVolumePercentMax));
-            break;
-        }
-        case SettingID::Clock:
-            break;
-        case SettingID::TriggerFlatSceneCorrection:
-        case SettingID::SdCardFormat:
-        case SettingID::UsbDiskFormat:
-        case SettingID::Palette:
-            break;
-        }
+
+        row->setValueText(SettingsCatalog::valueText(item.id, snapshot));
     }
 }
 
 void SettingsView::refreshSecondaryRowsFromStore() {
     refreshSecondaryRowsFromSnapshot(SettingsStore::instance().current());
+}
+
+void SettingsView::refreshStorageRowsIfVisible() {
+    if (m_mode != PanelMode::Expanded ||
+        !SettingsCatalog::sectionVisibilityAffectedByStorageState(m_activePrimary)) {
+        return;
+    }
+    rebuildSecondaryRows(m_activePrimary);
+    m_rightScroll = qBound<qreal>(0.0, m_rightScroll, rightMaxScroll());
+    relayoutRows();
 }
 
 void SettingsView::applyPatchFromUi(const SettingsPatch& patch) {

@@ -2,7 +2,7 @@
 #define SETTINGS_ROW_H
 
 #include <QWidget>
-#include "ui/settings_menu_types.h"
+#include "ui/settings_catalog.h"
 
 /**
  * @brief Shared press state for settings rows owned by SettingsView.

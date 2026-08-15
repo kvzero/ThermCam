@@ -3,8 +3,10 @@
 
 #include <QWidget>
 #include <QDateTime>
+#include <optional>
 #include <core/types.h>
 #include "ui/overlays/modal_dialog.h"
+#include "ui/settings_catalog.h"
 
 class QStackedWidget;
 class BaseView;
@@ -79,6 +81,10 @@ private:
     void initLayer_Stack();
     void initLayer_Overlays();
     void connectHardwareKeys();
+    void openSettingsItem(SettingID item,
+                          const QRect& sourceAnchor,
+                          TransitionMode transitionMode);
+    void activateView(ViewType type, BaseView* previousView);
     void handleHardwareKeyPressed();
     void handleHardwareKeyShortPress();
     void handleHardwareKeyLongPress();
@@ -87,7 +93,8 @@ private:
     QStackedWidget* m_viewStack = nullptr;
     BaseView* m_cameraView = nullptr;
     BaseView* m_galleryView = nullptr;
-    BaseView* m_settingsView = nullptr;
+    SettingsView* m_settingsView = nullptr;
+    std::optional<SettingID> m_pendingSettingsItem;
 
     /* Layer 1: Visual Transitions */
     TransitionLayer* m_transitionLayer = nullptr;

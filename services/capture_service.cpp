@@ -6,27 +6,6 @@
 #include "hardware/storage/storage_manager.h"
 #include <QDebug>
 
-namespace {
-bool isFahrenheitFromSnapshot(const SettingsSnapshot& snapshot) {
-    bool ok = false;
-    const int raw = snapshot.values
-                        .value(SettingKey::TemperatureUnit,
-                               QVariant::fromValue(static_cast<int>(TemperatureUnit::Celsius)))
-                        .toInt(&ok);
-    if (!ok) return false;
-    return raw == static_cast<int>(TemperatureUnit::Fahrenheit);
-}
-
-bool boolSettingFromSnapshot(const SettingsSnapshot& snapshot,
-                             SettingKey key,
-                             bool fallback) {
-    const QVariant defaultValue = QVariant(fallback);
-    const QVariant value = snapshot.values.value(key, defaultValue);
-    if (!value.canConvert<bool>()) return fallback;
-    return value.toBool();
-}
-}
-
 CaptureService& CaptureService::instance() {
     static CaptureService inst;
     return inst;
@@ -64,9 +43,11 @@ CaptureService::CaptureService(QObject *parent) : QObject(parent) {
     m_workerThread->start();
 
     const SettingsSnapshot snapshot = SettingsStore::instance().current();
-    const bool initialIsFahrenheit = isFahrenheitFromSnapshot(snapshot);
-    const bool initialSaveMarkerInMedia = boolSettingFromSnapshot(
-        snapshot, SettingKey::SaveMarkerInMedia, true);
+    const bool initialIsFahrenheit =
+        snapshot.values.value(SettingKey::TemperatureUnit).toInt() ==
+        static_cast<int>(TemperatureUnit::Fahrenheit);
+    const bool initialSaveMarkerInMedia =
+        snapshot.values.value(SettingKey::SaveMarkerInMedia).toBool();
 
     QMetaObject::invokeMethod(m_worker, "setTemperatureUnitFahrenheit",
                               Qt::QueuedConnection, Q_ARG(bool, initialIsFahrenheit));

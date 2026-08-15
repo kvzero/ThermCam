@@ -2,7 +2,7 @@
 #define SETTINGS_VIEW_H
 
 #include "ui/views/base_view.h"
-#include "ui/settings_menu_types.h"
+#include "ui/settings_catalog.h"
 #include "core/settings_types.h"
 #include "services/settings_service.h"
 #include "ui/overlays/bubble_dialog.h"
@@ -56,7 +56,7 @@ private:
 
     PressZone zoneAt(const QPoint& pos) const;
 
-    QString m_title = "Settings";
+    QString m_title;
     qreal m_maskOpacity = 0.0;
     PressZone m_pressedZone = PressZone::None;
     QPoint m_lastPos;
@@ -85,6 +85,13 @@ public:
     void onEnter() override;
     void onExit() override;
     void handleKeyShortPress() override {}
+
+    /**
+     * @brief Opens the section containing item and brings its row into view.
+     *
+     * This is navigation only: it never activates the item or changes a value.
+     */
+    void openItem(SettingID item);
 
     /* --- Public Properties --- */
     qreal leftScroll() const { return m_leftScroll; }
@@ -145,6 +152,7 @@ private:
     void refreshTopMask();
     void refreshSecondaryRowsFromSnapshot(const SettingsSnapshot& snapshot);
     void refreshSecondaryRowsFromStore();
+    void refreshStorageRowsIfVisible();
     void applyPatchFromUi(const SettingsPatch& patch);
 
     /* --- Layout & Scroll Math --- */

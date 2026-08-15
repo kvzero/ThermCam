@@ -5,6 +5,7 @@
 #include <QRect>
 #include <QString>
 #include "core/types.h"
+#include "ui/settings_catalog.h"
 
 /**
  * @brief Central event dispatcher for decoupled communication.
@@ -67,6 +68,14 @@ signals:
                           TransitionMode transitionMode);
     void settingsRequested(const QRect& sourceAnchor,
                            TransitionMode transitionMode);
+    /**
+     * @brief Requests SettingsView to open the section containing one item.
+     *
+     * The request navigates only; it never activates the target item.
+     */
+    void settingsItemRequested(SettingID item,
+                               const QRect& sourceAnchor,
+                               TransitionMode transitionMode);
     void paletteSelectorRequested();
 
 private:

@@ -17,7 +17,7 @@ class SettingsService;
  * - Single translator between enum-based SettingKey and JSON key strings.
  *
  * Owner Scope:
- * - Holds in-memory snapshot cache, defaults map, and file persistence logic.
+ * - Holds in-memory snapshot cache and file persistence logic.
  * - Accepts mutations only from SettingsService.
  *
  * Lifecycle:
@@ -78,7 +78,6 @@ private:
     QMutex m_commitMutex;
 
     SettingsSnapshot m_snapshot;
-    QHash<SettingKey, QVariant> m_defaults;
     QString m_storagePath;
     bool m_isInitialized = false;
 };

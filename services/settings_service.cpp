@@ -9,26 +9,9 @@
 #include <QStringList>
 
 namespace {
-constexpr float kEmissivityMin = 0.01f;
-constexpr float kEmissivityMax = 1.0f;
-constexpr float kThermographyOffsetMin = -10.0f;
-constexpr float kThermographyOffsetMax = 10.0f;
-constexpr float kLinearAgcMinCelsiusMin = -40.0f;
-constexpr float kLinearAgcMinCelsiusMax = 600.0f;
-constexpr float kLinearAgcMaxCelsiusMin = -40.0f;
-constexpr float kLinearAgcMaxCelsiusMax = 600.0f;
-constexpr int kScreenBrightnessPercentMin = 1;
-constexpr int kScreenBrightnessPercentMax = 100;
-constexpr int kAudioVolumePercentMin = 0;
-constexpr int kAudioVolumePercentMax = 100;
-
 QString keyToDebugName(SettingKey key) {
-    for (const auto& descriptor : kSettingRegistry) {
-        if (descriptor.key == key) {
-            return QString::fromLatin1(descriptor.jsonName);
-        }
-    }
-    return "unknown";
+    const SettingDescriptor* descriptor = settingDescriptorForKey(key);
+    return descriptor ? QString::fromLatin1(descriptor->jsonName) : QStringLiteral("unknown");
 }
 
 QString valueToDebugString(const QVariant& value) {
@@ -39,48 +22,10 @@ QString valueToDebugString(const QVariant& value) {
 }
 
 QVariant fallbackValueForKey(SettingKey key) {
-    for (const auto& descriptor : kSettingRegistry) {
-        if (descriptor.key == key) {
-            return descriptor.defaultValue;
-        }
-    }
-    return QVariant();
+    const SettingDescriptor* descriptor = settingDescriptorForKey(key);
+    return descriptor ? descriptor->defaultValue : QVariant();
 }
 
-int normalizeStoragePriorityInt(int value) {
-    const int sdFirst = static_cast<int>(StoragePriority::SdFirst);
-    const int usbFirst = static_cast<int>(StoragePriority::UsbFirst);
-    return (value == usbFirst) ? usbFirst : sdFirst;
-}
-
-RemovableStoragePriority toRemovablePriority(int value) {
-    return (normalizeStoragePriorityInt(value) == static_cast<int>(StoragePriority::UsbFirst))
-               ? RemovableStoragePriority::UsbFirst
-               : RemovableStoragePriority::SdFirst;
-}
-
-int normalizeAgcModeInt(int value) {
-    const int linear = static_cast<int>(AgcMode::LinearManual);
-    return (value == linear) ? linear : static_cast<int>(AgcMode::HistEqAuto);
-}
-
-bool boolSettingFromSnapshot(const SettingsSnapshot& snapshot, SettingKey key, bool fallback) {
-    const QVariant payload = snapshot.values.value(key, QVariant(fallback));
-    if (!payload.canConvert<bool>()) return fallback;
-    return payload.toBool();
-}
-
-float floatSettingFromSnapshot(const SettingsSnapshot& snapshot, SettingKey key, float fallback) {
-    bool ok = false;
-    const float value = snapshot.values.value(key, QVariant(fallback)).toFloat(&ok);
-    return ok ? value : fallback;
-}
-
-int intSettingFromSnapshot(const SettingsSnapshot& snapshot, SettingKey key, int fallback) {
-    bool ok = false;
-    const int value = snapshot.values.value(key, QVariant(fallback)).toInt(&ok);
-    return ok ? value : fallback;
-}
 }
 
 SettingsService& SettingsService::instance() {
@@ -296,9 +241,13 @@ bool SettingsService::normalizePatch(const SettingsPatch& input,
     for (auto it = input.values.constBegin(); it != input.values.constEnd(); ++it) {
         const SettingKey key = it.key();
         const QVariant value = it.value();
+        const SettingDescriptor* descriptor = settingDescriptorForKey(key);
+        if (!descriptor) {
+            if (outError) *outError = "Unsupported setting key";
+            return false;
+        }
 
-        switch (key) {
-        case SettingKey::Palette: {
+        if (key == SettingKey::Palette) {
             if (!value.canConvert<int>()) {
                 if (outError) *outError = "Invalid palette payload";
                 return false;
@@ -319,200 +268,40 @@ bool SettingsService::normalizePatch(const SettingsPatch& input,
             outPatch->values.insert(key, QVariant(paletteId));
             continue;
         }
-        case SettingKey::Emissivity: {
-            bool ok = false;
-            float v = value.toFloat(&ok);
-            if (!ok) {
-                if (outError) *outError = "Invalid emissivity payload";
+
+        if (descriptor->valueType == SettingValueType::Boolean) {
+            if (!value.canConvert<bool>()) {
+                if (outError) *outError = "Invalid boolean payload";
                 return false;
             }
-            v = qBound(kEmissivityMin, v, kEmissivityMax);
-            outPatch->values.insert(key, QVariant(v));
+            outPatch->values.insert(key, value.toBool());
             continue;
         }
-        case SettingKey::TemperatureUnit: {
-            int unitValue = static_cast<int>(TemperatureUnit::Celsius);
 
-            if (value.canConvert<int>()) {
-                bool ok = false;
-                const int parsed = value.toInt(&ok);
-                if (!ok) {
-                    if (outError) *outError = "Invalid temperature unit payload";
-                    return false;
-                }
-                unitValue = parsed;
-            } else {
-                if (outError) *outError = "Invalid temperature unit payload";
-                return false;
-            }
-
-            if (unitValue != static_cast<int>(TemperatureUnit::Celsius) &&
-                unitValue != static_cast<int>(TemperatureUnit::Fahrenheit)) {
-                if (outError) *outError = "Unsupported temperature unit";
-                return false;
-            }
-
-            outPatch->values.insert(key, QVariant(unitValue));
-            continue;
-        }
-        case SettingKey::StoragePriority: {
-            if (!value.canConvert<int>()) {
-                if (outError) *outError = "Invalid storage priority payload";
-                return false;
-            }
-
-            bool ok = false;
+        bool ok = false;
+        if (descriptor->valueType == SettingValueType::Integer) {
             const int parsed = value.toInt(&ok);
             if (!ok) {
-                if (outError) *outError = "Invalid storage priority payload";
+                if (outError) *outError = "Invalid integer payload";
                 return false;
             }
-
-            if (parsed != static_cast<int>(StoragePriority::SdFirst) &&
-                parsed != static_cast<int>(StoragePriority::UsbFirst)) {
-                if (outError) *outError = "Unsupported storage priority";
+            if (descriptor->integerRangePolicy == SettingIntegerRangePolicy::Reject &&
+                (parsed < descriptor->minimum || parsed > descriptor->maximum)) {
+                if (outError) *outError = "Unsupported integer value";
                 return false;
             }
-
-            outPatch->values.insert(key, QVariant(parsed));
+            outPatch->values.insert(
+                key, qBound(qRound(descriptor->minimum), parsed, qRound(descriptor->maximum)));
             continue;
         }
-        case SettingKey::SaveMarkerInMedia: {
-            if (!value.canConvert<bool>()) {
-                if (outError) *outError = "Invalid save-marker payload";
-                return false;
-            }
 
-            outPatch->values.insert(key, QVariant(value.toBool()));
-            continue;
+        const float parsed = value.toFloat(&ok);
+        if (!ok) {
+            if (outError) *outError = "Invalid floating-point payload";
+            return false;
         }
-        case SettingKey::HideMarkerWhenHudHidden: {
-            if (!value.canConvert<bool>()) {
-                if (outError) *outError = "Invalid HUD-marker payload";
-                return false;
-            }
-
-            outPatch->values.insert(key, QVariant(value.toBool()));
-            continue;
-        }
-        case SettingKey::ShutterAutoEnabled: {
-            if (!value.canConvert<bool>()) {
-                if (outError) *outError = "Invalid shutter-auto payload";
-                return false;
-            }
-
-            outPatch->values.insert(key, QVariant(value.toBool()));
-            continue;
-        }
-        case SettingKey::ThermographyOffsetCelsius: {
-            bool ok = false;
-            float offset = value.toFloat(&ok);
-            if (!ok) {
-                if (outError) *outError = "Invalid thermography-offset payload";
-                return false;
-            }
-
-            offset = qBound(kThermographyOffsetMin, offset, kThermographyOffsetMax);
-            outPatch->values.insert(key, QVariant(offset));
-            continue;
-        }
-        case SettingKey::SeekVisionEnabled: {
-            if (!value.canConvert<bool>()) {
-                if (outError) *outError = "Invalid seekvision payload";
-                return false;
-            }
-
-            outPatch->values.insert(key, QVariant(value.toBool()));
-            continue;
-        }
-        case SettingKey::LegacySharpenEnabled: {
-            if (!value.canConvert<bool>()) {
-                if (outError) *outError = "Invalid sharpen payload";
-                return false;
-            }
-
-            outPatch->values.insert(key, QVariant(value.toBool()));
-            continue;
-        }
-        case SettingKey::AgcMode: {
-            if (!value.canConvert<int>()) {
-                if (outError) *outError = "Invalid AGC mode payload";
-                return false;
-            }
-
-            bool ok = false;
-            const int parsed = value.toInt(&ok);
-            if (!ok) {
-                if (outError) *outError = "Invalid AGC mode payload";
-                return false;
-            }
-
-            const int normalized = normalizeAgcModeInt(parsed);
-            if (parsed != normalized) {
-                if (outError) *outError = "Unsupported AGC mode";
-                return false;
-            }
-
-            outPatch->values.insert(key, QVariant(normalized));
-            continue;
-        }
-        case SettingKey::LinearAgcMinCelsius:
-        case SettingKey::LinearAgcMaxCelsius: {
-            bool ok = false;
-            float valueC = value.toFloat(&ok);
-            if (!ok) {
-                if (outError) *outError = "Invalid Linear AGC payload";
-                return false;
-            }
-
-            if (key == SettingKey::LinearAgcMinCelsius) {
-                valueC = qBound(kLinearAgcMinCelsiusMin, valueC, kLinearAgcMinCelsiusMax);
-            } else {
-                valueC = qBound(kLinearAgcMaxCelsiusMin, valueC, kLinearAgcMaxCelsiusMax);
-            }
-
-            outPatch->values.insert(key, QVariant(valueC));
-            continue;
-        }
-        case SettingKey::ScreenBrightnessPercent: {
-            if (!value.canConvert<int>()) {
-                if (outError) *outError = "Invalid screen-brightness payload";
-                return false;
-            }
-
-            bool ok = false;
-            const int parsed = value.toInt(&ok);
-            if (!ok) {
-                if (outError) *outError = "Invalid screen-brightness payload";
-                return false;
-            }
-
-            const int clamped =
-                qBound(kScreenBrightnessPercentMin, parsed, kScreenBrightnessPercentMax);
-            outPatch->values.insert(key, QVariant(clamped));
-            continue;
-        }
-        case SettingKey::AudioVolumePercent: {
-            if (!value.canConvert<int>()) {
-                if (outError) *outError = "Invalid audio-volume payload";
-                return false;
-            }
-
-            bool ok = false;
-            const int parsed = value.toInt(&ok);
-            if (!ok) {
-                if (outError) *outError = "Invalid audio-volume payload";
-                return false;
-            }
-
-            const int clamped = qBound(kAudioVolumePercentMin, parsed, kAudioVolumePercentMax);
-            outPatch->values.insert(key, QVariant(clamped));
-            continue;
-        }
-        }
-
-        if (outError) *outError = "Unsupported setting key";
-        return false;
+        outPatch->values.insert(key, qBound(float(descriptor->minimum), parsed,
+                                             float(descriptor->maximum)));
     }
 
     return true;
@@ -523,18 +312,7 @@ bool SettingsService::applyRuntimeEffects(const SettingsChangeEvent& change, QSt
     QStringList errors;
 
     if (change.changedKeys.contains(SettingKey::Palette)) {
-        const QVariant payload = change.snapshot.values.value(SettingKey::Palette);
-        bool ok = false;
-        const int paletteId = payload.toInt(&ok);
-        if (!ok) {
-            errors << "Committed palette value is invalid";
-            allSuccess = false;
-        } else if (paletteId < 0 || paletteId >= static_cast<int>(ThermalPalette::Id::Count)) {
-            errors << "Committed palette id is unsupported";
-            allSuccess = false;
-        } else {
-            emit paletteChanged(paletteId);
-        }
+        emit paletteChanged(change.snapshot.values.value(SettingKey::Palette).toInt());
     }
 
     const bool hasCameraSettingDelta =
@@ -561,38 +339,24 @@ bool SettingsService::applyRuntimeEffects(const SettingsChangeEvent& change, QSt
                 allSuccess = false;
             };
 
-            const float emissivity = qBound(
-                kEmissivityMin,
-                floatSettingFromSnapshot(change.snapshot, SettingKey::Emissivity, 0.95f),
-                kEmissivityMax);
-            const bool seekVisionEnabled = boolSettingFromSnapshot(
-                change.snapshot, SettingKey::SeekVisionEnabled, true);
-            const bool shutterAutoEnabled = boolSettingFromSnapshot(
-                change.snapshot, SettingKey::ShutterAutoEnabled, true);
-            const float thermographyOffset = qBound(
-                kThermographyOffsetMin,
-                floatSettingFromSnapshot(change.snapshot,
-                                         SettingKey::ThermographyOffsetCelsius,
-                                         0.0f),
-                kThermographyOffsetMax);
-            const bool legacySharpenEnabled = boolSettingFromSnapshot(
-                change.snapshot, SettingKey::LegacySharpenEnabled, false);
-            const int agcModeValue = normalizeAgcModeInt(intSettingFromSnapshot(
-                change.snapshot,
-                SettingKey::AgcMode,
-                static_cast<int>(AgcMode::HistEqAuto)));
-            const float linearMinCelsius = qBound(
-                kLinearAgcMinCelsiusMin,
-                floatSettingFromSnapshot(change.snapshot,
-                                         SettingKey::LinearAgcMinCelsius,
-                                         20.0f),
-                kLinearAgcMinCelsiusMax);
-            const float linearMaxCelsius = qBound(
-                kLinearAgcMaxCelsiusMin,
-                floatSettingFromSnapshot(change.snapshot,
-                                         SettingKey::LinearAgcMaxCelsius,
-                                         80.0f),
-                kLinearAgcMaxCelsiusMax);
+            const float emissivity =
+                change.snapshot.values.value(SettingKey::Emissivity).toFloat();
+            const bool seekVisionEnabled =
+                change.snapshot.values.value(SettingKey::SeekVisionEnabled).toBool();
+            const bool shutterAutoEnabled =
+                change.snapshot.values.value(SettingKey::ShutterAutoEnabled).toBool();
+            const float thermographyOffset = change.snapshot.values
+                                                  .value(SettingKey::ThermographyOffsetCelsius)
+                                                  .toFloat();
+            const bool legacySharpenEnabled =
+                change.snapshot.values.value(SettingKey::LegacySharpenEnabled).toBool();
+            const int agcModeValue = change.snapshot.values.value(SettingKey::AgcMode).toInt();
+            const float linearMinCelsius = change.snapshot.values
+                                                .value(SettingKey::LinearAgcMinCelsius)
+                                                .toFloat();
+            const float linearMaxCelsius = change.snapshot.values
+                                                .value(SettingKey::LinearAgcMaxCelsius)
+                                                .toFloat();
 
             if (change.changedKeys.contains(SettingKey::Emissivity)) {
                 camera->setEmissivity(emissivity);
@@ -667,71 +431,41 @@ bool SettingsService::applyRuntimeEffects(const SettingsChangeEvent& change, QSt
     }
 
     if (change.changedKeys.contains(SettingKey::TemperatureUnit)) {
-        const QVariant payload = change.snapshot.values.value(SettingKey::TemperatureUnit);
-        bool ok = false;
-        const int unitValue = payload.toInt(&ok);
-        if (!ok) {
-            errors << "Committed temperature unit value is invalid";
-            allSuccess = false;
-        } else if (unitValue != static_cast<int>(TemperatureUnit::Celsius) &&
-                   unitValue != static_cast<int>(TemperatureUnit::Fahrenheit)) {
-            errors << "Committed temperature unit is unsupported";
-            allSuccess = false;
-        } else {
-            const bool isFahrenheit =
-                (unitValue == static_cast<int>(TemperatureUnit::Fahrenheit));
-            emit unitChanged(isFahrenheit);
-        }
+        emit unitChanged(change.snapshot.values.value(SettingKey::TemperatureUnit).toInt() ==
+                         static_cast<int>(TemperatureUnit::Fahrenheit));
     }
 
     if (change.changedKeys.contains(SettingKey::StoragePriority)) {
-        const QVariant payload = change.snapshot.values.value(SettingKey::StoragePriority);
-        bool ok = false;
-        const int priorityValue = payload.toInt(&ok);
-        if (!ok) {
-            errors << "Committed storage priority value is invalid";
-            allSuccess = false;
-        } else if (priorityValue != static_cast<int>(StoragePriority::SdFirst) &&
-                   priorityValue != static_cast<int>(StoragePriority::UsbFirst)) {
-            errors << "Committed storage priority is unsupported";
-            allSuccess = false;
-        } else {
-            if (auto* storage = HardwareManager::instance().storage()) {
-                StorageRoutingPolicy policy = storage->routingPolicy();
-                const RemovableStoragePriority resolved = toRemovablePriority(priorityValue);
-                policy.photoPriority = resolved;
-                policy.videoPriority = resolved;
+        const int priorityValue = change.snapshot.values.value(SettingKey::StoragePriority).toInt();
+        if (auto* storage = HardwareManager::instance().storage()) {
+            StorageRoutingPolicy policy = storage->routingPolicy();
+            const RemovableStoragePriority resolved =
+                priorityValue == static_cast<int>(StoragePriority::UsbFirst)
+                    ? RemovableStoragePriority::UsbFirst
+                    : RemovableStoragePriority::SdFirst;
+            policy.photoPriority = resolved;
+            policy.videoPriority = resolved;
 
-                QString policyError;
-                if (!storage->setRoutingPolicy(policy, &policyError)) {
-                    errors << QString("Failed to apply storage policy: %1").arg(policyError);
-                    allSuccess = false;
-                }
-            } else {
-                errors << "StorageManager is unavailable";
+            QString policyError;
+            if (!storage->setRoutingPolicy(policy, &policyError)) {
+                errors << QString("Failed to apply storage policy: %1").arg(policyError);
                 allSuccess = false;
             }
+        } else {
+            errors << "StorageManager is unavailable";
+            allSuccess = false;
         }
     }
 
     if (change.changedKeys.contains(SettingKey::SaveMarkerInMedia)) {
-        const QVariant payload = change.snapshot.values.value(SettingKey::SaveMarkerInMedia);
-        if (!payload.canConvert<bool>()) {
-            errors << "Committed save-marker value is invalid";
-            allSuccess = false;
-        } else {
-            emit saveMarkerChanged(payload.toBool());
-        }
+        emit saveMarkerChanged(change.snapshot.values.value(SettingKey::SaveMarkerInMedia)
+                                   .toBool());
     }
 
     if (change.changedKeys.contains(SettingKey::HideMarkerWhenHudHidden)) {
-        const QVariant payload = change.snapshot.values.value(SettingKey::HideMarkerWhenHudHidden);
-        if (!payload.canConvert<bool>()) {
-            errors << "Committed HUD-marker value is invalid";
-            allSuccess = false;
-        } else {
-            emit hudHideMarkerChanged(payload.toBool());
-        }
+        emit hudHideMarkerChanged(change.snapshot.values
+                                      .value(SettingKey::HideMarkerWhenHudHidden)
+                                      .toBool());
     }
 
     const bool hasSystemSettingDelta =
@@ -754,11 +488,7 @@ bool SettingsService::applyRuntimeEffects(const SettingsChangeEvent& change, QSt
 
             if (change.changedKeys.contains(SettingKey::ScreenBrightnessPercent)) {
                 const int brightnessPercent =
-                    qBound(kScreenBrightnessPercentMin,
-                           intSettingFromSnapshot(change.snapshot,
-                                                  SettingKey::ScreenBrightnessPercent,
-                                                  80),
-                           kScreenBrightnessPercentMax);
+                    change.snapshot.values.value(SettingKey::ScreenBrightnessPercent).toInt();
 
                 QString brightnessError;
                 applyOrCollect("Screen brightness",
@@ -769,11 +499,7 @@ bool SettingsService::applyRuntimeEffects(const SettingsChangeEvent& change, QSt
 
             if (change.changedKeys.contains(SettingKey::AudioVolumePercent)) {
                 const int volumePercent =
-                    qBound(kAudioVolumePercentMin,
-                           intSettingFromSnapshot(change.snapshot,
-                                                  SettingKey::AudioVolumePercent,
-                                                  50),
-                           kAudioVolumePercentMax);
+                    change.snapshot.values.value(SettingKey::AudioVolumePercent).toInt();
 
                 QString volumeError;
                 applyOrCollect("Audio volume",

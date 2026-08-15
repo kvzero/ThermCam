@@ -39,6 +39,7 @@ SOURCES     +=  main.cpp \
                 services/gallery_worker.cpp \
                 services/settings_service.cpp \
                 ui/app.cpp \
+                ui/settings_catalog.cpp \
                 ui/overlays/media_viewer.cpp \
                 ui/views/camera_view.cpp \
                 ui/views/gallery_view.cpp \
@@ -85,13 +86,13 @@ HEADERS     +=  core/global_context.h \
                 services/gallery_worker.h \
                 services/settings_service.h \
                 ui/app.h \
+                ui/settings_catalog.h \
                 ui/overlays/media_viewer.h \
                 ui/views/base_view.h \
                 ui/views/camera_view.h \
                 ui/views/gallery_view.h \
                 ui/views/settings_view.h \
                 core/settings_types.h \
-                ui/settings_menu_types.h \
                 ui/overlays/clock_modal.h \
                 ui/overlays/modal_dialog.h \
                 ui/overlays/bubble_dialog.h \

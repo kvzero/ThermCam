@@ -14,15 +14,6 @@ constexpr int kSchemaVersion = 1;
 const char* kEnvConfigPath = "THERMAL_QT_CONFIG_FILE";
 const char* kDefaultConfigPath = "/root/.config/thermal_qt/settings.json";
 
-QString keyToJsonName(SettingKey key) {
-    for (const auto& descriptor : kSettingRegistry) {
-        if (descriptor.key == key) {
-            return QString::fromLatin1(descriptor.jsonName);
-        }
-    }
-    return QString();
-}
-
 bool jsonNameToKey(const QString& name, SettingKey* outKey) {
     if (!outKey) return false;
     for (const auto& descriptor : kSettingRegistry) {
@@ -40,11 +31,7 @@ SettingsStore& SettingsStore::instance() {
     return inst;
 }
 
-SettingsStore::SettingsStore(QObject* parent) : QObject(parent) {
-    for (const auto& descriptor : kSettingRegistry) {
-        m_defaults.insert(descriptor.key, descriptor.defaultValue);
-    }
-}
+SettingsStore::SettingsStore(QObject* parent) : QObject(parent) {}
 
 bool SettingsStore::init(const QString& customPath) {
     QMutexLocker commitGuard(&m_commitMutex);
@@ -126,33 +113,10 @@ bool SettingsStore::commitPatch(const SettingsPatch& patch,
 
     for (auto it = patch.values.constBegin(); it != patch.values.constEnd(); ++it) {
         const SettingKey key = it.key();
-        if (!m_defaults.contains(key)) {
-            if (outError) {
-                *outError = QString("Unsupported setting key: %1")
-                                .arg(static_cast<int>(static_cast<quint8>(key)));
-            }
-            return false;
-        }
+        const QVariant oldValue = next.values.value(key);
+        const QVariant newValue = it.value();
 
-        const QVariant defaultValue = m_defaults.value(key);
-
-        QVariant oldValue = next.values.value(key, defaultValue);
-        if (!oldValue.convert(defaultValue.userType())) {
-            oldValue = defaultValue;
-        }
-
-        QVariant newValue = it.value();
-        if (!newValue.convert(defaultValue.userType())) {
-            if (outError) {
-                *outError = QString("Type mismatch for setting key: %1")
-                                .arg(static_cast<int>(static_cast<quint8>(key)));
-            }
-            return false;
-        }
-
-        const bool isSame = (oldValue == newValue);
-
-        if (!isSame) {
+        if (oldValue != newValue) {
             next.values.insert(key, newValue);
             changed.insert(key);
         }
@@ -256,7 +220,7 @@ bool SettingsStore::loadFromDisk(const QString& filePath,
         SettingKey key;
         if (!jsonNameToKey(it.key(), &key)) continue;
 
-        QVariant defaultValue = m_defaults.value(key);
+        const QVariant defaultValue = settingDescriptorForKey(key)->defaultValue;
         QVariant parsedValue = it.value().toVariant();
 
         if (parsedValue.convert(defaultValue.userType())) {
@@ -276,10 +240,9 @@ bool SettingsStore::writeToDisk(const QString& filePath,
     QJsonObject valuesObj;
 
     for (auto it = snapshot.values.constBegin(); it != snapshot.values.constEnd(); ++it) {
-        const QString key = keyToJsonName(it.key());
-        if (!key.isEmpty()) {
-            valuesObj.insert(key, QJsonValue::fromVariant(it.value())); 
-        }
+        valuesObj.insert(QString::fromLatin1(
+                             kSettingRegistry[static_cast<size_t>(it.key())].jsonName),
+                         QJsonValue::fromVariant(it.value()));
     }
 
     QJsonObject root;
@@ -311,7 +274,9 @@ bool SettingsStore::writeToDisk(const QString& filePath,
 
 SettingsSnapshot SettingsStore::buildDefaultSnapshot() const {
     SettingsSnapshot snapshot;
-    snapshot.values = m_defaults;
+    for (const SettingDescriptor& descriptor : kSettingRegistry) {
+        snapshot.values.insert(descriptor.key, descriptor.defaultValue);
+    }
     snapshot.revision = 0;
     return snapshot;
 }

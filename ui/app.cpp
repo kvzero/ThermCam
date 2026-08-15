@@ -73,6 +73,11 @@ void App::initLayer_Stack() {
             [this](const QRect& anchor, TransitionMode transitionMode) {
         switchView(App::View_Settings, anchor, transitionMode);
     });
+
+    connect(&bus, &EventBus::settingsItemRequested, this,
+            [this](SettingID item, const QRect& anchor, TransitionMode transitionMode) {
+        openSettingsItem(item, anchor, transitionMode);
+    });
 }
 
 void App::initLayer_Overlays() {
@@ -204,6 +209,29 @@ void App::showToast(const QString& msg, ToastLevel level){
     }
 }
 
+void App::openSettingsItem(SettingID item,
+                           const QRect& sourceAnchor,
+                           TransitionMode transitionMode) {
+    if (activeView() == m_settingsView) {
+        m_settingsView->openItem(item);
+        return;
+    }
+
+    m_pendingSettingsItem = item;
+    switchView(View_Settings, sourceAnchor, transitionMode);
+}
+
+void App::activateView(ViewType type, BaseView* previousView) {
+    if (previousView) previousView->onExit();
+    m_viewStack->setCurrentIndex(static_cast<int>(type));
+    activeView()->onEnter();
+
+    if (type == View_Settings && m_pendingSettingsItem.has_value()) {
+        m_settingsView->openItem(*m_pendingSettingsItem);
+        m_pendingSettingsItem.reset();
+    }
+}
+
 void App::switchView(ViewType type,
                      const QRect& sourceAnchor,
                      TransitionMode transitionMode) {
@@ -234,9 +262,7 @@ void App::switchView(ViewType type,
             // Expansion uses a clean slate (no snapshot) and fades into the new content.
             m_transitionLayer->startMorph(sourceAnchor, rect(), true, targetIcon,
                                           targetColor, QImage(), [=]() {
-                if (oldView) oldView->onExit();
-                m_viewStack->setCurrentIndex(index);
-                if (activeView()) activeView()->onEnter();
+                activateView(type, oldView);
 
                 m_transitionLayer->startFadeOut([](){});
             });
@@ -273,9 +299,7 @@ void App::switchView(ViewType type,
             m_transitionLayer->raise();
 
             // 3. Perform the heavy context switch behind the curtain
-            if (oldView) oldView->onExit();
-            m_viewStack->setCurrentIndex(index);
-            if (activeView()) activeView()->onEnter();
+            activateView(type, oldView);
 
             // 4. Animate the curtain shrinking with the content snapshot
             m_transitionLayer->startMorph(rect(), targetAnchor, false, targetIcon,
@@ -289,9 +313,7 @@ void App::switchView(ViewType type,
     // ========================================================
     // Fallback: Instant Switch (No animation resources available)
     // ========================================================
-    if (oldView) oldView->onExit();
-    m_viewStack->setCurrentIndex(index);
-    if (BaseView* newView = activeView()) newView->onEnter();
+    activateView(type, oldView);
 }
 
 BaseView* App::activeView() const {
