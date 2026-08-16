@@ -25,6 +25,7 @@ struct StorageVolumeStatus {
     bool ready = false;  // True when the filesystem is mounted and discoverable.
     QString mountPoint;
     quint64 availableMB = 0;
+    quint64 usedMB = 0;
     quint64 totalMB = 0;
 };
 
@@ -234,13 +235,13 @@ private:
     /* --- Canonical Mount Constants --- */
     static const QString kSdCardMountPoint;
     static const QString kUsbDiskMountPoint;
-    static const QString kNandFallbackBase;
+    static const QString kNandMountPoint;
     static const QString kDcimSubdir;
 
     /* --- Space / Timing Thresholds --- */
-    static constexpr quint64 kMinRecordSpaceMB = 200; /**< Refuse new video if below this */
-    static constexpr quint64 kMinPhotoSpaceMB  = 50;  /**< Refuse new photo if below this */
-    static constexpr quint64 kCriticalSpaceMB  = 100; /**< Force stop recording if below this */
+    static constexpr quint64 kMinRecordSpaceMB = 50; /**< Refuse new video if below this */
+    static constexpr quint64 kMinPhotoSpaceMB  = 1;  /**< P99-derived minimum free space */
+    static constexpr quint64 kCriticalSpaceMB  = 2;  /**< Stop active recording at or below this */
     static constexpr int kNetlinkSettleDelayMs = 750;
 };
 

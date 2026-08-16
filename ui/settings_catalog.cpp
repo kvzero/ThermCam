@@ -126,6 +126,8 @@ constexpr std::array<ItemSpec, static_cast<size_t>(SettingID::Count)> kItems = {
      SecondaryVisibility::Always, {}, kTemperatureUnitChoices,
      int(std::size(kTemperatureUnitChoices))},
 
+    {SettingsSection::Storage, std::nullopt,
+     "Internal", 0xffffffff, ActionType::Value, SettingsEditor::Action},
     {SettingsSection::Storage, SettingKey::StoragePriority,
      "Priority", 0xffffffff, ActionType::Action, SettingsEditor::Choice,
      SecondaryVisibility::Always, {}, kStoragePriorityChoices,

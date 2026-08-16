@@ -30,10 +30,8 @@ QString formatStorageCapacityValue(quint64 mb) {
 
 QString formatStorageCapacity(const StorageVolumeStatus& status) {
     if (!status.ready || status.totalMB == 0) return "--";
-    const quint64 usedMB =
-        (status.totalMB >= status.availableMB) ? (status.totalMB - status.availableMB) : 0;
     return QString("%1 / %2")
-        .arg(formatStorageCapacityValue(usedMB))
+        .arg(formatStorageCapacityValue(status.usedMB))
         .arg(formatStorageCapacityValue(status.totalMB));
 }
 
@@ -851,7 +849,9 @@ void SettingsView::onSecondaryRowActivated() {
                               });
         return;
     }
-    if (item.id == SettingID::SdCardCapacity || item.id == SettingID::UsbDiskCapacity) {
+    if (item.id == SettingID::InternalStorageCapacity ||
+        item.id == SettingID::SdCardCapacity ||
+        item.id == SettingID::UsbDiskCapacity) {
         return;
     }
 }
@@ -1048,9 +1048,11 @@ void SettingsView::triggerExitToCamera() {
 void SettingsView::refreshSecondaryRowsFromSnapshot(const SettingsSnapshot& snapshot) {
     StorageVolumeStatus sdStatus;
     StorageVolumeStatus usbStatus;
+    StorageVolumeStatus nandStatus;
     if (auto* storage = HardwareManager::instance().storage()) {
         sdStatus = storage->volumeStatus(StorageVolume::SdCard);
         usbStatus = storage->volumeStatus(StorageVolume::UsbDisk);
+        nandStatus = storage->volumeStatus(StorageVolume::Nand);
     }
 
     for (auto* row : m_secondaryRows) {
@@ -1063,6 +1065,10 @@ void SettingsView::refreshSecondaryRowsFromSnapshot(const SettingsSnapshot& snap
             continue;
         }
 
+        if (item.id == SettingID::InternalStorageCapacity) {
+            row->setValueText(formatStorageCapacity(nandStatus));
+            continue;
+        }
         if (item.id == SettingID::SdCardCapacity) {
             row->setValueText(formatStorageCapacity(sdStatus));
             continue;

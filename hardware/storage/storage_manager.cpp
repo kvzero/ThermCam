@@ -19,7 +19,7 @@
 
 const QString StorageManager::kSdCardMountPoint = "/mnt/sdcard";
 const QString StorageManager::kUsbDiskMountPoint = "/mnt/udisk";
-const QString StorageManager::kNandFallbackBase = "/root";
+const QString StorageManager::kNandMountPoint = "/userdata";
 const QString StorageManager::kDcimSubdir       = "DCIM/ThermalCam";
 
 /* ========================= File-Local Constants ========================= */
@@ -374,9 +374,12 @@ QStringList StorageManager::getAvailableMediaDirectories() {
         }
     }
 
-    const QString nandPath = kNandFallbackBase + "/" + kDcimSubdir;
-    if (QDir(nandPath).exists() && !directories.contains(nandPath)) {
-        directories.append(nandPath);
+    const StorageVolumeStatus nand = buildNandStatus();
+    if (nand.ready) {
+        const QString nandPath = nand.mountPoint + "/" + kDcimSubdir;
+        if (QDir(nandPath).exists() && !directories.contains(nandPath)) {
+            directories.append(nandPath);
+        }
     }
 
     return directories;
@@ -675,25 +678,26 @@ StorageVolumeStatus StorageManager::buildMountedVolumeStatus(const QString& moun
     if (mountPoint.isEmpty()) return status;
     if (!isMounted(mountPoint)) return status;
 
-    // "Ready" means mounted/present; capacity thresholds are evaluated by routing policy.
+    struct statvfs stat;
+    if (statvfs(mountPoint.toLocal8Bit().constData(), &stat) != 0) {
+        return status;
+    }
+
+    const quint64 blockSize = static_cast<quint64>(stat.f_frsize);
+    const quint64 totalBlocks = static_cast<quint64>(stat.f_blocks);
+    const quint64 freeBlocks = static_cast<quint64>(stat.f_bfree);
+
+    // f_bfree includes filesystem-reserved blocks; f_bavail does not.
     status.ready = true;
-    status.availableMB = getAvailableSpaceMB(mountPoint);
-    status.totalMB = getTotalSpaceMB(mountPoint);
+    status.totalMB = (totalBlocks * blockSize) / (1024 * 1024);
+    status.usedMB = ((totalBlocks >= freeBlocks ? totalBlocks - freeBlocks : 0) * blockSize) /
+                    (1024 * 1024);
+    status.availableMB = (static_cast<quint64>(stat.f_bavail) * blockSize) / (1024 * 1024);
     return status;
 }
 
 StorageVolumeStatus StorageManager::buildNandStatus() const {
-    StorageVolumeStatus status;
-    status.mountPoint = kNandFallbackBase;
-
-    if (!QDir(kNandFallbackBase).exists()) {
-        return status;
-    }
-
-    status.availableMB = getAvailableSpaceMB(kNandFallbackBase);
-    status.totalMB = getTotalSpaceMB(kNandFallbackBase);
-    status.ready = (status.availableMB > 0);
-    return status;
+    return buildMountedVolumeStatus(kNandMountPoint);
 }
 
 /* ========================= Internal Routing Helpers ========================= */
@@ -759,7 +763,7 @@ QString StorageManager::basePathForVolume(StorageVolume volume) const {
     case StorageVolume::UsbDisk:
         return m_usbDiskStatus.mountPoint.isEmpty() ? kUsbDiskMountPoint : m_usbDiskStatus.mountPoint;
     case StorageVolume::Nand:
-        return kNandFallbackBase;
+        return kNandMountPoint;
     }
     return QString();
 }

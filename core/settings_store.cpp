@@ -12,7 +12,7 @@
 namespace {
 constexpr int kSchemaVersion = 1;
 const char* kEnvConfigPath = "THERMAL_QT_CONFIG_FILE";
-const char* kDefaultConfigPath = "/root/.config/thermal_qt/settings.json";
+const char* kDefaultConfigPath = "/userdata/thermal_qt/settings.json";
 
 bool jsonNameToKey(const QString& name, SettingKey* outKey) {
     if (!outKey) return false;
