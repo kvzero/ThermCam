@@ -126,12 +126,12 @@ constexpr std::array<ItemSpec, static_cast<size_t>(SettingID::Count)> kItems = {
      SecondaryVisibility::Always, {}, kTemperatureUnitChoices,
      int(std::size(kTemperatureUnitChoices))},
 
-    {SettingsSection::Storage, std::nullopt,
-     "Internal", 0xffffffff, ActionType::Value, SettingsEditor::Action},
     {SettingsSection::Storage, SettingKey::StoragePriority,
      "Priority", 0xffffffff, ActionType::Action, SettingsEditor::Choice,
      SecondaryVisibility::Always, {}, kStoragePriorityChoices,
      int(std::size(kStoragePriorityChoices))},
+    {SettingsSection::Storage, std::nullopt,
+     "Internal", 0xffffffff, ActionType::Value, SettingsEditor::Action},
     {SettingsSection::Storage, std::nullopt,
      "SD Card", 0xffffffff, ActionType::Value, SettingsEditor::Action,
      SecondaryVisibility::RequiresSdCard},
@@ -162,6 +162,8 @@ constexpr std::array<ItemSpec, static_cast<size_t>(SettingID::Count)> kItems = {
       std::nullopt, 0xeb51, 50, true}},
     {SettingsSection::System, std::nullopt,
      "Date & Time", 0xffffffff, ActionType::Action, SettingsEditor::Action},
+    {SettingsSection::System, std::nullopt,
+     "Restore Defaults", 0xffe44848, ActionType::Action, SettingsEditor::Action},
 }};
 
 constexpr SectionSpec kSections[] = {

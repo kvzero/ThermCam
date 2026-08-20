@@ -73,6 +73,9 @@ public:
      */
     ApplyResult apply(const SettingsPatch& patch);
 
+    /** @brief Restores every persisted application setting to its registered default. */
+    ApplyResult restoreDefaults();
+
     /**
      * @brief Validates and applies runtime-only preview without persistence.
      *

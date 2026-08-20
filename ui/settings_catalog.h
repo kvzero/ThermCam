@@ -25,8 +25,8 @@ enum class SettingID {
     TemperatureUnit,
     OSDOverlay,
     HideMarkerWhenHudHidden,
-    InternalStorageCapacity,
     StoragePriority,
+    InternalStorageCapacity,
     SdCardCapacity,
     SdCardSafeEject,
     SdCardFormat,
@@ -36,6 +36,7 @@ enum class SettingID {
     ScreenBrightness,
     AudioVolume,
     Clock,
+    RestoreDefaults,
     Count
 };
 

@@ -771,6 +771,24 @@ void SettingsView::onSecondaryRowActivated() {
         });
         return;
     }
+    if (item.id == SettingID::RestoreDefaults) {
+        if (!app) return;
+        app->showTextModal(
+            QStringLiteral("RESTORE DEFAULTS?"),
+            QStringLiteral("All settings will be reset.\nMedia & calibration unchanged."),
+            [this, app]() {
+                m_applyInFlight = true;
+                const SettingsService::ApplyResult result =
+                    SettingsService::instance().restoreDefaults();
+                if (result.code == SettingsService::ApplyCode::Ok ||
+                    result.code == SettingsService::ApplyCode::NoChange) {
+                    app->showToast("SETTINGS RESTORED", ToastLevel::Success);
+                }
+            },
+            ModalLevel::Critical,
+            TextModalSize::Large);
+        return;
+    }
     if (item.id == SettingID::Palette) {
         emit EventBus::instance().cameraRequested(QRect(), TransitionMode::Instant);
         emit EventBus::instance().paletteSelectorRequested(true);

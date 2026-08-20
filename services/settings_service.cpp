@@ -163,6 +163,14 @@ SettingsService::ApplyResult SettingsService::apply(const SettingsPatch& patch) 
     return result;
 }
 
+SettingsService::ApplyResult SettingsService::restoreDefaults() {
+    SettingsPatch patch;
+    for (const SettingDescriptor& descriptor : kSettingRegistry) {
+        patch.values.insert(descriptor.key, descriptor.defaultValue);
+    }
+    return apply(patch);
+}
+
 SettingsService::PreviewResult SettingsService::preview(const SettingsPatch& patch) {
     PreviewResult result;
 

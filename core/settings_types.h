@@ -74,16 +74,16 @@ struct SettingDescriptor {
 };
 
 inline const std::array<SettingDescriptor, static_cast<size_t>(SettingKey::Count)> kSettingRegistry = {{
-    {SettingKey::Palette, "palette", QVariant::fromValue(2), SettingValueType::Integer},
+    {SettingKey::Palette, "palette", QVariant::fromValue(4), SettingValueType::Integer},
     {SettingKey::Emissivity, "emissivity", QVariant(0.95f), SettingValueType::Float,
      0.01, 1.0},
     {SettingKey::TemperatureUnit, "temperature_unit",
      QVariant::fromValue(static_cast<int>(TemperatureUnit::Celsius)),
      SettingValueType::Integer, 0, 1, SettingIntegerRangePolicy::Reject},
     {SettingKey::StoragePriority, "storage_priority",
-     QVariant::fromValue(static_cast<int>(StoragePriority::SdFirst)),
+     QVariant::fromValue(static_cast<int>(StoragePriority::UsbFirst)),
      SettingValueType::Integer, 0, 1, SettingIntegerRangePolicy::Reject},
-    {SettingKey::SaveMarkerInMedia, "save_marker_in_media", QVariant(true),
+    {SettingKey::SaveMarkerInMedia, "save_marker_in_media", QVariant(false),
      SettingValueType::Boolean},
     {SettingKey::HideMarkerWhenHudHidden, "hide_marker_when_hud_hidden", QVariant(false),
      SettingValueType::Boolean},
@@ -102,9 +102,9 @@ inline const std::array<SettingDescriptor, static_cast<size_t>(SettingKey::Count
      SettingValueType::Float, -40.0, 600.0},
     {SettingKey::LinearAgcMaxCelsius, "linear_agc_max_celsius", QVariant(80.0f),
      SettingValueType::Float, -40.0, 600.0},
-    {SettingKey::ScreenBrightnessPercent, "screen_brightness_percent", QVariant(80),
+    {SettingKey::ScreenBrightnessPercent, "screen_brightness_percent", QVariant(100),
      SettingValueType::Integer, 1, 100},
-    {SettingKey::AudioVolumePercent, "audio_volume_percent", QVariant(50),
+    {SettingKey::AudioVolumePercent, "audio_volume_percent", QVariant(20),
      SettingValueType::Integer, 0, 100}
 }};
 
