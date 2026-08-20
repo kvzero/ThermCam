@@ -7,19 +7,24 @@
 // #include "ui/overlays/quick_settings.h"
 #include "ui/overlays/clock_modal.h"
 #include "ui/overlays/modal_dialog.h"
+#include "ui/overlays/poweroff_overlay.h"
 #include "ui/overlays/toast_manager.h"
 #include "ui/overlays/transition_layer.h"
 
-#include <QApplication>
 #include <QGraphicsOpacityEffect>
 #include <QPropertyAnimation>
 #include <QStackedWidget>
 #include <QResizeEvent>
 #include <QShowEvent>
 #include <QTimer>
-#include <QDebug>
-#include <cstdlib>
+#include "hardware/hardware_manager.h"
+#include "hardware/sensor/battery_monitor.h"
 #include <utility>
+
+namespace {
+constexpr int kLowBatteryWarningPercent = 10;
+constexpr int kBatteryDepletedPercent = 0;
+}
 
 App::App(QWidget *parent) : QWidget(parent) {
     // Embedded fullscreen setup
@@ -103,6 +108,29 @@ void App::initLayer_Overlays() {
     m_toastManager = new ToastManager(this);
     m_toastManager->hide();
 
+    m_poweroffOverlay = new PoweroffOverlay(HardwareManager::instance().systemControl(), this);
+
+    const auto handlePowerStatus = [this](const BatteryStatus& status) {
+        if (status.isChargerConnected) {
+            m_lowBatteryWarningShown = false;
+            return;
+        }
+
+        if (!status.isPresent || !m_poweroffOverlay) return;
+
+        if (status.level <= kBatteryDepletedPercent) {
+            m_poweroffOverlay->start(PoweroffOverlay::Reason::BatteryDepleted);
+            return;
+        }
+
+        if (status.level <= kLowBatteryWarningPercent && !m_lowBatteryWarningShown) {
+            m_lowBatteryWarningShown = true;
+            showToast("Battery low\nPlease charge", ToastLevel::Warning);
+        }
+    };
+    connect(&EventBus::instance(), &EventBus::powerStatusChanged,
+            this, handlePowerStatus);
+
     m_startupMask = new QWidget(this);
     m_startupMask->setStyleSheet("background-color: black;");
     m_startupMaskOpacity = new QGraphicsOpacityEffect(m_startupMask);
@@ -121,6 +149,10 @@ void App::initLayer_Overlays() {
     m_startupMask->raise();
 
     connect(&EventBus::instance(), &EventBus::toastRequested, this, &App::showToast);
+
+    if (auto* battery = HardwareManager::instance().battery()) {
+        handlePowerStatus(battery->getBatteryInfo().status);
+    }
 }
 
 void App::connectHardwareKeys() {
@@ -134,7 +166,8 @@ void App::connectHardwareKeys() {
 }
 
 void App::handleHardwareKeyPressed() {
-    if ((m_textModal && m_textModal->isVisible()) ||
+    if ((m_poweroffOverlay && m_poweroffOverlay->isVisible()) ||
+        (m_textModal && m_textModal->isVisible()) ||
         (m_warningModal && m_warningModal->isVisible()) ||
         (m_clockModal && m_clockModal->isVisible())) {
         return;
@@ -146,7 +179,8 @@ void App::handleHardwareKeyPressed() {
 }
 
 void App::handleHardwareKeyShortPress() {
-    if ((m_textModal && m_textModal->isVisible()) ||
+    if ((m_poweroffOverlay && m_poweroffOverlay->isVisible()) ||
+        (m_textModal && m_textModal->isVisible()) ||
         (m_warningModal && m_warningModal->isVisible()) ||
         (m_clockModal && m_clockModal->isVisible())) {
         return;
@@ -158,11 +192,12 @@ void App::handleHardwareKeyShortPress() {
 }
 
 void App::handleHardwareKeyLongPress() {
-    showTextModal("POWER OFF CAMERA?", "The camera will turn off now.", []() {
-        if (std::system("poweroff") != 0) {
-            qWarning() << "[System] Shutdown command failed.";
+    if (m_poweroffOverlay && m_poweroffOverlay->isVisible()) return;
+
+    showTextModal("POWER OFF CAMERA?", "The camera will turn off now.", [this]() {
+        if (m_poweroffOverlay) {
+            m_poweroffOverlay->start(PoweroffOverlay::Reason::UserRequested);
         }
-        QApplication::quit();
     });
 }
 
@@ -387,6 +422,7 @@ void App::resizeEvent(QResizeEvent* event) {
     if (m_warningModal) m_warningModal->resize(s);
     if (m_clockModal) m_clockModal->resize(s);
     if (m_toastManager) m_toastManager->resize(s);
+    if (m_poweroffOverlay) m_poweroffOverlay->resize(s);
     if (m_startupMask) m_startupMask->resize(s);
 }
 

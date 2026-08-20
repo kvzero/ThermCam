@@ -49,6 +49,7 @@ SOURCES     +=  main.cpp \
                 ui/overlays/bubble_dialog.cpp \
                 ui/overlays/toast_manager.cpp \
                 ui/overlays/transition_layer.cpp \
+                ui/overlays/poweroff_overlay.cpp \
                 ui/overlays/palette_selector.cpp \
                 ui/widgets/gallery_topbar.cpp \
                 ui/widgets/scroll_indicator.cpp \
@@ -98,6 +99,7 @@ HEADERS     +=  core/global_context.h \
                 ui/overlays/bubble_dialog.h \
                 ui/overlays/toast_manager.h \
                 ui/overlays/transition_layer.h \
+                ui/overlays/poweroff_overlay.h \
                 ui/overlays/palette_selector.h \
                 ui/widgets/gallery_topbar.h \
                 ui/widgets/scroll_indicator.h \

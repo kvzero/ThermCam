@@ -6,6 +6,7 @@
 #include <optional>
 #include <core/types.h>
 #include "ui/overlays/modal_dialog.h"
+#include "ui/overlays/poweroff_overlay.h"
 #include "ui/settings_catalog.h"
 
 class QStackedWidget;
@@ -112,6 +113,8 @@ private:
     WarningModal* m_warningModal = nullptr;
     ClockModal* m_clockModal = nullptr;
     ToastManager* m_toastManager = nullptr;
+    PoweroffOverlay* m_poweroffOverlay = nullptr;
+    bool m_lowBatteryWarningShown = false;
 
     /* Startup black curtain: fades away once the fullscreen window is visible. */
     QWidget* m_startupMask = nullptr;
