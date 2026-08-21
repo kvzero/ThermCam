@@ -1,5 +1,6 @@
 #include "app.h"
 #include "core/event_bus.h"
+#include "services/auto_shutdown_controller.h"
 #include "ui/views/base_view.h"
 #include "ui/views/camera_view.h"
 #include "ui/views/gallery_view.h"
@@ -10,20 +11,30 @@
 #include "ui/overlays/poweroff_overlay.h"
 #include "ui/overlays/toast_manager.h"
 #include "ui/overlays/transition_layer.h"
+#include "hardware/hardware_manager.h"
+#include "hardware/sensor/battery_monitor.h"
 
 #include <QGraphicsOpacityEffect>
+#include <QApplication>
+#include <QEvent>
 #include <QPropertyAnimation>
 #include <QStackedWidget>
 #include <QResizeEvent>
 #include <QShowEvent>
 #include <QTimer>
-#include "hardware/hardware_manager.h"
-#include "hardware/sensor/battery_monitor.h"
+#include <QVariantAnimation>
 #include <utility>
 
 namespace {
 constexpr int kLowBatteryWarningPercent = 10;
 constexpr int kBatteryDepletedPercent = 0;
+constexpr int kAutoShutdownCountdownMilliseconds = 30 * 1000;
+
+QString autoShutdownCountdownText(int seconds) {
+    return QStringLiteral("Camera will turn off in %1:%2.")
+        .arg(seconds / 60, 2, 10, QLatin1Char('0'))
+        .arg(seconds % 60, 2, 10, QLatin1Char('0'));
+}
 }
 
 App::App(QWidget *parent) : QWidget(parent) {
@@ -35,6 +46,7 @@ App::App(QWidget *parent) : QWidget(parent) {
     initLayer_Stack();
     initLayer_Overlays();
     connectHardwareKeys();
+    qApp->installEventFilter(this);
 }
 
 App::~App() {
@@ -109,6 +121,49 @@ void App::initLayer_Overlays() {
     m_toastManager->hide();
 
     m_poweroffOverlay = new PoweroffOverlay(HardwareManager::instance().systemControl(), this);
+    m_autoShutdownController = new AutoShutdownController(this);
+    m_autoShutdownCountdownAnimation = new QVariantAnimation(this);
+    m_autoShutdownCountdownAnimation->setDuration(kAutoShutdownCountdownMilliseconds);
+    m_autoShutdownCountdownAnimation->setStartValue(kAutoShutdownCountdownMilliseconds);
+    m_autoShutdownCountdownAnimation->setEndValue(0);
+
+    connect(m_autoShutdownController, &AutoShutdownController::countdownRequested,
+            this, [this]() {
+                if (!m_textModal) return;
+
+                ModalSpec spec;
+                spec.level = ModalLevel::Normal;
+                spec.primaryText = "CONTINUE USING";
+                spec.showSecondaryButton = false;
+                spec.dismissOnMaskTap = true;
+                spec.onPrimaryAction = [this]() {
+                    m_autoShutdownCountdownAnimation->stop();
+                    m_autoShutdownController->notifyActivity();
+                };
+                spec.onSecondaryAction = spec.onPrimaryAction;
+
+                m_textModal->setContent("AUTO SHUTDOWN", autoShutdownCountdownText(30));
+                m_textModal->setSize(TextModalSize::Normal);
+                m_textModal->present(spec);
+                m_autoShutdownCountdownAnimation->stop();
+                m_autoShutdownCountdownAnimation->start();
+            });
+    connect(m_autoShutdownCountdownAnimation, &QVariantAnimation::valueChanged,
+            this, [this](const QVariant& value) {
+                if (m_textModal && m_textModal->isVisible()) {
+                    const int remainingMilliseconds = qMax(0, value.toInt());
+                    m_textModal->setContent("AUTO SHUTDOWN",
+                                            autoShutdownCountdownText((remainingMilliseconds + 999) / 1000));
+                }
+            });
+    connect(m_autoShutdownCountdownAnimation, &QVariantAnimation::finished,
+            m_autoShutdownController, &AutoShutdownController::commitShutdown);
+    connect(m_autoShutdownController, &AutoShutdownController::shutdownRequested,
+            this, [this]() {
+                if (m_poweroffOverlay) {
+                    m_poweroffOverlay->start(PoweroffOverlay::Reason::AutoShutdown);
+                }
+            });
 
     const auto handlePowerStatus = [this](const BatteryStatus& status) {
         if (status.isChargerConnected) {
@@ -166,6 +221,15 @@ void App::connectHardwareKeys() {
 }
 
 void App::handleHardwareKeyPressed() {
+    if (m_textModal && m_textModal->isVisible() &&
+        m_autoShutdownCountdownAnimation &&
+        m_autoShutdownCountdownAnimation->state() == QAbstractAnimation::Running) {
+        m_autoShutdownCountdownAnimation->stop();
+        m_textModal->dismiss();
+        m_autoShutdownController->notifyActivity();
+        return;
+    }
+
     if ((m_poweroffOverlay && m_poweroffOverlay->isVisible()) ||
         (m_textModal && m_textModal->isVisible()) ||
         (m_warningModal && m_warningModal->isVisible()) ||
@@ -173,9 +237,22 @@ void App::handleHardwareKeyPressed() {
         return;
     }
 
+    if (m_autoShutdownController) m_autoShutdownController->notifyActivity();
+
     if (auto* view = activeView()) {
         view->resetTransientUi();
     }
+}
+
+bool App::eventFilter(QObject* watched, QEvent* event) {
+    if (m_autoShutdownController &&
+        (!m_autoShutdownCountdownAnimation ||
+         m_autoShutdownCountdownAnimation->state() != QAbstractAnimation::Running) &&
+        (event->type() == QEvent::MouseButtonPress || event->type() == QEvent::TouchBegin)) {
+        m_autoShutdownController->notifyActivity();
+    }
+
+    return QWidget::eventFilter(watched, event);
 }
 
 void App::handleHardwareKeyShortPress() {

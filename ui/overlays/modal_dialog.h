@@ -19,6 +19,8 @@ struct ModalSpec {
     ModalLevel level = ModalLevel::Critical;
     QString primaryText = "CONFIRM";
     QString secondaryText = "CANCEL";
+    /** @brief When false, the primary action spans the full button row. */
+    bool showSecondaryButton = true;
     bool dismissOnMaskTap = true;
     std::function<void()> onPrimaryAction;
     std::function<void()> onSecondaryAction;

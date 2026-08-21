@@ -169,7 +169,9 @@ void ModalBase::paintEvent(QPaintEvent* /*event*/) {
         p.drawText(rect, Qt::AlignCenter, text);
     };
 
-    drawButton(m_secondaryRect, m_spec.secondaryText, m_cfg.BTN_NEUTRAL, secondaryPressed);
+    if (m_spec.showSecondaryButton) {
+        drawButton(m_secondaryRect, m_spec.secondaryText, m_cfg.BTN_NEUTRAL, secondaryPressed);
+    }
     drawButton(m_primaryRect, m_spec.primaryText, primaryButtonColor(), primaryPressed);
 
     p.restore();
@@ -208,11 +210,14 @@ void ModalBase::relayout() {
     const int contentTop = m_panelRect.top();
     m_contentRect = QRect(contentLeft, contentTop, contentW, contentSize.height());
 
-    const int buttonGap = sidePad;
-    const int btnW = (contentW - buttonGap) / 2;
+    const int buttonGap = m_spec.showSecondaryButton ? sidePad : 0;
+    const int btnW = (contentW - buttonGap) / (m_spec.showSecondaryButton ? 2 : 1);
     const int btnY = m_contentRect.top() + m_contentRect.height();
-    m_secondaryRect = QRect(contentLeft, btnY, btnW, buttonH);
-    m_primaryRect = QRect(contentLeft + btnW + buttonGap, btnY, btnW, buttonH);
+    m_secondaryRect = m_spec.showSecondaryButton
+                          ? QRect(contentLeft, btnY, btnW, buttonH)
+                          : QRect();
+    m_primaryRect = QRect(contentLeft + (m_spec.showSecondaryButton ? btnW + buttonGap : 0),
+                          btnY, btnW, buttonH);
 }
 
 ModalBase::PressTarget ModalBase::zoneAt(const QPoint& pos) const {

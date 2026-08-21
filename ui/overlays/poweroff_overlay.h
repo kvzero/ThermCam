@@ -23,6 +23,7 @@ class PoweroffOverlay : public QWidget {
 public:
     enum class Reason {
         UserRequested,
+        AutoShutdown,
         BatteryDepleted
     };
 

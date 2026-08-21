@@ -106,6 +106,7 @@ void PoweroffOverlay::setReason(Reason reason) {
     case Reason::BatteryDepleted:
         m_message = QStringLiteral("Battery depleted. Shutting down...");
         return;
+    case Reason::AutoShutdown:
     case Reason::UserRequested:
     default:
         m_message = QStringLiteral("Shutting down...");

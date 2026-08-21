@@ -84,6 +84,14 @@ constexpr ChoiceSpec kStoragePriorityChoices[] = {
     {"usb_first", "USB Disk First", static_cast<int>(StoragePriority::UsbFirst)},
 };
 
+constexpr ChoiceSpec kAutoShutdownChoices[] = {
+    {"never", "Never", static_cast<int>(AutoShutdownTimeout::Never)},
+    {"5_minutes", "5 Minutes", static_cast<int>(AutoShutdownTimeout::FiveMinutes)},
+    {"15_minutes", "15 Minutes", static_cast<int>(AutoShutdownTimeout::FifteenMinutes)},
+    {"30_minutes", "30 Minutes", static_cast<int>(AutoShutdownTimeout::ThirtyMinutes)},
+    {"60_minutes", "60 Minutes", static_cast<int>(AutoShutdownTimeout::SixtyMinutes)},
+};
+
 constexpr std::array<ItemSpec, static_cast<size_t>(SettingID::Count)> kItems = {{
     {SettingsSection::Camera, SettingKey::Emissivity,
      "Emissivity", 0xffffffff, ActionType::Action, SettingsEditor::Stepper,
@@ -151,6 +159,10 @@ constexpr std::array<ItemSpec, static_cast<size_t>(SettingID::Count)> kItems = {
      "Format USB Disk", 0xffe44848, ActionType::Action, SettingsEditor::Action,
      SecondaryVisibility::RequiresUsbDisk},
 
+    {SettingsSection::System, SettingKey::AutoShutdownTimeout,
+     "Auto Shutdown", 0xffffffff, ActionType::Action, SettingsEditor::Choice,
+     SecondaryVisibility::Always, {}, kAutoShutdownChoices,
+     int(std::size(kAutoShutdownChoices))},
     {SettingsSection::System, SettingKey::ScreenBrightnessPercent, "Screen Brightness", 0xffffffff,
      ActionType::Value, SettingsEditor::Slider, SecondaryVisibility::Always,
      {1.0, NumberFormat::Percent, PeerBound::None,

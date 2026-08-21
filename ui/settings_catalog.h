@@ -33,6 +33,7 @@ enum class SettingID {
     UsbDiskCapacity,
     UsbDiskSafeEject,
     UsbDiskFormat,
+    AutoShutdown,
     ScreenBrightness,
     AudioVolume,
     Clock,

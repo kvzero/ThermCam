@@ -10,10 +10,12 @@
 #include "ui/settings_catalog.h"
 
 class QStackedWidget;
+class QEvent;
 class BaseView;
 class QGraphicsOpacityEffect;
 class QPropertyAnimation;
 class QShowEvent;
+class QVariantAnimation;
 
 class GalleryView;
 class SettingsView;
@@ -23,6 +25,7 @@ class TransitionLayer;
 class TextModal;
 class WarningModal;
 class ClockModal;
+class AutoShutdownController;
 
 /**
  * @brief The Root UI Container (Body).
@@ -82,6 +85,7 @@ protected:
      */
     void resizeEvent(QResizeEvent* event) override;
     void showEvent(QShowEvent* event) override;
+    bool eventFilter(QObject* watched, QEvent* event) override;
 
 private:
     void initLayer_Stack();
@@ -114,6 +118,8 @@ private:
     ClockModal* m_clockModal = nullptr;
     ToastManager* m_toastManager = nullptr;
     PoweroffOverlay* m_poweroffOverlay = nullptr;
+    AutoShutdownController* m_autoShutdownController = nullptr;
+    QVariantAnimation* m_autoShutdownCountdownAnimation = nullptr;
     bool m_lowBatteryWarningShown = false;
 
     /* Startup black curtain: fades away once the fullscreen window is visible. */

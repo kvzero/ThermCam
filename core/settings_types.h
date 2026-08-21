@@ -28,6 +28,7 @@ enum class SettingKey : quint8 {
     LinearAgcMaxCelsius,
     ScreenBrightnessPercent,
     AudioVolumePercent,
+    AutoShutdownTimeout,
     Count
 };
 
@@ -48,6 +49,32 @@ enum class AgcMode : quint8 {
     HistEqAuto = 0,
     LinearManual = 1
 };
+
+/** @brief Persisted inactivity interval used by AutoShutdownController. */
+enum class AutoShutdownTimeout : quint8 {
+    Never = 0,
+    FiveMinutes,
+    FifteenMinutes,
+    ThirtyMinutes,
+    SixtyMinutes
+};
+
+/** @brief Resolves the selected auto-shutdown interval to whole minutes. */
+inline int autoShutdownTimeoutMinutes(AutoShutdownTimeout timeout) {
+    switch (timeout) {
+    case AutoShutdownTimeout::FiveMinutes:
+        return 5;
+    case AutoShutdownTimeout::FifteenMinutes:
+        return 15;
+    case AutoShutdownTimeout::ThirtyMinutes:
+        return 30;
+    case AutoShutdownTimeout::SixtyMinutes:
+        return 60;
+    case AutoShutdownTimeout::Never:
+    default:
+        return 0;
+    }
+}
 
 /** @brief Persisted payload category used for generic normalization. */
 enum class SettingValueType : quint8 {
@@ -105,7 +132,10 @@ inline const std::array<SettingDescriptor, static_cast<size_t>(SettingKey::Count
     {SettingKey::ScreenBrightnessPercent, "screen_brightness_percent", QVariant(100),
      SettingValueType::Integer, 1, 100},
     {SettingKey::AudioVolumePercent, "audio_volume_percent", QVariant(20),
-     SettingValueType::Integer, 0, 100}
+     SettingValueType::Integer, 0, 100},
+    {SettingKey::AutoShutdownTimeout, "auto_shutdown_timeout",
+     QVariant::fromValue(static_cast<int>(AutoShutdownTimeout::Never)),
+     SettingValueType::Integer, 0, 4, SettingIntegerRangePolicy::Reject}
 }};
 
 inline const SettingDescriptor* settingDescriptorForKey(SettingKey key) {
@@ -141,6 +171,7 @@ Q_DECLARE_METATYPE(SettingKey)
 Q_DECLARE_METATYPE(TemperatureUnit)
 Q_DECLARE_METATYPE(StoragePriority)
 Q_DECLARE_METATYPE(AgcMode)
+Q_DECLARE_METATYPE(AutoShutdownTimeout)
 Q_DECLARE_METATYPE(SettingsSnapshot)
 Q_DECLARE_METATYPE(SettingsPatch)
 Q_DECLARE_METATYPE(SettingsChangeEvent)
