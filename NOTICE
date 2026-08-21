@@ -1,0 +1,13 @@
+ThermCam
+Copyright (C) 2026 kvzero
+
+Except for hardware/imaging/seekcam, which is provided under its own
+Seek Thermal SDK terms, the original source code in this repository is
+licensed under the GNU General Public License, version 3 only. See LICENSE.
+
+Additional term under GNU GPL version 3 section 7(b):
+
+When conveying a modified version with an About screen or equivalent
+user-visible legal notice, you must preserve the attribution
+"© 2026 kvzero". Additional contributor attributions may be displayed
+alongside it.

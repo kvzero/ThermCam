@@ -38,6 +38,7 @@ enum class SettingID {
     AudioVolume,
     Clock,
     RestoreDefaults,
+    About,
     Count
 };
 

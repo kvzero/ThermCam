@@ -791,6 +791,20 @@ void SettingsView::onSecondaryRowActivated() {
             TextModalSize::Large);
         return;
     }
+    if (item.id == SettingID::About) {
+        if (!app) return;
+        ModalSpec spec;
+        spec.level = ModalLevel::Normal;
+        spec.primaryText = "CLOSE";
+        spec.showSecondaryButton = false;
+        app->showTextModal(QStringLiteral("ABOUT"),
+                           QStringLiteral("ThermCam · v0.1.0\n"
+                                          "github.com/kvzero/ThermCam\n"
+                                          "© 2026 kvzero · GPLv3"),
+                           spec,
+                           TextModalSize::Large);
+        return;
+    }
     if (item.id == SettingID::Palette) {
         emit EventBus::instance().cameraRequested(QRect(), TransitionMode::Instant);
         emit EventBus::instance().paletteSelectorRequested(true);

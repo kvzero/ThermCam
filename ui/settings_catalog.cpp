@@ -121,7 +121,7 @@ constexpr std::array<ItemSpec, static_cast<size_t>(SettingID::Count)> kItems = {
      ActionType::Action, SettingsEditor::Stepper, SecondaryVisibility::Always,
      {0.1, NumberFormat::SignedCelsius1}},
     {SettingsSection::Camera, std::nullopt,
-     "Flat-Scene Correction", 0xffffffff, ActionType::Action, SettingsEditor::Action},
+     "Flat-Scene Correction", 0xffe44848, ActionType::Action, SettingsEditor::Action},
 
     {SettingsSection::View, SettingKey::Palette,
      "Palette", 0xffffffff, ActionType::Action, SettingsEditor::Action},
@@ -176,6 +176,8 @@ constexpr std::array<ItemSpec, static_cast<size_t>(SettingID::Count)> kItems = {
      "Date & Time", 0xffffffff, ActionType::Action, SettingsEditor::Action},
     {SettingsSection::System, std::nullopt,
      "Restore Defaults", 0xffe44848, ActionType::Action, SettingsEditor::Action},
+    {SettingsSection::System, std::nullopt,
+     "About", 0xffffffff, ActionType::Action, SettingsEditor::Action},
 }};
 
 constexpr SectionSpec kSections[] = {
