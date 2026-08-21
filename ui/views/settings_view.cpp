@@ -738,20 +738,21 @@ void SettingsView::onSecondaryRowActivated() {
 
     if (item.id == SettingID::TriggerFlatSceneCorrection) {
         if (!app) return;
+        ModalSpec spec;
+        spec.onPrimaryAction = [app]() {
+            QString error;
+            if (!SettingsService::instance().triggerFlatSceneCorrection(&error)) {
+                qWarning() << "[Settings] Flat-scene correction failed:" << error;
+                app->showToast("FLAT-SCENE CORRECTION FAILED", ToastLevel::Error);
+                return;
+            }
+            app->showToast("FLAT-SCENE CORRECTION TRIGGERED", ToastLevel::Success);
+        };
         app->showTextModal(
             QStringLiteral("FLAT-SCENE CORRECTION"),
             QStringLiteral("Cover the lens with a uniform surface before continuing.\n"
                            "Incorrect setup may cause ghosting."),
-            [app]() {
-                QString error;
-                if (!SettingsService::instance().triggerFlatSceneCorrection(&error)) {
-                    qWarning() << "[Settings] Flat-scene correction failed:" << error;
-                    app->showToast("FLAT-SCENE CORRECTION FAILED", ToastLevel::Error);
-                    return;
-                }
-                app->showToast("FLAT-SCENE CORRECTION TRIGGERED", ToastLevel::Success);
-            },
-            ModalLevel::Critical,
+            spec,
             TextModalSize::Large);
         return;
     }
@@ -773,19 +774,20 @@ void SettingsView::onSecondaryRowActivated() {
     }
     if (item.id == SettingID::RestoreDefaults) {
         if (!app) return;
+        ModalSpec spec;
+        spec.onPrimaryAction = [this, app]() {
+            m_applyInFlight = true;
+            const SettingsService::ApplyResult result =
+                SettingsService::instance().restoreDefaults();
+            if (result.code == SettingsService::ApplyCode::Ok ||
+                result.code == SettingsService::ApplyCode::NoChange) {
+                app->showToast("SETTINGS RESTORED", ToastLevel::Success);
+            }
+        };
         app->showTextModal(
             QStringLiteral("RESTORE DEFAULTS?"),
             QStringLiteral("All settings will be reset.\nMedia & calibration unchanged."),
-            [this, app]() {
-                m_applyInFlight = true;
-                const SettingsService::ApplyResult result =
-                    SettingsService::instance().restoreDefaults();
-                if (result.code == SettingsService::ApplyCode::Ok ||
-                    result.code == SettingsService::ApplyCode::NoChange) {
-                    app->showToast("SETTINGS RESTORED", ToastLevel::Success);
-                }
-            },
-            ModalLevel::Critical,
+            spec,
             TextModalSize::Large);
         return;
     }
@@ -799,33 +801,35 @@ void SettingsView::onSecondaryRowActivated() {
         const QString targetName = sdCard ? QStringLiteral("SD Card")
                                           : QStringLiteral("USB Disk");
         if (!app) return;
+        ModalSpec spec;
+        spec.level = ModalLevel::Normal;
+        spec.onPrimaryAction = [this, app, targetName, sdCard]() {
+            auto* storage = HardwareManager::instance().storage();
+            if (!storage) {
+                app->showToast("STORAGE UNAVAILABLE", ToastLevel::Error);
+                return;
+            }
+
+            QString error;
+            const StorageVolume targetVolume = sdCard
+                                                   ? StorageVolume::SdCard
+                                                   : StorageVolume::UsbDisk;
+            const bool ok = storage->safeEjectVolume(targetVolume, &error);
+
+            if (!ok) {
+                qWarning() << "[Settings] Safe eject failed:" << targetName
+                           << "reason:" << error;
+                app->showToast(targetName + " eject failed", ToastLevel::Error);
+            } else {
+                app->showToast(targetName + " can be removed", ToastLevel::Success);
+            }
+
+            refreshStorageRowsIfVisible();
+        };
         app->showTextModal(
             QStringLiteral("EJECT %1?").arg(targetName.toUpper()),
             QStringLiteral("Wait for confirmation before removing it."),
-            [this, app, targetName, sdCard]() {
-                auto* storage = HardwareManager::instance().storage();
-                if (!storage) {
-                    app->showToast("STORAGE UNAVAILABLE", ToastLevel::Error);
-                    return;
-                }
-
-                QString error;
-                const StorageVolume targetVolume = sdCard
-                                                       ? StorageVolume::SdCard
-                                                       : StorageVolume::UsbDisk;
-                const bool ok = storage->safeEjectVolume(targetVolume, &error);
-
-                if (!ok) {
-                    qWarning() << "[Settings] Safe eject failed:" << targetName
-                               << "reason:" << error;
-                    app->showToast(targetName + " eject failed", ToastLevel::Error);
-                } else {
-                    app->showToast(targetName + " can be removed", ToastLevel::Success);
-                }
-
-                refreshStorageRowsIfVisible();
-            },
-            ModalLevel::Normal,
+            spec,
             TextModalSize::Normal);
         return;
     }

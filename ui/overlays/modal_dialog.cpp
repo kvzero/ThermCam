@@ -10,6 +10,14 @@
 #include <QPainterPath>
 #include <QRadialGradient>
 #include <QEasingCurve>
+#include <QTextLayout>
+#include <QTextOption>
+
+#include <utility>
+
+namespace {
+constexpr qreal kBodyParagraphGapLineRatio = 0.25;
+}
 
 ModalBase::ModalBase(QWidget* parent) : QWidget(parent) {
     hide();
@@ -77,6 +85,8 @@ bool ModalBase::contentRelease(const QPoint& /*contentPos*/) {
 }
 
 void ModalBase::contentCancel() {}
+
+void ModalBase::onDismissed() {}
 
 void ModalBase::mousePressEvent(QMouseEvent* event) {
     if (event->button() != Qt::LeftButton) {
@@ -362,11 +372,27 @@ void ModalBase::onPopAnimFinished() {
     if (!m_isDismissing) return;
     m_isDismissing = false;
     hide();
+    onDismissed();
 }
 
 /* --- Text Modal Dialog --- */
 
 TextModal::TextModal(QWidget* parent) : ModalBase(parent) {}
+
+void TextModal::present(const QString& title,
+                        const QString& body,
+                        const ModalSpec& spec,
+                        TextModalSize size) {
+    if (isVisible()) {
+        m_pendingPresentation = PendingPresentation{title, body, spec, size};
+        dismiss();
+        return;
+    }
+
+    setContent(title, body);
+    setSize(size);
+    ModalBase::present(spec);
+}
 
 void TextModal::setContent(const QString& title, const QString& body) {
     if (m_title == title && m_body == body) return;
@@ -379,6 +405,16 @@ void TextModal::setSize(TextModalSize size) {
     if (m_size == size) return;
     m_size = size;
     update();
+}
+
+void TextModal::onDismissed() {
+    if (!m_pendingPresentation) return;
+
+    const PendingPresentation presentation = std::move(*m_pendingPresentation);
+    m_pendingPresentation.reset();
+    setContent(presentation.title, presentation.body);
+    setSize(presentation.size);
+    ModalBase::present(presentation.spec);
 }
 
 ModalBase::ContentLayout TextModal::contentLayoutHint(const QSize& /*viewportSize*/) const {
@@ -425,26 +461,56 @@ void TextModal::paintTextContent(QPainter& p,
                                  titleMetrics.boundingRect(measurementRect,
                                                            textFlags,
                                                            m_title).height());
-    const int bodyHeight = qMax(bodyMetrics.height(),
-                                bodyMetrics.boundingRect(measurementRect,
-                                                         textFlags,
-                                                         m_body).height());
+
+    const auto layoutParagraph = [&contentRect, &bodyFont, alignment](const QString& paragraph,
+                                                                        qreal top,
+                                                                        QPainter* painter) {
+        QTextLayout layout(paragraph, bodyFont);
+        QTextOption option;
+        option.setAlignment(alignment);
+        option.setWrapMode(QTextOption::WrapAtWordBoundaryOrAnywhere);
+        layout.setTextOption(option);
+
+        layout.beginLayout();
+        qreal height = 0.0;
+        while (true) {
+            QTextLine line = layout.createLine();
+            if (!line.isValid()) break;
+            line.setLineWidth(contentRect.width());
+            line.setPosition(QPointF(0.0, height));
+            height += line.height();
+        }
+        layout.endLayout();
+
+        if (painter) layout.draw(painter, QPointF(contentRect.left(), top));
+        return height;
+    };
+
+    const QStringList paragraphs = m_body.split('\n', Qt::KeepEmptyParts);
+    const qreal paragraphGap = bodyMetrics.lineSpacing() * kBodyParagraphGapLineRatio;
+    qreal bodyHeight = 0.0;
+    for (int index = 0; index < paragraphs.size(); ++index) {
+        bodyHeight += layoutParagraph(paragraphs.at(index), 0.0, nullptr);
+        if (index + 1 < paragraphs.size()) bodyHeight += paragraphGap;
+    }
+
     const int sectionGap = qRound(contentRect.height() * 0.08);
-    const int totalHeight = titleHeight + sectionGap + bodyHeight;
-    int y = contentRect.top() + (contentRect.height() - totalHeight) / 2 + opticalYOffset;
+    const qreal totalHeight = titleHeight + sectionGap + bodyHeight;
+    qreal y = contentRect.top() + (contentRect.height() - totalHeight) / 2 + opticalYOffset;
 
     p.setFont(titleFont);
     p.setPen(Qt::white);
-    p.drawText(QRect(contentRect.left(), y, contentRect.width(), titleHeight),
+    p.drawText(QRect(contentRect.left(), qRound(y), contentRect.width(), titleHeight),
                textFlags,
                m_title);
 
     y += titleHeight + sectionGap;
     p.setFont(bodyFont);
     p.setPen(QColor(255, 255, 255, 210));
-    p.drawText(QRect(contentRect.left(), y, contentRect.width(), bodyHeight),
-               textFlags,
-               m_body);
+    for (int index = 0; index < paragraphs.size(); ++index) {
+        y += layoutParagraph(paragraphs.at(index), y, &p);
+        if (index + 1 < paragraphs.size()) y += paragraphGap;
+    }
 }
 
 WarningModal::WarningModal(QWidget* parent) : TextModal(parent) {

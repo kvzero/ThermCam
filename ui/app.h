@@ -67,10 +67,10 @@ public:
 
     /* --- Accessors for System Overlays --- */
     // QuickSettings* quickSettings() const;
+    /** @brief Presents the shared TextModal using the supplied interaction contract. */
     void showTextModal(const QString& title,
                        const QString& body,
-                       std::function<void()> onPrimaryAction,
-                       ModalLevel level = ModalLevel::Critical,
+                       const ModalSpec& spec,
                        TextModalSize size = TextModalSize::Normal);
     void showWarningModal(const QString& title,
                           const QString& body,

@@ -142,9 +142,7 @@ void App::initLayer_Overlays() {
                 };
                 spec.onSecondaryAction = spec.onPrimaryAction;
 
-                m_textModal->setContent("AUTO SHUTDOWN", autoShutdownCountdownText(30));
-                m_textModal->setSize(TextModalSize::Normal);
-                m_textModal->present(spec);
+                showTextModal("AUTO SHUTDOWN", autoShutdownCountdownText(30), spec);
                 m_autoShutdownCountdownAnimation->stop();
                 m_autoShutdownCountdownAnimation->start();
             });
@@ -271,30 +269,22 @@ void App::handleHardwareKeyShortPress() {
 void App::handleHardwareKeyLongPress() {
     if (m_poweroffOverlay && m_poweroffOverlay->isVisible()) return;
 
-    showTextModal("POWER OFF CAMERA?", "The camera will turn off now.", [this]() {
+    ModalSpec spec;
+    spec.onPrimaryAction = [this]() {
         if (m_poweroffOverlay) {
             m_poweroffOverlay->start(PoweroffOverlay::Reason::UserRequested);
         }
-    });
+    };
+    showTextModal("POWER OFF CAMERA?", "The camera will turn off now.", spec);
 }
 
 void App::showTextModal(const QString& title,
                         const QString& body,
-                        std::function<void()> onPrimaryAction,
-                        ModalLevel level,
+                        const ModalSpec& spec,
                         TextModalSize size) {
     if (m_textModal) {
         m_textModal->raise();
-        ModalSpec spec;
-        spec.level = level;
-        spec.primaryText = "CONFIRM";
-        spec.secondaryText = "CANCEL";
-        spec.dismissOnMaskTap = true;
-        spec.onPrimaryAction = std::move(onPrimaryAction);
-
-        m_textModal->setContent(title, body);
-        m_textModal->setSize(size);
-        m_textModal->present(spec);
+        m_textModal->present(title, body, spec, size);
     }
     if (m_toastManager && m_toastManager->isVisible()) {
         m_toastManager->raise();

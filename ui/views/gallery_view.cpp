@@ -87,12 +87,14 @@ GalleryView::GalleryView(QWidget* parent) : BaseView(parent) {
 
     connect(m_viewer, &MediaViewer::deleteRequested, this, [this](int index) {
         if (auto* app = qobject_cast<App*>(window())) {
-            app->showTextModal("DELETE THIS ITEM?",
-                               "This action cannot be undone.",
-                               [this, index]() {
+            ModalSpec spec;
+            spec.onPrimaryAction = [this, index]() {
                 GalleryService::instance().deleteMedia(index);
                 m_viewer->handleDeletion();
-            });
+            };
+            app->showTextModal("DELETE THIS ITEM?",
+                               "This action cannot be undone.",
+                               spec);
         }
     });
 
@@ -539,9 +541,8 @@ void GalleryView::requestDeleteSelected() {
     if (m_selectedItems.isEmpty()) return;
 
     if (auto* app = qobject_cast<App*>(window())) {
-        app->showTextModal("DELETE SELECTION?",
-                           "This action cannot be undone.",
-                           [this]() {
+        ModalSpec spec;
+        spec.onPrimaryAction = [this]() {
             QList<int> sortedList = m_selectedItems.values();
             std::sort(sortedList.begin(), sortedList.end(), std::greater<int>());
 
@@ -555,7 +556,10 @@ void GalleryView::requestDeleteSelected() {
 
             enforceStableState();
             update();
-        });
+        };
+        app->showTextModal("DELETE SELECTION?",
+                           "This action cannot be undone.",
+                           spec);
     }
 }
 

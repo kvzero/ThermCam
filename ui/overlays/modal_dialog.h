@@ -6,6 +6,7 @@
 #include <QPropertyAnimation>
 #include <QSizeF>
 #include <functional>
+#include <optional>
 
 class QMouseEvent;
 class QPainter;
@@ -72,6 +73,8 @@ protected:
     virtual bool contentMove(const QPoint& contentPos);
     virtual bool contentRelease(const QPoint& contentPos);
     virtual void contentCancel();
+    /** @brief Called after the exit animation finishes and the modal is hidden. */
+    virtual void onDismissed();
     QRect contentGeometry() const { return m_contentRect; }
 
     void mousePressEvent(QMouseEvent* event) override;
@@ -171,6 +174,12 @@ public:
     ~TextModal() override = default;
 
     /* --- Public API --- */
+    using ModalBase::present;
+    /** @brief Presents text immediately or after replacing the visible text modal. */
+    void present(const QString& title,
+                 const QString& body,
+                 const ModalSpec& spec,
+                 TextModalSize size);
     void setContent(const QString& title, const QString& body);
     void setSize(TextModalSize size);
 
@@ -180,12 +189,21 @@ protected:
     void paintTextContent(QPainter& p,
                           const QRect& contentRect,
                           Qt::Alignment alignment) const;
+    void onDismissed() override;
 
 private:
     /* --- Runtime State --- */
+    struct PendingPresentation {
+        QString title;
+        QString body;
+        ModalSpec spec;
+        TextModalSize size;
+    };
+
     QString m_title;
     QString m_body;
     TextModalSize m_size = TextModalSize::Normal;
+    std::optional<PendingPresentation> m_pendingPresentation;
 };
 
 /**
