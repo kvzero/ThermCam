@@ -434,6 +434,31 @@ Please charge</source>
         <translation>关于</translation>
     </message>
     <message>
+        <location filename="../ui/settings_catalog.cpp" line="239"/>
+        <source>System Tools</source>
+        <translation>系统工具</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings_catalog.cpp" line="243"/>
+        <source>Initialize Userdata</source>
+        <translation>初始化用户数据</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings_catalog.cpp" line="247"/>
+        <source>Haptic Motor Calibration</source>
+        <translation>线性马达校准</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings_catalog.cpp" line="251"/>
+        <source>Software Update</source>
+        <translation>软件更新</translation>
+    </message>
+    <message>
+        <location filename="../ui/settings_catalog.cpp" line="255"/>
+        <source>Reboot to Loader</source>
+        <translation>重启至 Loader</translation>
+    </message>
+    <message>
         <location filename="../ui/settings_catalog.cpp" line="233"/>
         <source>Camera</source>
         <translation>相机</translation>

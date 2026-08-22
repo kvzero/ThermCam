@@ -188,40 +188,40 @@ void SettingsPrimaryRow::paintEvent(QPaintEvent* /*event*/) {
     }
 }
 
-SettingsSecondaryRow::SettingsSecondaryRow(QWidget* parent) : SettingsBaseRow(parent) {}
+SettingsItemRow::SettingsItemRow(QWidget* parent) : SettingsBaseRow(parent) {}
 
-void SettingsSecondaryRow::setData(const SecondaryItemData& data) {
+void SettingsItemRow::setData(const SettingsItemData& data) {
     m_data = data;
     m_valueText.clear();
     m_toggleOn = false;
     update();
 }
 
-void SettingsSecondaryRow::setBottomDividerVisible(bool visible) {
+void SettingsItemRow::setBottomDividerVisible(bool visible) {
     if (m_showBottomDivider == visible) return;
     m_showBottomDivider = visible;
     update();
 }
 
-void SettingsSecondaryRow::setToggleOn(bool on) {
+void SettingsItemRow::setToggleOn(bool on) {
     if (m_toggleOn == on) return;
     m_toggleOn = on;
     update();
 }
 
-void SettingsSecondaryRow::setValueText(const QString& valueText) {
+void SettingsItemRow::setValueText(const QString& valueText) {
     if (m_valueText == valueText) return;
     m_valueText = valueText;
     update();
 }
 
-void SettingsSecondaryRow::toggleVisualState() {
+void SettingsItemRow::toggleVisualState() {
     if (m_data.type != ActionType::Toggle) return;
     m_toggleOn = !m_toggleOn;
     update();
 }
 
-QRect SettingsSecondaryRow::toggleTrackRect() const {
+QRect SettingsItemRow::toggleTrackRect() const {
     const int h = height();
     const int w = width();
     const int margin = qRound(w * 0.08);
@@ -233,17 +233,17 @@ QRect SettingsSecondaryRow::toggleTrackRect() const {
     return QRect(x, y, trackW, trackH);
 }
 
-QRect SettingsSecondaryRow::toggleHitRect() const {
+QRect SettingsItemRow::toggleHitRect() const {
     const int pad = qMax(6, qRound(height() * 0.14));
     return toggleTrackRect().adjusted(-pad, -pad, pad, pad);
 }
 
-bool SettingsSecondaryRow::isActivationArmed(const QPoint& localPos) const {
+bool SettingsItemRow::isActivationArmed(const QPoint& localPos) const {
     if (m_data.type != ActionType::Toggle) return true;
     return toggleHitRect().contains(localPos);
 }
 
-void SettingsSecondaryRow::paintEvent(QPaintEvent* /*event*/) {
+void SettingsItemRow::paintEvent(QPaintEvent* /*event*/) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
 

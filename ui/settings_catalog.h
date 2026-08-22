@@ -36,15 +36,25 @@ enum class SettingID {
     AutoShutdown,
     ScreenBrightness,
     AudioVolume,
-    Clock,
     Language,
+    Clock,
+    SystemTools,
     RestoreDefaults,
     About,
+    InitializeUserdata,
+    CalibrateHapticMotor,
+    SoftwareUpdate,
+    RebootToLoader,
     Count
 };
 
-/** @brief Settings page identity used by the menu catalog. */
-enum class SettingsSection { Camera, View, Storage, System };
+/**
+ * @brief Identity for one settings-item group.
+ *
+ * The primary menu exposes Camera through System; SystemTools is reached from
+ * its System entry and rendered by the same item-list mechanism full screen.
+ */
+enum class SettingsSection { Camera, View, Storage, System, SystemTools };
 
 /** @brief Render/action contract for secondary row trailing affordance. */
 enum class ActionType { Toggle, Value, Action };
@@ -52,8 +62,8 @@ enum class ActionType { Toggle, Value, Action };
 /** @brief Editor contract selected by SettingsView for one item. */
 enum class SettingsEditor { Toggle, Stepper, Slider, Choice, Action };
 
-/** @brief Declarative visibility gate for one secondary entry. */
-enum class SecondaryVisibility {
+/** @brief Declarative visibility gate for one settings item. */
+enum class SettingsItemVisibility {
     Always,
     RequiresSdCard,
     RequiresUsbDisk,
@@ -61,14 +71,15 @@ enum class SecondaryVisibility {
     RequiresLegacyLinearAgc
 };
 
-/** @brief Immutable descriptor for one secondary row item in the right panel. */
-struct SecondaryItemData {
+/** @brief Immutable descriptor for one settings item, independent of its page layout. */
+struct SettingsItemData {
     SettingID id;
     std::optional<SettingKey> settingKey;
     QString title;
     QColor titleColor = Qt::white;
     ActionType type;
     SettingsEditor editor;
+    std::optional<SettingsSection> destinationSection;
 };
 
 /** @brief Immutable descriptor for one primary category row. */
@@ -115,10 +126,10 @@ public:
     static QString sectionTitle(int index);
     static int sectionIndexForItem(SettingID item);
 
-    static std::vector<SecondaryItemData> visibleItems(int sectionIndex,
-                                                        const SettingsSnapshot& snapshot,
-                                                        bool sdCardReady,
-                                                        bool usbDiskReady);
+    static std::vector<SettingsItemData> visibleItems(SettingsSection section,
+                                                       const SettingsSnapshot& snapshot,
+                                                       bool sdCardReady,
+                                                       bool usbDiskReady);
 
     static SettingsNumberEditor numberEditor(SettingID item,
                                               const SettingsSnapshot& snapshot);
@@ -130,9 +141,9 @@ public:
     static QString valueText(SettingID item, const SettingsSnapshot& snapshot);
 
     static bool sectionVisibilityAffectedBySettingsChange(
-        int sectionIndex,
+        SettingsSection section,
         const QSet<SettingKey>& changedKeys);
-    static bool sectionVisibilityAffectedByStorageState(int sectionIndex);
+    static bool sectionVisibilityAffectedByStorageState(SettingsSection section);
 };
 
 #endif // SETTINGS_CATALOG_H

@@ -39,6 +39,38 @@ QString formatStorageCapacity(const StorageVolumeStatus& status) {
 
 } // namespace
 
+/**
+ * @brief Full-page layer background that keeps the shared scroll indicator above its black cover.
+ *
+ * The page rows deliberately remain SettingsView children so they can pass beneath the fixed top
+ * bar.  This child therefore cannot be a plain black widget: it is also the correct paint layer
+ * for the existing zero-widget scroll indicator while a full page is open.
+ */
+class SettingsPageBackdrop final : public QWidget {
+public:
+    explicit SettingsPageBackdrop(ScrollIndicator* scrollIndicator, QWidget* parent)
+        : QWidget(parent), m_scrollIndicator(scrollIndicator) {
+        setAttribute(Qt::WA_TransparentForMouseEvents);
+    }
+
+    void setScrollViewport(const QRect& viewport) {
+        if (m_scrollViewport == viewport) return;
+        m_scrollViewport = viewport;
+        update();
+    }
+
+protected:
+    void paintEvent(QPaintEvent* /*event*/) override {
+        QPainter painter(this);
+        painter.fillRect(rect(), Qt::black);
+        m_scrollIndicator->paint(painter, m_scrollViewport);
+    }
+
+private:
+    ScrollIndicator* m_scrollIndicator = nullptr;
+    QRect m_scrollViewport;
+};
+
 // ============================================================
 // SettingsTopBar
 // ============================================================
@@ -49,13 +81,6 @@ SettingsTopBar::SettingsTopBar(QWidget* parent) : QWidget(parent) {
 void SettingsTopBar::setTitle(const QString& title) {
     if (m_title == title) return;
     m_title = title;
-    update();
-}
-
-void SettingsTopBar::setMaskOpacity(qreal v) {
-    v = qBound(0.0, v, 1.0);
-    if (qFuzzyCompare(m_maskOpacity, v)) return;
-    m_maskOpacity = v;
     update();
 }
 
@@ -128,14 +153,12 @@ void SettingsTopBar::paintEvent(QPaintEvent* /*event*/) {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing);
 
-    if (m_maskOpacity > 0.01) {
-        const QRect gradRect = rect();
-        QLinearGradient grad(gradRect.topLeft(), gradRect.bottomLeft());
-        grad.setColorAt(0.0, QColor(0, 0, 0, qRound(255 * m_maskOpacity)));
-        grad.setColorAt(0.7, QColor(0, 0, 0, qRound(190 * m_maskOpacity)));
-        grad.setColorAt(1.0, QColor(0, 0, 0, 0));
-        p.fillRect(gradRect, grad);
-    }
+    const QRect gradRect = rect();
+    QLinearGradient grad(gradRect.topLeft(), gradRect.bottomLeft());
+    grad.setColorAt(0.0, Qt::black);
+    grad.setColorAt(0.7, QColor(0, 0, 0, 190));
+    grad.setColorAt(1.0, Qt::transparent);
+    p.fillRect(gradRect, grad);
 
     auto drawButton = [&](const QRect& r, const QString& iconGlyph, bool active) {
         QColor bg = active ? QColor(255, 255, 255, 45) : QColor(255, 255, 255, 28);
@@ -179,7 +202,12 @@ SettingsView::SettingsView(QWidget* parent) : BaseView(parent) {
     connect(m_topBar, &SettingsTopBar::closeTriggered, this, &SettingsView::onTopBarCloseTriggered);
 
     m_scrollIndicator = new ScrollIndicator(this);
-    connect(m_scrollIndicator, &ScrollIndicator::opacityChanged, this, QOverload<>::of(&QWidget::update));
+    m_pageBackdrop = new SettingsPageBackdrop(m_scrollIndicator, this);
+    connect(m_scrollIndicator, &ScrollIndicator::opacityChanged, this, [this]() {
+        update();
+        m_pageBackdrop->update();
+    });
+    m_pageBackdrop->hide();
     initBubbles();
 
     m_leftScrollAnim = new QPropertyAnimation(this, "leftScroll", this);
@@ -190,9 +218,36 @@ SettingsView::SettingsView(QWidget* parent) : BaseView(parent) {
     m_rightScrollAnim->setDuration(m_cfg.SNAP_DURATION_MS);
     m_rightScrollAnim->setEasingCurve(QEasingCurve::OutCubic);
 
+    m_pageScrollAnim = new QPropertyAnimation(this, "pageScroll", this);
+    m_pageScrollAnim->setDuration(m_cfg.SNAP_DURATION_MS);
+    m_pageScrollAnim->setEasingCurve(QEasingCurve::OutCubic);
+
     m_splitAnim = new QPropertyAnimation(this, "splitProgress", this);
     m_splitAnim->setDuration(m_cfg.SNAP_DURATION_MS);
     m_splitAnim->setEasingCurve(QEasingCurve::OutCubic);
+
+    m_rootRetreatAnim = new QPropertyAnimation(this, "rootRetreatProgress", this);
+    m_rootRetreatAnim->setDuration(m_cfg.ROOT_PAGE_RETREAT_MS);
+    m_rootRetreatAnim->setEasingCurve(QEasingCurve::OutCubic);
+
+    m_pageEntranceAnim = new QPropertyAnimation(this, "pageEntranceProgress", this);
+    m_pageEntranceAnim->setDuration(m_cfg.PAGE_ENTER_MS);
+    m_pageEntranceAnim->setEasingCurve(QEasingCurve::OutQuart);
+
+    m_pageTransition = new QParallelAnimationGroup(this);
+    m_pageTransition->addAnimation(m_rootRetreatAnim);
+    m_pageTransition->addAnimation(m_pageEntranceAnim);
+    connect(m_pageTransition, &QParallelAnimationGroup::finished, this, [this]() {
+        m_pageTransitionInFlight = false;
+        if (m_pageEntranceProgress > 0.01) return;
+
+        m_activePage.reset();
+        m_pageBackdrop->hide();
+        m_topBar->setTitle(m_mode == PanelMode::Expanded
+                               ? SettingsCatalog::sectionTitle(m_activePrimary)
+                               : tr("Settings"));
+        relayoutRows();
+    });
 
     connect(&SettingsService::instance(), &SettingsService::applyCompleted,
             this, &SettingsView::onSettingsApplyCompleted);
@@ -200,13 +255,14 @@ SettingsView::SettingsView(QWidget* parent) : BaseView(parent) {
             [this](const SettingsChangeEvent& change) {
                 if (m_mode == PanelMode::Expanded &&
                     SettingsCatalog::sectionVisibilityAffectedBySettingsChange(
-                        m_activePrimary, change.changedKeys)) {
-                    rebuildSecondaryRows(m_activePrimary);
-                    m_rightScroll = qBound<qreal>(0.0, m_rightScroll, rightMaxScroll());
+                        static_cast<SettingsSection>(m_activePrimary), change.changedKeys)) {
+                    rebuildSectionItems(m_activePrimary);
+                    setRightScroll(qBound<qreal>(0.0, rightScroll(), rightMaxScroll()));
                     relayoutRows();
                     return;
                 }
-                refreshSecondaryRowsFromSnapshot(change.snapshot);
+                refreshItemRowsFromSnapshot(m_sectionItems.rows, change.snapshot);
+                refreshItemRowsFromSnapshot(m_pageItems.rows, change.snapshot);
             });
 
     if (auto* storage = HardwareManager::instance().storage()) {
@@ -217,25 +273,28 @@ SettingsView::SettingsView(QWidget* parent) : BaseView(parent) {
     }
 
     buildPrimaryRows();
-    rebuildSecondaryRows(0);
+    rebuildSectionItems(0);
 }
 
 void SettingsView::onEnter() {
     m_mode = PanelMode::Single;
     m_activePrimary = -1;
     m_leftScroll = 0.0;
-    m_rightScroll = 0.0;
+    m_sectionItems.scroll = 0.0;
+    m_pageItems.scroll = 0.0;
     m_splitProgress = 0.0;
+    resetPageImmediately();
 
     m_leftScrollAnim->stop();
     m_rightScrollAnim->stop();
+    m_pageScrollAnim->stop();
     m_splitAnim->stop();
 
-    rebuildSecondaryRows(0);
+    rebuildSectionItems(0);
     for (auto* row : m_primaryRows) row->setSelected(false);
     m_topBar->setTitle(tr("Settings"));
     relayoutRows();
-    refreshSecondaryRowsFromStore();
+    refreshItemRowsFromStore();
     m_scrollIndicator->forceHide();
     update();
 }
@@ -244,8 +303,8 @@ void SettingsView::openItem(SettingID item) {
     expandPrimary(SettingsCatalog::sectionIndexForItem(item));
 
     int rowIndex = -1;
-    for (int index = 0; index < m_secondaryRows.size(); ++index) {
-        if (m_secondaryRows[index]->data().id == item) {
+    for (int index = 0; index < m_sectionItems.rows.size(); ++index) {
+        if (m_sectionItems.rows[index]->data().id == item) {
             rowIndex = index;
             break;
         }
@@ -255,7 +314,6 @@ void SettingsView::openItem(SettingID item) {
     const qreal visibleHeight = qMax(0, height() - topBarHeight());
     const qreal target = rowIndex * rowHeight() - (visibleHeight - rowHeight()) * 0.5;
     setRightScroll(qBound<qreal>(0.0, target, rightMaxScroll()));
-    refreshTopMask();
     relayoutRows();
 }
 
@@ -264,7 +322,9 @@ void SettingsView::onExit() {
     dismissBubblesImmediately();
     m_leftScrollAnim->stop();
     m_rightScrollAnim->stop();
+    m_pageScrollAnim->stop();
     m_splitAnim->stop();
+    resetPageImmediately();
 }
 
 void SettingsView::mousePressEvent(QMouseEvent* event) {
@@ -309,10 +369,12 @@ void SettingsView::startPointerSession(const QPoint& pos, bool allowRowPress) {
 
     m_swipeAxis = SwipeAxis::None;
     m_dragStartLeft = m_leftScroll;
-    m_dragStartRight = m_rightScroll;
+    m_dragStartRight = rightScroll();
+    m_dragStartPage = pageScroll();
 
     m_leftScrollAnim->stop();
     m_rightScrollAnim->stop();
+    m_pageScrollAnim->stop();
 
     m_pressedRow = allowRowPress ? rowAt(pos) : nullptr;
     if (m_pressedRow && !m_pressedRow->beginPress(m_pressedRow->mapFromParent(pos))) {
@@ -346,7 +408,9 @@ void SettingsView::updatePointerSession(const QPoint& pos) {
 
     if (m_swipeAxis != SwipeAxis::Vertical) return;
 
-    if (m_mode == PanelMode::Expanded && m_splitProgress > 0.95) {
+    if (m_activePage.has_value()) {
+        m_scrollTarget = ScrollTarget::Page;
+    } else if (m_mode == PanelMode::Expanded && m_splitProgress > 0.95) {
         m_scrollTarget = (m_pressStartPos.x() > leftPanelWidth()) ? ScrollTarget::Right : ScrollTarget::Left;
     } else {
         m_scrollTarget = ScrollTarget::Left;
@@ -355,9 +419,12 @@ void SettingsView::updatePointerSession(const QPoint& pos) {
     if (m_scrollTarget == ScrollTarget::Left) {
         qreal candidate = m_dragStartLeft - dy;
         setLeftScroll(applyOverscroll(candidate, leftMaxScroll()));
-    } else {
+    } else if (m_scrollTarget == ScrollTarget::Right) {
         qreal candidate = m_dragStartRight - dy;
         setRightScroll(applyOverscroll(candidate, rightMaxScroll()));
+    } else {
+        qreal candidate = m_dragStartPage - dy;
+        setPageScroll(applyOverscroll(candidate, pageMaxScroll()));
     }
 }
 
@@ -383,7 +450,9 @@ void SettingsView::finishPointerSession(const QPoint& pos) {
     if (m_swipeAxis == SwipeAxis::Horizontal) {
         const int edgeZone = qRound(width() * m_cfg.SWIPE_BACK_EDGE_RATIO);
         if (m_pressStartPos.x() < edgeZone && dx > width() * m_cfg.SWIPE_BACK_DIST_RATIO) {
-            if (m_mode == PanelMode::Expanded) {
+            if (m_activePage.has_value()) {
+                closePage();
+            } else if (m_mode == PanelMode::Expanded) {
                 collapseToSingle();
             } else {
                 triggerExitToCamera();
@@ -393,8 +462,20 @@ void SettingsView::finishPointerSession(const QPoint& pos) {
     }
 
     if (m_swipeAxis == SwipeAxis::Vertical) {
-        settleScroll(m_scrollTarget == ScrollTarget::Left,
-                     static_cast<float>(m_velocityPxPerMs.y()));
+        if (m_scrollTarget == ScrollTarget::Page) {
+            const qreal current = pageScroll();
+            const qreal maximum = pageMaxScroll();
+            const qreal target = current < 0.0 ? 0.0
+                : (current > maximum ? maximum
+                   : qBound(0.0, current - m_velocityPxPerMs.y() * 140.0, maximum));
+            m_pageScrollAnim->stop();
+            m_pageScrollAnim->setStartValue(current);
+            m_pageScrollAnim->setEndValue(target);
+            m_pageScrollAnim->start();
+        } else {
+            settleScroll(m_scrollTarget == ScrollTarget::Left,
+                         static_cast<float>(m_velocityPxPerMs.y()));
+        }
     }
 }
 
@@ -438,7 +519,8 @@ SettingsBaseRow* SettingsView::rowAt(const QPoint& pos) const {
         return nullptr;
     };
 
-    if (auto* row = findRow(m_secondaryRows)) return row;
+    if (m_activePage.has_value()) return findRow(m_pageItems.rows);
+    if (auto* row = findRow(m_sectionItems.rows)) return row;
     return findRow(m_primaryRows);
 }
 
@@ -452,7 +534,6 @@ void SettingsView::setLeftScroll(qreal v) {
     if (qFuzzyCompare(m_leftScroll, v)) return;
     m_leftScroll = v;
     relayoutRows();
-    refreshTopMask();
 
     if (m_mode == PanelMode::Single || m_splitProgress < 0.99) {
         m_scrollIndicator->updateState(m_leftScroll, leftMaxScroll());
@@ -460,13 +541,22 @@ void SettingsView::setLeftScroll(qreal v) {
 }
 
 void SettingsView::setRightScroll(qreal v) {
-    if (qFuzzyCompare(m_rightScroll, v)) return;
-    m_rightScroll = v;
+    if (qFuzzyCompare(m_sectionItems.scroll, v)) return;
+    m_sectionItems.scroll = v;
     relayoutRows();
-    refreshTopMask();
 
-    if (m_mode == PanelMode::Expanded && m_splitProgress > 0.99) {
-        m_scrollIndicator->updateState(m_rightScroll, rightMaxScroll());
+    if (!m_activePage.has_value() && m_mode == PanelMode::Expanded && m_splitProgress > 0.99) {
+        m_scrollIndicator->updateState(rightScroll(), rightMaxScroll());
+    }
+}
+
+void SettingsView::setPageScroll(qreal v) {
+    if (qFuzzyCompare(m_pageItems.scroll, v)) return;
+    m_pageItems.scroll = v;
+    relayoutRows();
+
+    if (m_activePage.has_value()) {
+        m_scrollIndicator->updateState(pageScroll(), pageMaxScroll());
     }
 }
 
@@ -475,8 +565,21 @@ void SettingsView::setSplitProgress(qreal v) {
     if (qFuzzyCompare(m_splitProgress, v)) return;
     m_splitProgress = v;
     relayoutRows();
-    refreshTopMask();
     update();
+}
+
+void SettingsView::setRootRetreatProgress(qreal v) {
+    v = qBound(0.0, v, 1.0);
+    if (qFuzzyCompare(m_rootRetreatProgress, v)) return;
+    m_rootRetreatProgress = v;
+    relayoutRows();
+}
+
+void SettingsView::setPageEntranceProgress(qreal v) {
+    v = qBound(0.0, v, 1.0);
+    if (qFuzzyCompare(m_pageEntranceProgress, v)) return;
+    m_pageEntranceProgress = v;
+    relayoutRows();
 }
 
 void SettingsView::resizeEvent(QResizeEvent* /*event*/) {
@@ -493,10 +596,16 @@ void SettingsView::paintEvent(QPaintEvent* /*event*/) {
         const int leftWTarget = leftPanelWidth();
         const int leftW = qRound(width() - (width() - leftWTarget) * m_splitProgress);
         const int dividerW = qMax(1, qRound(width() * m_cfg.DIVIDER_WIDTH_RATIO));
-        const int dividerX = leftW;
+        const int rootOffset = -qRound(width() * m_cfg.ROOT_PAGE_RETREAT_RATIO *
+                                       m_rootRetreatProgress);
+        const int dividerX = leftW + rootOffset;
 
         QColor divider(255, 255, 255, qRound(70 * m_splitProgress));
         p.fillRect(QRect(dividerX, topH, dividerW, height() - topH), divider);
+    }
+
+    if (m_activePage.has_value()) {
+        return;
     }
 
     if (m_mode == PanelMode::Expanded && m_splitProgress > 0.99) {
@@ -509,6 +618,7 @@ void SettingsView::paintEvent(QPaintEvent* /*event*/) {
         QRect singleRect(0, topH, width(), height() - topH);
         m_scrollIndicator->paint(p, singleRect);
     }
+
 }
 
 void SettingsView::initBubbles() {
@@ -632,10 +742,15 @@ void SettingsView::onPrimaryRowActivated() {
     }
 }
 
-void SettingsView::onSecondaryRowActivated() {
-    auto* row = qobject_cast<SettingsSecondaryRow*>(sender());
+void SettingsView::onItemRowActivated() {
+    auto* row = qobject_cast<SettingsItemRow*>(sender());
     if (!row) return;
-    const SecondaryItemData item = row->data();
+    const SettingsItemData item = row->data();
+
+    if (item.destinationSection.has_value()) {
+        openPage(*item.destinationSection, item.title);
+        return;
+    }
 
     auto buildAnchor = [this, row]() {
         BubbleAnchorContext anchor;
@@ -899,7 +1014,9 @@ void SettingsView::onSecondaryRowActivated() {
 }
 
 void SettingsView::onTopBarBackTriggered() {
-    if (m_mode == PanelMode::Expanded) {
+    if (m_activePage.has_value()) {
+        closePage();
+    } else if (m_mode == PanelMode::Expanded) {
         collapseToSingle();
     } else {
         triggerExitToCamera();
@@ -923,26 +1040,43 @@ void SettingsView::buildPrimaryRows() {
     }
 }
 
-void SettingsView::rebuildSecondaryRows(int primaryIndex) {
-    cancelActiveRowPress();
-    for (auto* row : m_secondaryRows) delete row;
-    m_secondaryRows.clear();
-
+void SettingsView::rebuildSectionItems(int primaryIndex) {
     auto* storage = HardwareManager::instance().storage();
     const bool sdCardReady = storage && storage->isSdCardReady();
     const bool usbDiskReady = storage && storage->isUsbDiskReady();
-    const auto items = SettingsCatalog::visibleItems(primaryIndex,
-                                                      SettingsStore::instance().current(),
-                                                      sdCardReady,
-                                                      usbDiskReady);
-    for (const auto& item : items) {
-        auto* row = new SettingsSecondaryRow(this);
-        row->setData(item);
-        connect(row, &SettingsSecondaryRow::activated, this, &SettingsView::onSecondaryRowActivated);
-        m_secondaryRows.append(row);
-    }
+    rebuildItemRows(m_sectionItems.rows,
+                    SettingsCatalog::visibleItems(static_cast<SettingsSection>(primaryIndex),
+                                                  SettingsStore::instance().current(),
+                                                  sdCardReady,
+                                                  usbDiskReady));
+    refreshItemRowsFromSnapshot(m_sectionItems.rows, SettingsStore::instance().current());
+}
 
-    refreshSecondaryRowsFromStore();
+void SettingsView::rebuildPageItems(SettingsSection section) {
+    cancelActiveRowPress();
+    auto* storage = HardwareManager::instance().storage();
+    const bool sdCardReady = storage && storage->isSdCardReady();
+    const bool usbDiskReady = storage && storage->isUsbDiskReady();
+    rebuildItemRows(m_pageItems.rows,
+                    SettingsCatalog::visibleItems(section,
+                                                  SettingsStore::instance().current(),
+                                                  sdCardReady,
+                                                  usbDiskReady));
+    refreshItemRowsFromSnapshot(m_pageItems.rows, SettingsStore::instance().current());
+}
+
+void SettingsView::rebuildItemRows(QVector<SettingsItemRow*>& rows,
+                                   const std::vector<SettingsItemData>& items) {
+    cancelActiveRowPress();
+    for (auto* row : rows) delete row;
+    rows.clear();
+
+    for (const auto& item : items) {
+        auto* row = new SettingsItemRow(this);
+        row->setData(item);
+        connect(row, &SettingsItemRow::activated, this, &SettingsView::onItemRowActivated);
+        rows.append(row);
+    }
 }
 
 void SettingsView::relayoutRows() {
@@ -956,6 +1090,8 @@ void SettingsView::relayoutRows() {
     const int dividerW = qMax(1, qRound(width() * m_cfg.DIVIDER_WIDTH_RATIO));
     const int rightW = qMax(0, width() - leftW - dividerW);
     const int rightX = qRound(width() * (1.0 - m_splitProgress) + (leftW + dividerW) * m_splitProgress);
+    const int rootOffset = -qRound(width() * m_cfg.ROOT_PAGE_RETREAT_RATIO *
+                                   m_rootRetreatProgress);
 
     for (int i = 0; i < m_primaryRows.size(); ++i) {
         auto* row = m_primaryRows[i];
@@ -968,17 +1104,20 @@ void SettingsView::relayoutRows() {
         row->setBottomDividerVisible(!(isLast || isSelected || isAboveSelected));
 
         const int y = qRound(topH + i * rowH - m_leftScroll);
-        row->setGeometry(0, y, leftW, rowH);
+        row->setGeometry(rootOffset, y, leftW, rowH);
         row->setVisible(y < height() && (y + rowH) > topH - rowH);
     }
 
-    for (int i = 0; i < m_secondaryRows.size(); ++i) {
-        auto* row = m_secondaryRows[i];
-        row->setBottomDividerVisible(i != m_secondaryRows.size() - 1);
-        const int y = qRound(topH + i * rowH - m_rightScroll);
-        row->setGeometry(rightX, y, rightW, rowH);
-        const bool visible = (m_splitProgress > 0.01) && (y < height()) && ((y + rowH) > topH - rowH);
-        row->setVisible(visible);
+    layoutItemRows(m_sectionItems.rows, rightScroll(), rightX + rootOffset, rightW,
+                   m_splitProgress > 0.01);
+
+    const int pageX = qRound(width() * (1.0 - m_pageEntranceProgress));
+    m_pageBackdrop->setGeometry(pageX, 0, width(), height());
+    m_pageBackdrop->setScrollViewport(QRect(0, topH, width(), qMax(0, height() - topH)));
+    layoutItemRows(m_pageItems.rows, pageScroll(), pageX, width(), m_activePage.has_value());
+    if (m_activePage.has_value()) {
+        m_pageBackdrop->raise();
+        for (auto* row : m_pageItems.rows) row->raise();
     }
 
     m_topBar->raise();
@@ -986,10 +1125,20 @@ void SettingsView::relayoutRows() {
     update();
 }
 
-void SettingsView::refreshTopMask() {
-    const bool leftUnderTop = m_leftScroll > 0.5;
-    const bool rightUnderTop = (m_splitProgress > 0.95) && (m_rightScroll > 0.5);
-    m_topBar->setMaskOpacity((leftUnderTop || rightUnderTop) ? 1.0 : 0.0);
+void SettingsView::layoutItemRows(const QVector<SettingsItemRow*>& rows,
+                                  qreal scroll,
+                                  int x,
+                                  int itemWidth,
+                                  bool visible) {
+    const int topH = topBarHeight();
+    const int rowH = rowHeight();
+    for (int i = 0; i < rows.size(); ++i) {
+        auto* row = rows[i];
+        row->setBottomDividerVisible(i != rows.size() - 1);
+        const int y = qRound(topH + i * rowH - scroll);
+        row->setGeometry(x, y, itemWidth, rowH);
+        row->setVisible(visible && y < height() && (y + rowH) > topH - rowH);
+    }
 }
 
 int SettingsView::topBarHeight() const {
@@ -1011,7 +1160,15 @@ qreal SettingsView::leftMaxScroll() const {
 }
 
 qreal SettingsView::rightMaxScroll() const {
-    const int contentH = m_secondaryRows.size() * rowHeight();
+    return itemRowsMaxScroll(m_sectionItems.rows);
+}
+
+qreal SettingsView::pageMaxScroll() const {
+    return itemRowsMaxScroll(m_pageItems.rows);
+}
+
+qreal SettingsView::itemRowsMaxScroll(const QVector<SettingsItemRow*>& rows) const {
+    const int contentH = rows.size() * rowHeight();
     const int viewH = qMax(0, height() - topBarHeight());
     return qMax(0, contentH - viewH);
 }
@@ -1023,7 +1180,7 @@ qreal SettingsView::applyOverscroll(qreal candidate, qreal maxScroll) const {
 }
 
 void SettingsView::settleScroll(bool leftPanel, float velocity) {
-    const qreal current = leftPanel ? m_leftScroll : m_rightScroll;
+    const qreal current = leftPanel ? m_leftScroll : rightScroll();
     const qreal maxScroll = leftPanel ? leftMaxScroll() : rightMaxScroll();
     qreal target = current;
 
@@ -1063,9 +1220,8 @@ void SettingsView::expandPrimary(int primaryIndex) {
         m_primaryRows[i]->setSelected(i == m_activePrimary);
     }
 
-    rebuildSecondaryRows(primaryIndex);
-    m_rightScroll = 0.0;
-    refreshTopMask();
+    rebuildSectionItems(primaryIndex);
+    setRightScroll(0.0);
     m_topBar->setTitle(SettingsCatalog::sectionTitle(primaryIndex));
 
     if (m_mode == PanelMode::Single) {
@@ -1087,7 +1243,50 @@ void SettingsView::triggerExitToCamera() {
     emit EventBus::instance().cameraRequested(QRect(), TransitionMode::Auto);
 }
 
-void SettingsView::refreshSecondaryRowsFromSnapshot(const SettingsSnapshot& snapshot) {
+void SettingsView::openPage(SettingsSection section, const QString& title) {
+    if (m_activePage.has_value() || m_pageTransitionInFlight) return;
+
+    cancelPointerSession();
+    dismissBubblesImmediately();
+    m_activePage = section;
+    m_pageBackdrop->show();
+    rebuildPageItems(section);
+    m_pageItems.scroll = 0.0;
+    m_topBar->setTitle(title);
+
+    m_pageTransitionInFlight = true;
+    m_pageTransition->stop();
+    m_rootRetreatAnim->setStartValue(m_rootRetreatProgress);
+    m_rootRetreatAnim->setEndValue(1.0);
+    m_pageEntranceAnim->setStartValue(m_pageEntranceProgress);
+    m_pageEntranceAnim->setEndValue(1.0);
+    m_pageTransition->start();
+}
+
+void SettingsView::closePage() {
+    if (!m_activePage.has_value() || m_pageTransitionInFlight) return;
+
+    cancelPointerSession();
+    m_pageTransitionInFlight = true;
+    m_pageTransition->stop();
+    m_rootRetreatAnim->setStartValue(m_rootRetreatProgress);
+    m_rootRetreatAnim->setEndValue(0.0);
+    m_pageEntranceAnim->setStartValue(m_pageEntranceProgress);
+    m_pageEntranceAnim->setEndValue(0.0);
+    m_pageTransition->start();
+}
+
+void SettingsView::resetPageImmediately() {
+    if (m_pageTransition) m_pageTransition->stop();
+    m_pageTransitionInFlight = false;
+    m_activePage.reset();
+    if (m_pageBackdrop) m_pageBackdrop->hide();
+    m_rootRetreatProgress = 0.0;
+    m_pageEntranceProgress = 0.0;
+}
+
+void SettingsView::refreshItemRowsFromSnapshot(QVector<SettingsItemRow*>& rows,
+                                               const SettingsSnapshot& snapshot) {
     StorageVolumeStatus sdStatus;
     StorageVolumeStatus usbStatus;
     StorageVolumeStatus nandStatus;
@@ -1097,8 +1296,8 @@ void SettingsView::refreshSecondaryRowsFromSnapshot(const SettingsSnapshot& snap
         nandStatus = storage->volumeStatus(StorageVolume::Nand);
     }
 
-    for (auto* row : m_secondaryRows) {
-        const SecondaryItemData item = row->data();
+    for (auto* row : rows) {
+        const SettingsItemData item = row->data();
         row->setValueText(QString());
         row->setToggleOn(false);
 
@@ -1124,17 +1323,20 @@ void SettingsView::refreshSecondaryRowsFromSnapshot(const SettingsSnapshot& snap
     }
 }
 
-void SettingsView::refreshSecondaryRowsFromStore() {
-    refreshSecondaryRowsFromSnapshot(SettingsStore::instance().current());
+void SettingsView::refreshItemRowsFromStore() {
+    const SettingsSnapshot snapshot = SettingsStore::instance().current();
+    refreshItemRowsFromSnapshot(m_sectionItems.rows, snapshot);
+    refreshItemRowsFromSnapshot(m_pageItems.rows, snapshot);
 }
 
 void SettingsView::refreshStorageRowsIfVisible() {
     if (m_mode != PanelMode::Expanded ||
-        !SettingsCatalog::sectionVisibilityAffectedByStorageState(m_activePrimary)) {
+        !SettingsCatalog::sectionVisibilityAffectedByStorageState(
+            static_cast<SettingsSection>(m_activePrimary))) {
         return;
     }
-    rebuildSecondaryRows(m_activePrimary);
-    m_rightScroll = qBound<qreal>(0.0, m_rightScroll, rightMaxScroll());
+    rebuildSectionItems(m_activePrimary);
+    setRightScroll(qBound<qreal>(0.0, rightScroll(), rightMaxScroll()));
     relayoutRows();
 }
 
@@ -1144,25 +1346,24 @@ void SettingsView::refreshLanguage() {
     const PanelMode previousMode = m_mode;
     const int previousPrimary = m_activePrimary;
     const qreal previousLeftScroll = m_leftScroll;
-    const qreal previousRightScroll = m_rightScroll;
+    const qreal previousRightScroll = rightScroll();
 
     buildPrimaryRows();
 
     if (previousMode == PanelMode::Expanded && previousPrimary >= 0) {
         m_mode = PanelMode::Expanded;
         m_activePrimary = previousPrimary;
-        rebuildSecondaryRows(previousPrimary);
+        rebuildSectionItems(previousPrimary);
         m_topBar->setTitle(SettingsCatalog::sectionTitle(previousPrimary));
     } else {
         m_mode = PanelMode::Single;
         m_activePrimary = -1;
-        rebuildSecondaryRows(0);
+        rebuildSectionItems(0);
         m_topBar->setTitle(tr("Settings"));
     }
 
     m_leftScroll = qBound<qreal>(0.0, previousLeftScroll, leftMaxScroll());
-    m_rightScroll = qBound<qreal>(0.0, previousRightScroll, rightMaxScroll());
-    refreshTopMask();
+    setRightScroll(qBound<qreal>(0.0, previousRightScroll, rightMaxScroll()));
     relayoutRows();
 }
 

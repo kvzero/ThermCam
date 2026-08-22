@@ -7,14 +7,17 @@
 #include "services/settings_service.h"
 #include "ui/overlays/bubble_dialog.h"
 #include <QElapsedTimer>
+#include <QParallelAnimationGroup>
 #include <QPropertyAnimation>
 #include <QVector>
+#include <optional>
 
 class QMouseEvent;
 class ScrollIndicator;
 class SettingsBaseRow;
 class SettingsPrimaryRow;
-class SettingsSecondaryRow;
+class SettingsItemRow;
+class SettingsPageBackdrop;
 
 /**
  * @brief Floating owner of SettingsView top controls and top-mask rendering.
@@ -25,15 +28,12 @@ class SettingsSecondaryRow;
  */
 class SettingsTopBar : public QWidget {
     Q_OBJECT
-    Q_PROPERTY(qreal maskOpacity READ maskOpacity WRITE setMaskOpacity)
 public:
     /* --- Lifecycle --- */
     explicit SettingsTopBar(QWidget* parent = nullptr);
 
     /* --- Public Properties --- */
     void setTitle(const QString& title);
-    qreal maskOpacity() const { return m_maskOpacity; }
-    void setMaskOpacity(qreal v);
 
 signals:
     /* --- Cross-Module Signals --- */
@@ -57,7 +57,6 @@ private:
     PressZone zoneAt(const QPoint& pos) const;
 
     QString m_title;
-    qreal m_maskOpacity = 0.0;
     PressZone m_pressedZone = PressZone::None;
     QPoint m_lastPos;
     QRect m_backRect;
@@ -75,7 +74,10 @@ class SettingsView : public BaseView {
     Q_OBJECT
     Q_PROPERTY(qreal leftScroll READ leftScroll WRITE setLeftScroll)
     Q_PROPERTY(qreal rightScroll READ rightScroll WRITE setRightScroll)
+    Q_PROPERTY(qreal pageScroll READ pageScroll WRITE setPageScroll)
     Q_PROPERTY(qreal splitProgress READ splitProgress WRITE setSplitProgress)
+    Q_PROPERTY(qreal rootRetreatProgress READ rootRetreatProgress WRITE setRootRetreatProgress)
+    Q_PROPERTY(qreal pageEntranceProgress READ pageEntranceProgress WRITE setPageEntranceProgress)
 
 public:
     /* --- Lifecycle --- */
@@ -95,12 +97,18 @@ public:
 
     /* --- Public Properties --- */
     qreal leftScroll() const { return m_leftScroll; }
-    qreal rightScroll() const { return m_rightScroll; }
+    qreal rightScroll() const { return m_sectionItems.scroll; }
+    qreal pageScroll() const { return m_pageItems.scroll; }
     qreal splitProgress() const { return m_splitProgress; }
+    qreal rootRetreatProgress() const { return m_rootRetreatProgress; }
+    qreal pageEntranceProgress() const { return m_pageEntranceProgress; }
 
     void setLeftScroll(qreal v);
     void setRightScroll(qreal v);
+    void setPageScroll(qreal v);
     void setSplitProgress(qreal v);
+    void setRootRetreatProgress(qreal v);
+    void setPageEntranceProgress(qreal v);
 
 protected:
     void mousePressEvent(QMouseEvent* event) override;
@@ -111,7 +119,7 @@ protected:
 
 private slots:
     void onPrimaryRowActivated();
-    void onSecondaryRowActivated();
+    void onItemRowActivated();
     void onTopBarBackTriggered();
     void onTopBarCloseTriggered();
     void onSettingsApplyCompleted(const SettingsService::ApplyResult& result);
@@ -130,7 +138,8 @@ private:
 
     enum class ScrollTarget {
         Left,
-        Right
+        Right,
+        Page
     };
 
     struct Config {
@@ -141,17 +150,28 @@ private:
         const qreal SWIPE_BACK_EDGE_RATIO = 0.10;
         const qreal SWIPE_BACK_DIST_RATIO = 0.15;
         const qreal OVERSCROLL_FRICTION = 0.35;
+        const qreal ROOT_PAGE_RETREAT_RATIO = 0.16;
         const int   SNAP_DURATION_MS = 280;
+        const int   ROOT_PAGE_RETREAT_MS = 320;
+        const int   PAGE_ENTER_MS = 220;
         const int   DEADZONE_PX = 8;
     } m_cfg;
 
     /* --- UI Composition --- */
     void buildPrimaryRows();
-    void rebuildSecondaryRows(int primaryIndex);
+    void rebuildSectionItems(int primaryIndex);
+    void rebuildPageItems(SettingsSection section);
+    void rebuildItemRows(QVector<SettingsItemRow*>& rows,
+                         const std::vector<SettingsItemData>& items);
     void relayoutRows();
-    void refreshTopMask();
-    void refreshSecondaryRowsFromSnapshot(const SettingsSnapshot& snapshot);
-    void refreshSecondaryRowsFromStore();
+    void layoutItemRows(const QVector<SettingsItemRow*>& rows,
+                        qreal scroll,
+                        int x,
+                        int width,
+                        bool visible);
+    void refreshItemRowsFromSnapshot(QVector<SettingsItemRow*>& rows,
+                                     const SettingsSnapshot& snapshot);
+    void refreshItemRowsFromStore();
     void refreshStorageRowsIfVisible();
     void refreshLanguage();
     void applyPatchFromUi(const SettingsPatch& patch);
@@ -162,6 +182,8 @@ private:
     int leftPanelWidth() const;
     qreal leftMaxScroll() const;
     qreal rightMaxScroll() const;
+    qreal pageMaxScroll() const;
+    qreal itemRowsMaxScroll(const QVector<SettingsItemRow*>& rows) const;
     qreal applyOverscroll(qreal candidate, qreal maxScroll) const;
     void settleScroll(bool leftPanel, float velocity);
     SettingsBaseRow* rowAt(const QPoint& pos) const;
@@ -192,6 +214,9 @@ private:
     /* --- Navigation & Panel Flow --- */
     void collapseToSingle();
     void expandPrimary(int primaryIndex);
+    void openPage(SettingsSection section, const QString& title);
+    void closePage();
+    void resetPageImmediately();
     void triggerExitToCamera();
 
     /* --- Widget Ownership --- */
@@ -200,24 +225,40 @@ private:
     RadioListBubble* m_radioListBubble = nullptr;
     SliderBubble* m_sliderBubble = nullptr;
     StepperBubble* m_stepperBubble = nullptr;
+    // Child overlay, not a viewport: rows remain direct children and can scroll below the top bar.
+    // It owns the page-layer background and paints the shared scroll indicator above that background.
+    SettingsPageBackdrop* m_pageBackdrop = nullptr;
 
     /* --- Row Caches --- */
     QVector<SettingsPrimaryRow*> m_primaryRows;
-    QVector<SettingsSecondaryRow*> m_secondaryRows;
+    // Both containers are owned by this view so their rows may move beneath the fixed top bar.
+    struct ItemRows {
+        QVector<SettingsItemRow*> rows;
+        qreal scroll = 0.0;
+    };
+    ItemRows m_sectionItems;
+    ItemRows m_pageItems;
 
     /* --- Panel State --- */
     PanelMode m_mode = PanelMode::Single;
     int m_activePrimary = -1;
+    std::optional<SettingsSection> m_activePage;
 
     /* --- Animated Properties --- */
     qreal m_leftScroll = 0.0;
-    qreal m_rightScroll = 0.0;
     qreal m_splitProgress = 0.0;
+    qreal m_rootRetreatProgress = 0.0;
+    qreal m_pageEntranceProgress = 0.0;
 
     /* --- Animation Engine --- */
     QPropertyAnimation* m_leftScrollAnim = nullptr;
     QPropertyAnimation* m_rightScrollAnim = nullptr;
+    QPropertyAnimation* m_pageScrollAnim = nullptr;
     QPropertyAnimation* m_splitAnim = nullptr;
+    QPropertyAnimation* m_rootRetreatAnim = nullptr;
+    QPropertyAnimation* m_pageEntranceAnim = nullptr;
+    QParallelAnimationGroup* m_pageTransition = nullptr;
+    bool m_pageTransitionInFlight = false;
 
     /* --- Gesture Session State --- */
     bool m_pressActive = false;
@@ -232,6 +273,7 @@ private:
     ScrollTarget m_scrollTarget = ScrollTarget::Left;
     qreal m_dragStartLeft = 0.0;
     qreal m_dragStartRight = 0.0;
+    qreal m_dragStartPage = 0.0;
 
     /* --- Settings Apply Session --- */
     bool m_applyInFlight = false;

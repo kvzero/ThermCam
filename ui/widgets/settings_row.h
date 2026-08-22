@@ -80,24 +80,24 @@ private:
 };
 
 /**
- * @brief Secondary-list row renderer owning title/trailing-affordance visual logic.
+ * @brief Settings-item row renderer owning title/trailing-affordance visual logic.
  *
- * Represents a single actionable/value/toggle placeholder entry in the expanded
- * right panel and follows the same press-highlight cancel policy as primary rows.
+ * Represents one actionable/value/toggle setting item, regardless of whether the
+ * item is shown in the right panel or a full-screen settings page.
  */
-class SettingsSecondaryRow : public SettingsBaseRow {
+class SettingsItemRow : public SettingsBaseRow {
     Q_OBJECT
 public:
     /* --- Lifecycle --- */
-    explicit SettingsSecondaryRow(QWidget* parent = nullptr);
+    explicit SettingsItemRow(QWidget* parent = nullptr);
 
     /* --- UIController Inputs --- */
-    void setData(const SecondaryItemData& data);
+    void setData(const SettingsItemData& data);
     void setBottomDividerVisible(bool visible);
     void setToggleOn(bool on);
     void setValueText(const QString& valueText);
     void toggleVisualState();
-    const SecondaryItemData& data() const { return m_data; }
+    const SettingsItemData& data() const { return m_data; }
 
 protected:
     bool isActivationArmed(const QPoint& localPos) const override;
@@ -108,7 +108,7 @@ private:
     QRect toggleHitRect() const;
 
     /* --- Private State --- */
-    SecondaryItemData m_data;
+    SettingsItemData m_data;
     bool m_showBottomDivider = true;
     bool m_toggleOn = false;
     QString m_valueText;
