@@ -83,12 +83,12 @@ private:
     const qreal kTextSizeRatio             = 0.6;      // Font size relative to bar height
 
     // --- Semantic Color Palette ---
-    const QColor BATT_SURFACE  = QColor("#505050");
+    const QColor BATT_SURFACE  = QColor("#7A8088");
     const QColor BATT_FILL_CHG = QColor("#34C759");
     const QColor BATT_FILL_STD = QColor("#FFFFFF");
     const QColor BATT_FILL_LOW = QColor("#FF3B30");
     const QColor BATT_TEXT_CHG = QColor("#FFFFFF");
-    const QColor BATT_TEXT_STD = QColor("#1F2937");
+    const QColor BATT_TEXT_STD = QColor("#2B2B2B");
     const QColor BATT_MARK_ERR = QColor("#FF3B30");
     const QColor EMISSIVITY_TEXT_COLOR = QColor("#FFC84A");
 
