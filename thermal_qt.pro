@@ -3,6 +3,7 @@ QT       += core gui
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
 CONFIG += c++17
+CONFIG += lrelease embed_translations
 
 # The following define makes your compiler emit warnings if you use
 # any Qt feature that has been marked deprecated (the exact warnings
@@ -17,6 +18,7 @@ DEFINES += QT_DEPRECATED_WARNINGS
 
 SOURCES     +=  main.cpp \
                 core/global_context.cpp \
+                core/app_translator.cpp \
                 core/event_bus.cpp \
                 core/settings_store.cpp \
                 hardware/hardware_manager.cpp \
@@ -63,6 +65,7 @@ SOURCES     +=  main.cpp \
                 ui/widgets/viewer_topbar.cpp
 
 HEADERS     +=  core/global_context.h \
+                core/app_translator.h \
                 core/event_bus.h \
                 core/types.h \
                 core/settings_store.h \
@@ -126,3 +129,5 @@ LIBS        +=  -L$$PWD/hardware/imaging/seekcam/lib -lseekcamera \
 qnx: target.path = /tmp/$${TARGET}/bin
 else: unix:!android: target.path = /opt/$${TARGET}/bin
 !isEmpty(target.path): INSTALLS += target
+
+TRANSLATIONS += i18n/thermal_zh_CN.ts

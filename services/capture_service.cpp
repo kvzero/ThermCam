@@ -237,10 +237,10 @@ void CaptureService::onVideoStopped(const QString& path) {
 
     if (saved) {
         const QString destination = path.startsWith(QStringLiteral("/mnt/udisk/"))
-                                        ? QStringLiteral("USB DISK")
-                                        : QStringLiteral("SD CARD");
+                                        ? tr("USB DISK")
+                                        : tr("SD CARD");
         emit EventBus::instance().toastRequested(
-            QStringLiteral("VIDEO SAVED TO %1").arg(destination), ToastLevel::Success);
+            tr("VIDEO SAVED TO %1").arg(destination), ToastLevel::Success);
     }
 }
 

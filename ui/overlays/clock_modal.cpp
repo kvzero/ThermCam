@@ -102,12 +102,12 @@ void ClockModal::paintContent(QPainter& p, const QRect& contentRect) {
     p.drawRoundedRect(translated(layout.dividerRect), 2, 2);
 
     const QString labels[6] = {
-        QStringLiteral("YEAR"),
-        QStringLiteral("MON"),
-        QStringLiteral("DAY"),
-        QStringLiteral("HOUR"),
-        QStringLiteral("MIN"),
-        QStringLiteral("SEC")
+        tr("YEAR"),
+        tr("MON"),
+        tr("DAY"),
+        tr("HOUR"),
+        tr("MIN"),
+        tr("SEC")
     };
     const QString values[6] = {
         QString::number(m_value.date().year()),
@@ -183,7 +183,7 @@ bool ClockModal::onPrimaryAction() {
     if (!error.isEmpty()) {
         qWarning() << "[ClockModal] Commit failed:" << error;
     }
-    emit EventBus::instance().toastRequested("SET TIME FAILED", ToastLevel::Error);
+    emit EventBus::instance().toastRequested(tr("SET TIME FAILED"), ToastLevel::Error);
     return false;
 }
 

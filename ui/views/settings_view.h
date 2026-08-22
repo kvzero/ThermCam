@@ -153,6 +153,7 @@ private:
     void refreshSecondaryRowsFromSnapshot(const SettingsSnapshot& snapshot);
     void refreshSecondaryRowsFromStore();
     void refreshStorageRowsIfVisible();
+    void refreshLanguage();
     void applyPatchFromUi(const SettingsPatch& patch);
 
     /* --- Layout & Scroll Math --- */

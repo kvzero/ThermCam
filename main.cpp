@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "core/global_context.h"
+#include "core/app_translator.h"
 #include "core/settings_store.h"
 #include "core/types.h"
 #include "hardware/hardware_manager.h"
@@ -59,6 +60,10 @@ int main(int argc, char *argv[])
     if (!SettingsStore::instance().init()) {
         qCritical() << "Fatal: Settings Store initialization failed.";
         return -1;
+    }
+
+    if (!AppTranslator::instance().initialize(a)) {
+        qWarning() << "Starting with source language because translation initialization failed.";
     }
 
     /* Environment */

@@ -37,6 +37,7 @@ enum class SettingID {
     ScreenBrightness,
     AudioVolume,
     Clock,
+    Language,
     RestoreDefaults,
     About,
     Count

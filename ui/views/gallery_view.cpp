@@ -92,8 +92,8 @@ GalleryView::GalleryView(QWidget* parent) : BaseView(parent) {
                 GalleryService::instance().deleteMedia(index);
                 m_viewer->handleDeletion();
             };
-            app->showTextModal("DELETE THIS ITEM?",
-                               "This action cannot be undone.",
+            app->showTextModal(tr("DELETE THIS ITEM?"),
+                               tr("This action cannot be undone."),
                                spec);
         }
     });
@@ -557,8 +557,8 @@ void GalleryView::requestDeleteSelected() {
             enforceStableState();
             update();
         };
-        app->showTextModal("DELETE SELECTION?",
-                           "This action cannot be undone.",
+        app->showTextModal(tr("DELETE SELECTION?"),
+                           tr("This action cannot be undone."),
                            spec);
     }
 }
@@ -712,7 +712,7 @@ void GalleryView::drawEmptyState(QPainter& p) {
     QFont f = p.font();
     f.setPixelSize(m_cfg.EMPTY_STATE_FONT_SIZE);
     p.setFont(f);
-    p.drawText(rect(), Qt::AlignCenter, "NO MEDIA FOUND");
+    p.drawText(rect(), Qt::AlignCenter, tr("NO MEDIA FOUND"));
 }
 
 void GalleryView::drawTransitionLayers(QPainter& p) {

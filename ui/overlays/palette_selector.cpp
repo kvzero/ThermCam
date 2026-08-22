@@ -721,21 +721,29 @@ void PaletteSelector::notifyPreviewSelection() {
 }
 
 QString PaletteSelector::displayName(ThermalPalette::Id id) const {
-    const int idx = indexForPalette(id);
-    if (idx < 0) return QStringLiteral("Palette");
-
-    const QString raw = QString::fromLatin1(ThermalPalette::kNames[static_cast<std::size_t>(idx)]);
-    QString out;
-    out.reserve(raw.size() + 4);
-
-    for (int i = 0; i < raw.size(); ++i) {
-        const QChar ch = raw.at(i);
-        if (i > 0 && ch.isUpper()) {
-            out.append(' ');
-        }
-        out.append(ch);
+    switch (id) {
+    case ThermalPalette::Id::WhiteHot:
+        return tr("White Hot");
+    case ThermalPalette::Id::BlackHot:
+        return tr("Black Hot");
+    case ThermalPalette::Id::Spectra:
+        return tr("Spectra");
+    case ThermalPalette::Id::Prism:
+        return tr("Prism");
+    case ThermalPalette::Id::Tyrian:
+        return tr("Tyrian");
+    case ThermalPalette::Id::Iron:
+        return tr("Iron");
+    case ThermalPalette::Id::Amber:
+        return tr("Amber");
+    case ThermalPalette::Id::Hi:
+        return tr("High Contrast");
+    case ThermalPalette::Id::Green:
+        return tr("Green");
+    case ThermalPalette::Id::Count:
+        break;
     }
-    return out;
+    return tr("Palette");
 }
 
 /* --- Animation Engine --- */

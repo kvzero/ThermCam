@@ -2,6 +2,7 @@
 #define MODAL_DIALOG_H
 
 #include <QWidget>
+#include <QCoreApplication>
 #include <QPoint>
 #include <QPropertyAnimation>
 #include <QSizeF>
@@ -18,8 +19,8 @@ enum class ModalLevel {
 
 struct ModalSpec {
     ModalLevel level = ModalLevel::Critical;
-    QString primaryText = "CONFIRM";
-    QString secondaryText = "CANCEL";
+    QString primaryText = QCoreApplication::translate("ModalSpec", "CONFIRM");
+    QString secondaryText = QCoreApplication::translate("ModalSpec", "CANCEL");
     /** @brief When false, the primary action spans the full button row. */
     bool showSecondaryButton = true;
     bool dismissOnMaskTap = true;

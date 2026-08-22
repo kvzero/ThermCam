@@ -1,5 +1,7 @@
 #include "ui/settings_catalog.h"
 
+#include <QCoreApplication>
+
 #include <array>
 
 namespace {
@@ -70,8 +72,10 @@ struct SectionSpec {
 };
 
 constexpr ChoiceSpec kAgcChoices[] = {
-    {"auto_histeq", "Auto (HistEQ AGC)", static_cast<int>(AgcMode::HistEqAuto)},
-    {"linear_manual", "Linear", static_cast<int>(AgcMode::LinearManual)},
+    {"auto_histeq", QT_TRANSLATE_NOOP("SettingsCatalog", "Auto (HistEQ AGC)"),
+     static_cast<int>(AgcMode::HistEqAuto)},
+    {"linear_manual", QT_TRANSLATE_NOOP("SettingsCatalog", "Linear"),
+     static_cast<int>(AgcMode::LinearManual)},
 };
 
 constexpr ChoiceSpec kTemperatureUnitChoices[] = {
@@ -80,111 +84,156 @@ constexpr ChoiceSpec kTemperatureUnitChoices[] = {
 };
 
 constexpr ChoiceSpec kStoragePriorityChoices[] = {
-    {"sd_first", "SD Card First", static_cast<int>(StoragePriority::SdFirst)},
-    {"usb_first", "USB Disk First", static_cast<int>(StoragePriority::UsbFirst)},
+    {"sd_first", QT_TRANSLATE_NOOP("SettingsCatalog", "SD Card First"),
+     static_cast<int>(StoragePriority::SdFirst)},
+    {"usb_first", QT_TRANSLATE_NOOP("SettingsCatalog", "USB Disk First"),
+     static_cast<int>(StoragePriority::UsbFirst)},
 };
 
 constexpr ChoiceSpec kAutoShutdownChoices[] = {
-    {"never", "Never", static_cast<int>(AutoShutdownTimeout::Never)},
-    {"5_minutes", "5 Minutes", static_cast<int>(AutoShutdownTimeout::FiveMinutes)},
-    {"15_minutes", "15 Minutes", static_cast<int>(AutoShutdownTimeout::FifteenMinutes)},
-    {"30_minutes", "30 Minutes", static_cast<int>(AutoShutdownTimeout::ThirtyMinutes)},
-    {"60_minutes", "60 Minutes", static_cast<int>(AutoShutdownTimeout::SixtyMinutes)},
+    {"never", QT_TRANSLATE_NOOP("SettingsCatalog", "Never"),
+     static_cast<int>(AutoShutdownTimeout::Never)},
+    {"5_minutes", QT_TRANSLATE_NOOP("SettingsCatalog", "5 Minutes"),
+     static_cast<int>(AutoShutdownTimeout::FiveMinutes)},
+    {"15_minutes", QT_TRANSLATE_NOOP("SettingsCatalog", "15 Minutes"),
+     static_cast<int>(AutoShutdownTimeout::FifteenMinutes)},
+    {"30_minutes", QT_TRANSLATE_NOOP("SettingsCatalog", "30 Minutes"),
+     static_cast<int>(AutoShutdownTimeout::ThirtyMinutes)},
+    {"60_minutes", QT_TRANSLATE_NOOP("SettingsCatalog", "60 Minutes"),
+     static_cast<int>(AutoShutdownTimeout::SixtyMinutes)},
+};
+
+constexpr ChoiceSpec kAppLanguageChoices[] = {
+    {"english", QT_TRANSLATE_NOOP("SettingsCatalog", "English"),
+     static_cast<int>(AppLanguage::English)},
+    {"simplified_chinese", QT_TRANSLATE_NOOP("SettingsCatalog", "Simplified Chinese"),
+     static_cast<int>(AppLanguage::SimplifiedChinese)},
 };
 
 constexpr std::array<ItemSpec, static_cast<size_t>(SettingID::Count)> kItems = {{
     {SettingsSection::Camera, SettingKey::Emissivity,
-     "Emissivity", 0xffffffff, ActionType::Action, SettingsEditor::Stepper,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Emissivity"), 0xffffffff,
+     ActionType::Action, SettingsEditor::Stepper,
      SecondaryVisibility::Always,
      {0.01, NumberFormat::Fixed2}},
     {SettingsSection::Camera, SettingKey::ShutterAutoEnabled,
-     "Auto Shutter", 0xffffffff, ActionType::Toggle, SettingsEditor::Toggle},
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Auto Shutter"), 0xffffffff,
+     ActionType::Toggle, SettingsEditor::Toggle},
     {SettingsSection::Camera, SettingKey::SeekVisionEnabled,
-     "Auto SeekVision", 0xffffffff, ActionType::Toggle, SettingsEditor::Toggle},
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Auto SeekVision"), 0xffffffff,
+     ActionType::Toggle, SettingsEditor::Toggle},
     {SettingsSection::Camera, SettingKey::LegacySharpenEnabled,
-     "Sharpen Filter", 0xffffffff, ActionType::Toggle, SettingsEditor::Toggle,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Sharpen Filter"), 0xffffffff,
+     ActionType::Toggle, SettingsEditor::Toggle,
      SecondaryVisibility::RequiresLegacyMode},
     {SettingsSection::Camera, SettingKey::AgcMode,
-     "AGC Mode", 0xffffffff, ActionType::Action, SettingsEditor::Choice,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "AGC Mode"), 0xffffffff,
+     ActionType::Action, SettingsEditor::Choice,
      SecondaryVisibility::RequiresLegacyMode, {}, kAgcChoices, int(std::size(kAgcChoices))},
     {SettingsSection::Camera, SettingKey::LinearAgcMinCelsius,
-     "- Linear AGC Min", 0xffffffff, ActionType::Action, SettingsEditor::Stepper,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "- Linear AGC Min"), 0xffffffff,
+     ActionType::Action, SettingsEditor::Stepper,
      SecondaryVisibility::RequiresLegacyLinearAgc,
      {1.0, NumberFormat::SignedCelsius0, PeerBound::BelowPeer,
       SettingKey::LinearAgcMaxCelsius}},
     {SettingsSection::Camera, SettingKey::LinearAgcMaxCelsius,
-     "- Linear AGC Max", 0xffffffff, ActionType::Action, SettingsEditor::Stepper,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "- Linear AGC Max"), 0xffffffff,
+     ActionType::Action, SettingsEditor::Stepper,
      SecondaryVisibility::RequiresLegacyLinearAgc,
      {1.0, NumberFormat::SignedCelsius0, PeerBound::AbovePeer,
       SettingKey::LinearAgcMinCelsius}},
-    {SettingsSection::Camera, SettingKey::ThermographyOffsetCelsius, "Temperature Offset", 0xffffffff,
+    {SettingsSection::Camera, SettingKey::ThermographyOffsetCelsius,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Temperature Offset"), 0xffffffff,
      ActionType::Action, SettingsEditor::Stepper, SecondaryVisibility::Always,
      {0.1, NumberFormat::SignedCelsius1}},
     {SettingsSection::Camera, std::nullopt,
-     "Flat-Scene Correction", 0xffe44848, ActionType::Action, SettingsEditor::Action},
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Flat-Scene Correction"), 0xffe44848,
+     ActionType::Action, SettingsEditor::Action},
 
     {SettingsSection::View, SettingKey::Palette,
-     "Palette", 0xffffffff, ActionType::Action, SettingsEditor::Action},
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Palette"), 0xffffffff,
+     ActionType::Action, SettingsEditor::Action},
     {SettingsSection::View, SettingKey::SaveMarkerInMedia,
-     "Save Marker Overlay", 0xffffffff, ActionType::Toggle, SettingsEditor::Toggle},
-    {SettingsSection::View, SettingKey::HideMarkerWhenHudHidden, "Hide Marker with HUD", 0xffffffff,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Save Marker Overlay"), 0xffffffff,
+     ActionType::Toggle, SettingsEditor::Toggle},
+    {SettingsSection::View, SettingKey::HideMarkerWhenHudHidden,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Hide Marker with HUD"), 0xffffffff,
      ActionType::Toggle, SettingsEditor::Toggle},
     {SettingsSection::View, SettingKey::TemperatureUnit,
-     "Temperature Unit", 0xffffffff, ActionType::Action, SettingsEditor::Choice,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Temperature Unit"), 0xffffffff,
+     ActionType::Action, SettingsEditor::Choice,
      SecondaryVisibility::Always, {}, kTemperatureUnitChoices,
      int(std::size(kTemperatureUnitChoices))},
 
     {SettingsSection::Storage, SettingKey::StoragePriority,
-     "Priority", 0xffffffff, ActionType::Action, SettingsEditor::Choice,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Priority"), 0xffffffff,
+     ActionType::Action, SettingsEditor::Choice,
      SecondaryVisibility::Always, {}, kStoragePriorityChoices,
      int(std::size(kStoragePriorityChoices))},
     {SettingsSection::Storage, std::nullopt,
-     "Internal", 0xffffffff, ActionType::Value, SettingsEditor::Action},
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Internal"), 0xffffffff,
+     ActionType::Value, SettingsEditor::Action},
     {SettingsSection::Storage, std::nullopt,
-     "SD Card", 0xffffffff, ActionType::Value, SettingsEditor::Action,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "SD Card"), 0xffffffff,
+     ActionType::Value, SettingsEditor::Action,
      SecondaryVisibility::RequiresSdCard},
     {SettingsSection::Storage, std::nullopt,
-     "Eject SD Card", 0xffffd278, ActionType::Action, SettingsEditor::Action,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Eject SD Card"), 0xffffd278,
+     ActionType::Action, SettingsEditor::Action,
      SecondaryVisibility::RequiresSdCard},
     {SettingsSection::Storage, std::nullopt,
-     "Format SD Card", 0xffe44848, ActionType::Action, SettingsEditor::Action,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Format SD Card"), 0xffe44848,
+     ActionType::Action, SettingsEditor::Action,
      SecondaryVisibility::RequiresSdCard},
     {SettingsSection::Storage, std::nullopt,
-     "USB Disk", 0xffffffff, ActionType::Value, SettingsEditor::Action,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "USB Disk"), 0xffffffff,
+     ActionType::Value, SettingsEditor::Action,
      SecondaryVisibility::RequiresUsbDisk},
     {SettingsSection::Storage, std::nullopt,
-     "Eject USB Disk", 0xffffd278, ActionType::Action, SettingsEditor::Action,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Eject USB Disk"), 0xffffd278,
+     ActionType::Action, SettingsEditor::Action,
      SecondaryVisibility::RequiresUsbDisk},
     {SettingsSection::Storage, std::nullopt,
-     "Format USB Disk", 0xffe44848, ActionType::Action, SettingsEditor::Action,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Format USB Disk"), 0xffe44848,
+     ActionType::Action, SettingsEditor::Action,
      SecondaryVisibility::RequiresUsbDisk},
 
     {SettingsSection::System, SettingKey::AutoShutdownTimeout,
-     "Auto Shutdown", 0xffffffff, ActionType::Action, SettingsEditor::Choice,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Auto Shutdown"), 0xffffffff,
+     ActionType::Action, SettingsEditor::Choice,
      SecondaryVisibility::Always, {}, kAutoShutdownChoices,
      int(std::size(kAutoShutdownChoices))},
-    {SettingsSection::System, SettingKey::ScreenBrightnessPercent, "Screen Brightness", 0xffffffff,
+    {SettingsSection::System, SettingKey::ScreenBrightnessPercent,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Screen Brightness"), 0xffffffff,
      ActionType::Value, SettingsEditor::Slider, SecondaryVisibility::Always,
      {1.0, NumberFormat::Percent, PeerBound::None,
       std::nullopt, 0x10108, 50, true}},
     {SettingsSection::System, SettingKey::AudioVolumePercent,
-     "Audio Volume", 0xffffffff, ActionType::Value, SettingsEditor::Slider,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Audio Volume"), 0xffffffff,
+     ActionType::Value, SettingsEditor::Slider,
      SecondaryVisibility::Always,
      {1.0, NumberFormat::Percent, PeerBound::None,
       std::nullopt, 0xeb51, 50, true}},
     {SettingsSection::System, std::nullopt,
-     "Date & Time", 0xffffffff, ActionType::Action, SettingsEditor::Action},
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Date & Time"), 0xffffffff,
+     ActionType::Action, SettingsEditor::Action},
+    {SettingsSection::System, SettingKey::AppLanguage,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Language"), 0xffffffff,
+     ActionType::Action, SettingsEditor::Choice, SecondaryVisibility::Always, {},
+     kAppLanguageChoices, int(std::size(kAppLanguageChoices))},
     {SettingsSection::System, std::nullopt,
-     "Restore Defaults", 0xffe44848, ActionType::Action, SettingsEditor::Action},
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Restore Defaults"), 0xffe44848,
+     ActionType::Action, SettingsEditor::Action},
     {SettingsSection::System, std::nullopt,
-     "About", 0xffffffff, ActionType::Action, SettingsEditor::Action},
+     QT_TRANSLATE_NOOP("SettingsCatalog", "About"), 0xffffffff,
+     ActionType::Action, SettingsEditor::Action},
 }};
 
 constexpr SectionSpec kSections[] = {
-    {0xf837, 0xff4868ff, "Camera"},
-    {0xf02c, 0xff1c9e70, "View"},
-    {0xfaf7, 0xff5484d6, "Storage"},
-    {0xea03, 0xffb6662d, "System"},
+    {0xf837, 0xff4868ff, QT_TRANSLATE_NOOP("SettingsCatalog", "Camera")},
+    {0xf02c, 0xff1c9e70, QT_TRANSLATE_NOOP("SettingsCatalog", "View")},
+    {0xfaf7, 0xff5484d6, QT_TRANSLATE_NOOP("SettingsCatalog", "Storage")},
+    {0xea03, 0xffb6662d, QT_TRANSLATE_NOOP("SettingsCatalog", "System")},
 };
 
 const ItemSpec& itemSpec(SettingID item) {
@@ -193,6 +242,10 @@ const ItemSpec& itemSpec(SettingID item) {
 
 const SectionSpec& sectionSpec(int index) {
     return kSections[index];
+}
+
+QString catalogText(const char* sourceText) {
+    return QCoreApplication::translate("SettingsCatalog", sourceText);
 }
 
 double snapshotNumberValue(const SettingsSnapshot& snapshot, SettingKey key) {
@@ -247,11 +300,11 @@ int SettingsCatalog::sectionCount() {
 PrimaryItemData SettingsCatalog::sectionAt(int index) {
     const SectionSpec& section = sectionSpec(index);
     return {QString(QChar(section.iconCodepoint)), QColor::fromRgba(section.iconColor),
-            QString::fromUtf8(section.title)};
+            catalogText(section.title)};
 }
 
 QString SettingsCatalog::sectionTitle(int index) {
-    return QString::fromUtf8(sectionSpec(index).title);
+    return catalogText(sectionSpec(index).title);
 }
 
 int SettingsCatalog::sectionIndexForItem(SettingID item) {
@@ -270,7 +323,7 @@ std::vector<SecondaryItemData> SettingsCatalog::visibleItems(int sectionIndex,
             continue;
         }
         visible.push_back({static_cast<SettingID>(index), item.settingKey,
-                           QString::fromUtf8(item.title),
+                           catalogText(item.title),
                            QColor::fromRgba(item.titleColor), item.type, item.editor});
     }
     return visible;
@@ -308,7 +361,7 @@ SettingsChoiceEditor SettingsCatalog::choiceEditor(SettingID item,
     for (int index = 0; index < spec.choiceCount; ++index) {
         const ChoiceSpec& choice = spec.choices[index];
         editor.options.append({QString::fromLatin1(choice.id),
-                               QString::fromUtf8(choice.title), choice.value});
+                               catalogText(choice.title), choice.value});
         if (choice.value == current) editor.selectedIndex = index;
     }
     return editor;

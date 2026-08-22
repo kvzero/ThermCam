@@ -79,7 +79,7 @@ PoweroffOverlay::PoweroffOverlay(SystemControl* systemControl, QWidget* parent)
         }
         m_spinnerAnimation->stop();
         hide();
-        emit EventBus::instance().toastRequested("SHUTDOWN FAILED", ToastLevel::Error);
+        emit EventBus::instance().toastRequested(tr("SHUTDOWN FAILED"), ToastLevel::Error);
     });
 }
 
@@ -104,12 +104,12 @@ void PoweroffOverlay::setSpinnerPhase(qreal phase) {
 void PoweroffOverlay::setReason(Reason reason) {
     switch (reason) {
     case Reason::BatteryDepleted:
-        m_message = QStringLiteral("Battery depleted. Shutting down...");
+        m_message = tr("Battery depleted. Shutting down...");
         return;
     case Reason::AutoShutdown:
     case Reason::UserRequested:
     default:
-        m_message = QStringLiteral("Shutting down...");
+        m_message = tr("Shutting down...");
         return;
     }
 }

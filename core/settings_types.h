@@ -29,8 +29,22 @@ enum class SettingKey : quint8 {
     ScreenBrightnessPercent,
     AudioVolumePercent,
     AutoShutdownTimeout,
+    AppLanguage,
     Count
 };
+
+/** @brief Persisted UI language selected at application startup. */
+enum class AppLanguage : quint8 {
+    English = 0,
+    SimplifiedChinese = 1
+};
+
+/** @brief Resolves persisted integer storage to one supported UI language. */
+inline AppLanguage appLanguageFromValue(int value) {
+    return value == static_cast<int>(AppLanguage::SimplifiedChinese)
+        ? AppLanguage::SimplifiedChinese
+        : AppLanguage::English;
+}
 
 /** @brief Typed unit selector used by service-level normalization paths. */
 enum class TemperatureUnit : quint8 {
@@ -135,7 +149,10 @@ inline const std::array<SettingDescriptor, static_cast<size_t>(SettingKey::Count
      SettingValueType::Integer, 0, 100},
     {SettingKey::AutoShutdownTimeout, "auto_shutdown_timeout",
      QVariant::fromValue(static_cast<int>(AutoShutdownTimeout::Never)),
-     SettingValueType::Integer, 0, 4, SettingIntegerRangePolicy::Reject}
+     SettingValueType::Integer, 0, 4, SettingIntegerRangePolicy::Reject},
+    {SettingKey::AppLanguage, "app_language",
+     QVariant::fromValue(static_cast<int>(AppLanguage::English)),
+     SettingValueType::Integer, 0, 1, SettingIntegerRangePolicy::Reject}
 }};
 
 inline const SettingDescriptor* settingDescriptorForKey(SettingKey key) {
@@ -168,6 +185,7 @@ inline uint qHash(SettingKey key, uint seed = 0) {
 }
 
 Q_DECLARE_METATYPE(SettingKey)
+Q_DECLARE_METATYPE(AppLanguage)
 Q_DECLARE_METATYPE(TemperatureUnit)
 Q_DECLARE_METATYPE(StoragePriority)
 Q_DECLARE_METATYPE(AgcMode)

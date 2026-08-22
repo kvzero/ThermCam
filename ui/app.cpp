@@ -31,7 +31,7 @@ constexpr int kBatteryDepletedPercent = 0;
 constexpr int kAutoShutdownCountdownMilliseconds = 30 * 1000;
 
 QString autoShutdownCountdownText(int seconds) {
-    return QStringLiteral("Camera will turn off in %1:%2.")
+    return App::tr("Camera will turn off in %1:%2.")
         .arg(seconds / 60, 2, 10, QLatin1Char('0'))
         .arg(seconds % 60, 2, 10, QLatin1Char('0'));
 }
@@ -133,7 +133,7 @@ void App::initLayer_Overlays() {
 
                 ModalSpec spec;
                 spec.level = ModalLevel::Normal;
-                spec.primaryText = "CONTINUE USING";
+                spec.primaryText = tr("CONTINUE USING");
                 spec.showSecondaryButton = false;
                 spec.dismissOnMaskTap = true;
                 spec.onPrimaryAction = [this]() {
@@ -142,7 +142,7 @@ void App::initLayer_Overlays() {
                 };
                 spec.onSecondaryAction = spec.onPrimaryAction;
 
-                showTextModal("AUTO SHUTDOWN", autoShutdownCountdownText(30), spec);
+                showTextModal(tr("AUTO SHUTDOWN"), autoShutdownCountdownText(30), spec);
                 m_autoShutdownCountdownAnimation->stop();
                 m_autoShutdownCountdownAnimation->start();
             });
@@ -150,7 +150,7 @@ void App::initLayer_Overlays() {
             this, [this](const QVariant& value) {
                 if (m_textModal && m_textModal->isVisible()) {
                     const int remainingMilliseconds = qMax(0, value.toInt());
-                    m_textModal->setContent("AUTO SHUTDOWN",
+                    m_textModal->setContent(tr("AUTO SHUTDOWN"),
                                             autoShutdownCountdownText((remainingMilliseconds + 999) / 1000));
                 }
             });
@@ -178,7 +178,7 @@ void App::initLayer_Overlays() {
 
         if (status.level <= kLowBatteryWarningPercent && !m_lowBatteryWarningShown) {
             m_lowBatteryWarningShown = true;
-            showToast("Battery low\nPlease charge", ToastLevel::Warning);
+            showToast(tr("Battery low\nPlease charge"), ToastLevel::Warning);
         }
     };
     connect(&EventBus::instance(), &EventBus::powerStatusChanged,
@@ -275,7 +275,7 @@ void App::handleHardwareKeyLongPress() {
             m_poweroffOverlay->start(PoweroffOverlay::Reason::UserRequested);
         }
     };
-    showTextModal("POWER OFF CAMERA?", "The camera will turn off now.", spec);
+    showTextModal(tr("POWER OFF CAMERA?"), tr("The camera will turn off now."), spec);
 }
 
 void App::showTextModal(const QString& title,
@@ -297,8 +297,8 @@ void App::showWarningModal(const QString& title,
     if (m_warningModal) {
         ModalSpec spec;
         spec.level = ModalLevel::Critical;
-        spec.primaryText = "CONFIRM";
-        spec.secondaryText = "CANCEL";
+        spec.primaryText = tr("CONFIRM");
+        spec.secondaryText = tr("CANCEL");
         spec.dismissOnMaskTap = true;
         spec.onPrimaryAction = std::move(onPrimaryAction);
 
@@ -316,8 +316,8 @@ void App::showClockModal(std::function<bool(const QDateTime&, QString*)> onCommi
 
         ModalSpec spec;
         spec.level = ModalLevel::Normal;
-        spec.primaryText = "CONFIRM";
-        spec.secondaryText = "CANCEL";
+        spec.primaryText = tr("CONFIRM");
+        spec.secondaryText = tr("CANCEL");
         spec.dismissOnMaskTap = true;
 
         m_clockModal->setDateTime(QDateTime::currentDateTime());

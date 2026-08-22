@@ -226,7 +226,8 @@ void GalleryTopBar::drawLeftAction(QPainter& p, int H) {
         textFont.setBold(true);
         p.setFont(textFont);
         p.setOpacity((m_morphProgress - 0.5) * 2.0);
-        p.drawText(m_leftHitbox, Qt::AlignCenter, m_isAllSelected ? "Clear" : "Select All");
+        p.drawText(m_leftHitbox, Qt::AlignCenter,
+                   m_isAllSelected ? tr("Clear") : tr("Select All"));
     }
     p.setOpacity(1.0);
 }
@@ -415,10 +416,10 @@ void GalleryTopBar::drawRightAction(QPainter& p, int H) {
 
     if (m_morphProgress < 0.5) {
         p.setOpacity(1.0 - (m_morphProgress * 2.0));
-        p.drawText(pillRect, Qt::AlignCenter, "SELECT");
+        p.drawText(pillRect, Qt::AlignCenter, tr("SELECT"));
     } else {
         p.setOpacity((m_morphProgress - 0.5) * 2.0);
-        p.drawText(pillRect, Qt::AlignCenter, "CANCEL");
+        p.drawText(pillRect, Qt::AlignCenter, tr("CANCEL"));
     }
     p.setOpacity(1.0);
 }

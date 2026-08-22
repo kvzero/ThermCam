@@ -1,6 +1,7 @@
 #include "settings_view.h"
 #include "ui/widgets/settings_row.h"
 #include "ui/widgets/scroll_indicator.h"
+#include "core/app_translator.h"
 #include "core/event_bus.h"
 #include "core/settings_store.h"
 #include "hardware/hardware_manager.h"
@@ -13,6 +14,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QEasingCurve>
+#include <QCoreApplication>
 #include <QDebug>
 #include <cmath>
 
@@ -231,7 +233,7 @@ void SettingsView::onEnter() {
 
     rebuildSecondaryRows(0);
     for (auto* row : m_primaryRows) row->setSelected(false);
-    m_topBar->setTitle(QStringLiteral("Settings"));
+    m_topBar->setTitle(tr("Settings"));
     relayoutRows();
     refreshSecondaryRowsFromStore();
     m_scrollIndicator->forceHide();
@@ -743,15 +745,15 @@ void SettingsView::onSecondaryRowActivated() {
             QString error;
             if (!SettingsService::instance().triggerFlatSceneCorrection(&error)) {
                 qWarning() << "[Settings] Flat-scene correction failed:" << error;
-                app->showToast("FLAT-SCENE CORRECTION FAILED", ToastLevel::Error);
+                app->showToast(tr("FLAT-SCENE CORRECTION FAILED"), ToastLevel::Error);
                 return;
             }
-            app->showToast("FLAT-SCENE CORRECTION TRIGGERED", ToastLevel::Success);
+            app->showToast(tr("FLAT-SCENE CORRECTION TRIGGERED"), ToastLevel::Success);
         };
         app->showTextModal(
-            QStringLiteral("FLAT-SCENE CORRECTION"),
-            QStringLiteral("Cover the lens with a uniform surface before continuing.\n"
-                           "Incorrect setup may cause ghosting."),
+            tr("FLAT-SCENE CORRECTION"),
+            tr("Cover the lens with a uniform surface before continuing.\n"
+               "Incorrect setup may cause ghosting."),
             spec,
             TextModalSize::Large);
         return;
@@ -781,12 +783,12 @@ void SettingsView::onSecondaryRowActivated() {
                 SettingsService::instance().restoreDefaults();
             if (result.code == SettingsService::ApplyCode::Ok ||
                 result.code == SettingsService::ApplyCode::NoChange) {
-                app->showToast("SETTINGS RESTORED", ToastLevel::Success);
+                app->showToast(tr("SETTINGS RESTORED"), ToastLevel::Success);
             }
         };
         app->showTextModal(
-            QStringLiteral("RESTORE DEFAULTS?"),
-            QStringLiteral("All settings will be reset.\nMedia & calibration unchanged."),
+            tr("RESTORE DEFAULTS?"),
+            tr("All settings will be reset.\nMedia & calibration unchanged."),
             spec,
             TextModalSize::Large);
         return;
@@ -795,9 +797,9 @@ void SettingsView::onSecondaryRowActivated() {
         if (!app) return;
         ModalSpec spec;
         spec.level = ModalLevel::Normal;
-        spec.primaryText = "CLOSE";
+        spec.primaryText = tr("CLOSE");
         spec.showSecondaryButton = false;
-        app->showTextModal(QStringLiteral("ABOUT"),
+        app->showTextModal(tr("ABOUT"),
                            QStringLiteral("ThermCam · v0.1.0\n"
                                           "github.com/kvzero/ThermCam\n"
                                           "© 2026 kvzero · GPLv3"),
@@ -812,15 +814,14 @@ void SettingsView::onSecondaryRowActivated() {
     }
     if (item.id == SettingID::SdCardSafeEject || item.id == SettingID::UsbDiskSafeEject) {
         const bool sdCard = (item.id == SettingID::SdCardSafeEject);
-        const QString targetName = sdCard ? QStringLiteral("SD Card")
-                                          : QStringLiteral("USB Disk");
+        const QString targetName = sdCard ? tr("SD Card") : tr("USB Disk");
         if (!app) return;
         ModalSpec spec;
         spec.level = ModalLevel::Normal;
         spec.onPrimaryAction = [this, app, targetName, sdCard]() {
             auto* storage = HardwareManager::instance().storage();
             if (!storage) {
-                app->showToast("STORAGE UNAVAILABLE", ToastLevel::Error);
+                app->showToast(SettingsView::tr("STORAGE UNAVAILABLE"), ToastLevel::Error);
                 return;
             }
 
@@ -833,24 +834,25 @@ void SettingsView::onSecondaryRowActivated() {
             if (!ok) {
                 qWarning() << "[Settings] Safe eject failed:" << targetName
                            << "reason:" << error;
-                app->showToast(targetName + " eject failed", ToastLevel::Error);
+                app->showToast(SettingsView::tr("%1 ejection failed").arg(targetName),
+                               ToastLevel::Error);
             } else {
-                app->showToast(targetName + " can be removed", ToastLevel::Success);
+                app->showToast(SettingsView::tr("%1 can be removed").arg(targetName),
+                               ToastLevel::Success);
             }
 
             refreshStorageRowsIfVisible();
         };
         app->showTextModal(
-            QStringLiteral("EJECT %1?").arg(targetName.toUpper()),
-            QStringLiteral("Wait for confirmation before removing it."),
+            tr("EJECT %1?").arg(targetName.toUpper()),
+            tr("Wait for confirmation before removing it."),
             spec,
             TextModalSize::Normal);
         return;
     }
     if (item.id == SettingID::SdCardFormat || item.id == SettingID::UsbDiskFormat) {
         const bool sdCard = (item.id == SettingID::SdCardFormat);
-        const QString targetName = sdCard ? QStringLiteral("SD Card")
-                                          : QStringLiteral("USB Disk");
+        const QString targetName = sdCard ? tr("SD Card") : tr("USB Disk");
         const StorageVolume targetVolume = sdCard ? StorageVolume::SdCard
                                                   : StorageVolume::UsbDisk;
         if (!app) return;
@@ -858,15 +860,16 @@ void SettingsView::onSecondaryRowActivated() {
         const QString fileSystem = storage ? storage->formatFileSystemName(targetVolume)
                                            : QString();
         const QString warningBody = fileSystem.isEmpty()
-            ? QStringLiteral("All files will be deleted.")
-            : QStringLiteral("All files will be deleted.\nIt will be formatted as %1.")
+            ? tr("All files will be deleted.")
+            : tr("All files will be deleted.\nIt will be formatted as %1.")
                   .arg(fileSystem);
-        app->showWarningModal(QStringLiteral("FORMAT %1?").arg(targetName.toUpper()),
+        app->showWarningModal(tr("FORMAT %1?").arg(targetName.toUpper()),
                               warningBody,
                               [this, app, targetName, targetVolume]() {
                                auto* storage = HardwareManager::instance().storage();
                                if (!storage) {
-                                   app->showToast("STORAGE UNAVAILABLE", ToastLevel::Error);
+                                   app->showToast(SettingsView::tr("STORAGE UNAVAILABLE"),
+                                                  ToastLevel::Error);
                                    return;
                                }
 
@@ -876,9 +879,12 @@ void SettingsView::onSecondaryRowActivated() {
                                if (!ok) {
                                    qWarning() << "[Settings] Format failed:" << targetName
                                               << "reason:" << error;
-                                   app->showToast(targetName + " format failed", ToastLevel::Error);
+                                   app->showToast(
+                                       SettingsView::tr("%1 formatting failed").arg(targetName),
+                                       ToastLevel::Error);
                                } else {
-                                   app->showToast(targetName + " formatted", ToastLevel::Success);
+                                   app->showToast(SettingsView::tr("%1 formatted").arg(targetName),
+                                                  ToastLevel::Success);
                                }
 
                                   refreshStorageRowsIfVisible();
@@ -1041,7 +1047,7 @@ void SettingsView::collapseToSingle() {
 
     m_mode = PanelMode::Single;
     m_activePrimary = -1;
-    m_topBar->setTitle(QStringLiteral("Settings"));
+    m_topBar->setTitle(tr("Settings"));
     for (auto* row : m_primaryRows) row->setSelected(false);
 
     m_splitAnim->stop();
@@ -1132,6 +1138,34 @@ void SettingsView::refreshStorageRowsIfVisible() {
     relayoutRows();
 }
 
+void SettingsView::refreshLanguage() {
+    dismissBubblesImmediately();
+
+    const PanelMode previousMode = m_mode;
+    const int previousPrimary = m_activePrimary;
+    const qreal previousLeftScroll = m_leftScroll;
+    const qreal previousRightScroll = m_rightScroll;
+
+    buildPrimaryRows();
+
+    if (previousMode == PanelMode::Expanded && previousPrimary >= 0) {
+        m_mode = PanelMode::Expanded;
+        m_activePrimary = previousPrimary;
+        rebuildSecondaryRows(previousPrimary);
+        m_topBar->setTitle(SettingsCatalog::sectionTitle(previousPrimary));
+    } else {
+        m_mode = PanelMode::Single;
+        m_activePrimary = -1;
+        rebuildSecondaryRows(0);
+        m_topBar->setTitle(tr("Settings"));
+    }
+
+    m_leftScroll = qBound<qreal>(0.0, previousLeftScroll, leftMaxScroll());
+    m_rightScroll = qBound<qreal>(0.0, previousRightScroll, rightMaxScroll());
+    refreshTopMask();
+    relayoutRows();
+}
+
 void SettingsView::applyPatchFromUi(const SettingsPatch& patch) {
     if (patch.isEmpty()) return;
 
@@ -1145,6 +1179,14 @@ void SettingsView::onSettingsApplyCompleted(const SettingsService::ApplyResult& 
 
     if (result.code == SettingsService::ApplyCode::Ok ||
         result.code == SettingsService::ApplyCode::NoChange) {
+        if (result.change.changedKeys.contains(SettingKey::AppLanguage)) {
+            auto* application = QCoreApplication::instance();
+            const AppLanguage language = appLanguageFromValue(
+                result.change.snapshot.values.value(SettingKey::AppLanguage).toInt());
+            if (application && AppTranslator::instance().setLanguage(*application, language)) {
+                refreshLanguage();
+            }
+        }
         return;
     }
 
@@ -1152,9 +1194,9 @@ void SettingsView::onSettingsApplyCompleted(const SettingsService::ApplyResult& 
     if (!app) return;
 
     if (result.code == SettingsService::ApplyCode::RuntimeApplyFailed && result.persisted) {
-        app->showToast("APPLY DEFERRED", ToastLevel::Warning);
+        app->showToast(tr("APPLY DEFERRED"), ToastLevel::Warning);
         return;
     }
 
-    app->showToast("SET FAILED", ToastLevel::Error);
+    app->showToast(tr("SET FAILED"), ToastLevel::Error);
 }
