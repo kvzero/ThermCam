@@ -209,7 +209,8 @@ constexpr std::array<ItemSpec, static_cast<size_t>(SettingID::Count)> kItems = {
     {SettingsSection::System, SettingsItemRole::Command, std::nullopt, std::nullopt,
      QT_TRANSLATE_NOOP("SettingsCatalog", "About"), 0xffffffff},
     {SettingsSection::SystemTools, SettingsItemRole::Command, std::nullopt, std::nullopt,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "Initialize Userdata"), 0xffe44848},
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Initialize Userdata"), 0xffe44848,
+     SettingsItemVisibility::RequiresUnattachedUserdata},
     {SettingsSection::SystemTools, SettingsItemRole::Command, std::nullopt, std::nullopt,
      QT_TRANSLATE_NOOP("SettingsCatalog", "Haptic Motor Calibration"), 0xffffffff},
     {SettingsSection::SystemTools, SettingsItemRole::Command, std::nullopt, std::nullopt,
@@ -272,7 +273,8 @@ double snapshotNumberValue(const SettingsSnapshot& snapshot, SettingKey key) {
 bool itemVisible(const ItemSpec& item,
                  const SettingsSnapshot& snapshot,
                  bool sdCardReady,
-                 bool usbDiskReady) {
+                 bool usbDiskReady,
+                 bool userdataUbiAttached) {
     switch (item.visibility) {
     case SettingsItemVisibility::Always:
         return true;
@@ -280,6 +282,8 @@ bool itemVisible(const ItemSpec& item,
         return sdCardReady;
     case SettingsItemVisibility::RequiresUsbDisk:
         return usbDiskReady;
+    case SettingsItemVisibility::RequiresUnattachedUserdata:
+        return !userdataUbiAttached;
     case SettingsItemVisibility::RequiresLegacyMode:
         return !snapshot.values.value(SettingKey::SeekVisionEnabled).toBool();
     case SettingsItemVisibility::RequiresLegacyLinearAgc:
@@ -341,11 +345,13 @@ std::vector<SettingsItemData> SettingsCatalog::visibleItems(
     SettingsSection section,
     const SettingsSnapshot& snapshot,
     bool sdCardReady,
-    bool usbDiskReady) {
+    bool usbDiskReady,
+    bool userdataUbiAttached) {
     std::vector<SettingsItemData> visible;
     for (size_t index = 0; index < kItems.size(); ++index) {
         const ItemSpec& item = kItems[index];
-        if (item.section != section || !itemVisible(item, snapshot, sdCardReady, usbDiskReady)) {
+        if (item.section != section ||
+            !itemVisible(item, snapshot, sdCardReady, usbDiskReady, userdataUbiAttached)) {
             continue;
         }
         visible.push_back(displayData(static_cast<SettingID>(index), item));

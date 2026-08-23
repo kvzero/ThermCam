@@ -5,7 +5,7 @@
 #include "core/event_bus.h"
 #include "core/settings_store.h"
 #include "hardware/hardware_manager.h"
-#include "hardware/hmi/system_control.h"
+#include "hardware/platform/system_control.h"
 #include "hardware/storage/storage_manager.h"
 #include "services/operation_service.h"
 #include "ui/app.h"
@@ -929,6 +929,46 @@ void SettingsView::activateCommandItem(const SettingsItemData& item) {
         });
         return;
     }
+    if (item.id == SettingID::RebootToLoader) {
+        if (!app) return;
+        ModalSpec spec;
+        spec.onPrimaryAction = [app]() {
+            if (OperationService::instance().isBusy()) {
+                app->showToast(SettingsView::tr("SYSTEM OPERATION IN PROGRESS"),
+                               ToastLevel::Info);
+                return;
+            }
+
+            auto* system = HardwareManager::instance().systemControl();
+            QString error;
+            if (!system || !system->rebootToLoader(&error)) {
+                qWarning() << "[Settings] Reboot to Loader failed:" << error;
+                app->showToast(SettingsView::tr("REBOOT FAILED"), ToastLevel::Error);
+            }
+        };
+        app->showTextModal(
+            tr("REBOOT TO LOADER?"),
+            tr("The camera will restart in Loader mode."),
+            spec,
+            TextModalSize::Normal);
+        return;
+    }
+    if (item.id == SettingID::InitializeUserdata) {
+        if (!app) return;
+        app->showWarningModal(
+            tr("INITIALIZE USERDATA?"),
+            tr("All internal data will be erased.\n"
+               "The camera will restart when complete."),
+            [app]() {
+                const OperationStartCode result =
+                    OperationService::instance().startInitializeUserdata();
+                showOperationStartFeedback(
+                    app,
+                    result,
+                    SettingsView::tr("USERDATA INITIALIZATION FAILED"));
+            });
+        return;
+    }
     if (item.id == SettingID::RestoreDefaults) {
         if (!app) return;
         ModalSpec spec;
@@ -1062,11 +1102,13 @@ void SettingsView::rebuildSectionItems(int primaryIndex) {
     auto* storage = HardwareManager::instance().storage();
     const bool sdCardReady = storage && storage->isSdCardReady();
     const bool usbDiskReady = storage && storage->isUsbDiskReady();
+    const bool userdataUbiAttached = storage && storage->isUserdataUbiAttached();
     rebuildItemRows(m_sectionItems.rows,
                     SettingsCatalog::visibleItems(static_cast<SettingsSection>(primaryIndex),
                                                   SettingsStore::instance().current(),
                                                   sdCardReady,
-                                                  usbDiskReady));
+                                                  usbDiskReady,
+                                                  userdataUbiAttached));
     refreshItemRowsFromSnapshot(m_sectionItems.rows, SettingsStore::instance().current());
 }
 
@@ -1075,11 +1117,13 @@ void SettingsView::rebuildPageItems(SettingsSection section) {
     auto* storage = HardwareManager::instance().storage();
     const bool sdCardReady = storage && storage->isSdCardReady();
     const bool usbDiskReady = storage && storage->isUsbDiskReady();
+    const bool userdataUbiAttached = storage && storage->isUserdataUbiAttached();
     rebuildItemRows(m_pageItems.rows,
                     SettingsCatalog::visibleItems(section,
                                                   SettingsStore::instance().current(),
                                                   sdCardReady,
-                                                  usbDiskReady));
+                                                  usbDiskReady,
+                                                  userdataUbiAttached));
     refreshItemRowsFromSnapshot(m_pageItems.rows, SettingsStore::instance().current());
 }
 

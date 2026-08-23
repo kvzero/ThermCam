@@ -4,7 +4,7 @@
 #include "imaging/thermal_camera.h"
 #include "hardware/hmi/key_manager.h"
 #include "hardware/hmi/haptic_provider.h"
-#include "hardware/hmi/system_control.h"
+#include "hardware/platform/system_control.h"
 #include "hardware/sensor/battery_monitor.h"
 #include "hardware/storage/storage_manager.h"
 #include <QDebug>

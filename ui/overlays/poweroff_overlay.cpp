@@ -1,7 +1,7 @@
 #include "poweroff_overlay.h"
 
 #include "core/event_bus.h"
-#include "hardware/hmi/system_control.h"
+#include "hardware/platform/system_control.h"
 
 #include <QApplication>
 #include <QDebug>
@@ -13,7 +13,6 @@
 #include <QVariantAnimation>
 
 #include <cmath>
-#include <cstdlib>
 
 namespace {
 constexpr int kSpinnerSegments = 12;
@@ -65,12 +64,13 @@ PoweroffOverlay::PoweroffOverlay(SystemControl* systemControl, QWidget* parent)
         }
     });
     connect(m_backlightFade, &QVariantAnimation::finished, this, [this]() {
-        if (std::system("poweroff") == 0) {
+        QString shutdownError;
+        if (m_systemControl && m_systemControl->powerOff(&shutdownError)) {
             QApplication::quit();
             return;
         }
 
-        qWarning() << "[Poweroff] Shutdown command failed.";
+        qWarning() << "[Poweroff] Shutdown command failed:" << shutdownError;
         if (m_systemControl) {
             QString error;
             if (!m_systemControl->setScreenBrightnessPercent(m_originalBrightnessPercent, &error)) {

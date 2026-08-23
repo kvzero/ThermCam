@@ -119,6 +119,12 @@ public:
         update();
     }
 
+    void setProgressValue(int percent) {
+        m_determinateProgress = true;
+        m_progressValue = qBound(0, percent, 100) / 100.0;
+        update();
+    }
+
 protected:
     void paintEvent(QPaintEvent*) override {
         if (width() <= 0 || height() <= 0 || m_opacity <= 0.0) return;
@@ -186,14 +192,26 @@ protected:
             painter.setBrush(QColor(255, 255, 255, 35));
             painter.drawRoundedRect(track, trackHeight / 2.0, trackHeight / 2.0);
 
-            const qreal segmentWidth = track.width() * 0.32;
-            const qreal travel = track.width() + segmentWidth;
-            const qreal segmentX = track.left() - segmentWidth + travel * m_progressPhase;
             painter.save();
             painter.setClipRect(track);
             painter.setBrush(accent);
-            painter.drawRoundedRect(QRectF(segmentX, track.top(), segmentWidth, track.height()),
-                                    trackHeight / 2.0, trackHeight / 2.0);
+            if (m_determinateProgress) {
+                const qreal fillWidth = track.width() * m_progressValue;
+                if (fillWidth > 0.0) {
+                    painter.drawRoundedRect(
+                        QRectF(track.left(), track.top(), fillWidth, track.height()),
+                        trackHeight / 2.0,
+                        trackHeight / 2.0);
+                }
+            } else {
+                const qreal segmentWidth = track.width() * 0.32;
+                const qreal travel = track.width() + segmentWidth;
+                const qreal segmentX = track.left() - segmentWidth + travel * m_progressPhase;
+                painter.drawRoundedRect(
+                    QRectF(segmentX, track.top(), segmentWidth, track.height()),
+                    trackHeight / 2.0,
+                    trackHeight / 2.0);
+            }
             painter.restore();
         }
     }
@@ -202,7 +220,9 @@ private:
     QString m_message;
     ToastLevel m_level = ToastLevel::Info;
     bool m_progress = false;
+    bool m_determinateProgress = false;
     qreal m_progressPhase = 0.0;
+    qreal m_progressValue = 0.0;
     qreal m_opacity = 0.0;
     qreal m_scale = 0.8;
 };
@@ -245,6 +265,14 @@ void ToastManager::showToast(const QString& msg, ToastLevel level) {
 void ToastManager::showProgressToast(const QString& msg) {
     Q_ASSERT(!m_progressEntry);
     m_progressEntry = createEntry(msg, ToastLevel::Info, true);
+}
+
+void ToastManager::updateProgressToast(int percent) {
+    if (!m_progressEntry || m_progressEntry->isDismissing) return;
+    if (m_progressEntry->progressAnimation) {
+        m_progressEntry->progressAnimation->stop();
+    }
+    m_progressEntry->card->setProgressValue(percent);
 }
 
 void ToastManager::finishProgressToast(const QString& msg,

@@ -40,7 +40,8 @@ struct StorageRoutingPolicy {
 /**
  * @brief Central authority for file system routing and safety quotas.
  *
- * Owns removable-media detection (SD/USB), capacity telemetry, and capture routing policy.
+ * Owns removable-media detection (SD/USB), internal UBI maintenance, capacity
+ * telemetry, and capture routing policy.
  * Upper layers request one file path and never decide media ordering.
  *
  * Features active "Quota Patrol" to prevent system partitions from filling up,
@@ -69,6 +70,9 @@ public:
      */
     bool isUsbDiskReady() const;
 
+    /** @brief Returns whether the kernel attached MTD3 as a UBI device. */
+    bool isUserdataUbiAttached() const;
+
     /**
      * @brief Formats one removable volume and remounts it at the canonical mount point.
      *
@@ -77,6 +81,9 @@ public:
      * - >  32 GiB  -> exFAT
      */
     bool startFormatVolume(StorageVolume volume);
+
+    /** @brief Creates the UBI userdata volume on a freshly cloned NAND. */
+    bool startInitializeUserdata();
 
     /**
      * @brief Returns the filesystem that @p volume will use after formatting.
@@ -164,6 +171,12 @@ signals:
     /** @brief Reports completion of one asynchronously formatted removable volume. */
     void formatVolumeFinished(StorageVolume volume, bool success);
 
+    /** @brief Reports real erase progress emitted by ubiformat. */
+    void userdataInitializationProgress(int percent);
+
+    /** @brief Reports completion of the UBI userdata initialization sequence. */
+    void userdataInitializationFinished(bool success);
+
 private slots:
     /**
      * @brief Handles kernel block-device UEVENTs from Netlink.
@@ -229,7 +242,7 @@ private:
     bool m_hasActiveRecordingVolume = false;
     StorageVolume m_activeRecordingVolume = StorageVolume::SdCard;
     std::optional<StorageVolume> m_formatVolume;
-    QFuture<void> m_formatFuture;
+    QFuture<void> m_maintenanceFuture;
 
     /* --- Canonical Mount Constants --- */
     static const QString kSdCardMountPoint;

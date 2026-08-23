@@ -4,98 +4,117 @@
 <context>
     <name>App</name>
     <message>
-        <location filename="../ui/app.cpp" line="59"/>
+        <location filename="../ui/app.cpp" line="64"/>
         <source>Camera will turn off in %1:%2.</source>
         <translation>将在 %1:%2 后自动关机。</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="169"/>
+        <location filename="../ui/app.cpp" line="172"/>
         <source>CONTINUE USING</source>
         <translation>继续使用</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="178"/>
-        <location filename="../ui/app.cpp" line="186"/>
+        <location filename="../ui/app.cpp" line="181"/>
+        <location filename="../ui/app.cpp" line="189"/>
         <source>AUTO SHUTDOWN</source>
         <translation>自动关机</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="195"/>
-        <location filename="../ui/app.cpp" line="310"/>
+        <location filename="../ui/app.cpp" line="308"/>
         <source>SYSTEM OPERATION IN PROGRESS</source>
         <translation>系统操作正在进行</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="219"/>
+        <location filename="../ui/app.cpp" line="217"/>
         <source>Battery low
 Please charge</source>
         <translation>电量不足
 请及时充电</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="320"/>
+        <location filename="../ui/app.cpp" line="318"/>
         <source>POWER OFF CAMERA?</source>
         <translation>要关闭相机吗？</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="320"/>
+        <location filename="../ui/app.cpp" line="318"/>
         <source>The camera will turn off now.</source>
         <translation>相机将立即关机。</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="43"/>
+        <location filename="../ui/app.cpp" line="44"/>
         <source>FLAT-SCENE CORRECTION IN PROGRESS</source>
         <translation>正在执行平场标定</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="47"/>
+        <location filename="../ui/app.cpp" line="48"/>
         <source>FORMATTING SD CARD</source>
         <translation>正在格式化 SD 卡</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="51"/>
+        <location filename="../ui/app.cpp" line="52"/>
         <source>FORMATTING USB DISK</source>
         <translation>正在格式化 USB 存储</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="44"/>
+        <location filename="../ui/app.cpp" line="45"/>
         <source>FLAT-SCENE CORRECTION COMPLETED</source>
         <translation>平场标定完成</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="48"/>
+        <location filename="../ui/app.cpp" line="49"/>
         <source>SD CARD FORMATTED</source>
         <translation>SD 卡格式化完成</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="52"/>
+        <location filename="../ui/app.cpp" line="53"/>
         <source>USB DISK FORMATTED</source>
         <translation>USB 存储格式化完成</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="45"/>
+        <location filename="../ui/app.cpp" line="46"/>
         <source>FLAT-SCENE CORRECTION FAILED</source>
         <translation>平场标定失败</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="49"/>
+        <location filename="../ui/app.cpp" line="50"/>
         <source>SD CARD FORMATTING FAILED</source>
         <translation>SD 卡格式化失败</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="53"/>
+        <location filename="../ui/app.cpp" line="54"/>
         <source>USB DISK FORMATTING FAILED</source>
         <translation>USB 存储格式化失败</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="355"/>
-        <location filename="../ui/app.cpp" line="374"/>
+        <location filename="../ui/app.cpp" line="56"/>
+        <source>INITIALIZING USERDATA</source>
+        <translation>正在初始化 Userdata</translation>
+    </message>
+    <message>
+        <location filename="../ui/app.cpp" line="57"/>
+        <source>USERDATA INITIALIZED</source>
+        <translation>Userdata 初始化完成</translation>
+    </message>
+    <message>
+        <location filename="../ui/app.cpp" line="58"/>
+        <source>USERDATA INITIALIZATION FAILED</source>
+        <translation>Userdata 初始化失败</translation>
+    </message>
+    <message>
+        <location filename="../ui/app.cpp" line="343"/>
+        <source>REBOOT FAILED</source>
+        <translation>重启失败</translation>
+    </message>
+    <message>
+        <location filename="../ui/app.cpp" line="368"/>
+        <location filename="../ui/app.cpp" line="387"/>
         <source>CONFIRM</source>
         <translation>确定</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="356"/>
-        <location filename="../ui/app.cpp" line="375"/>
+        <location filename="../ui/app.cpp" line="369"/>
+        <location filename="../ui/app.cpp" line="388"/>
         <source>CANCEL</source>
         <translation>取消</translation>
     </message>
@@ -535,13 +554,13 @@ Please charge</source>
     <message>
         <location filename="../ui/views/settings_view.cpp" line="260"/>
         <location filename="../ui/views/settings_view.cpp" line="306"/>
-        <location filename="../ui/views/settings_view.cpp" line="1208"/>
-        <location filename="../ui/views/settings_view.cpp" line="1363"/>
+        <location filename="../ui/views/settings_view.cpp" line="1269"/>
+        <location filename="../ui/views/settings_view.cpp" line="1428"/>
         <source>Settings</source>
         <translation>设置</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="893"/>
+        <location filename="../ui/views/settings_view.cpp" line="906"/>
         <source>FLAT-SCENE CORRECTION FAILED</source>
         <translation>平场标定失败</translation>
     </message>
@@ -551,104 +570,137 @@ Please charge</source>
     </message>
     <message>
         <location filename="../ui/views/settings_view.cpp" line="45"/>
+        <location filename="../ui/views/settings_view.cpp" line="937"/>
         <source>SYSTEM OPERATION IN PROGRESS</source>
         <translation>系统操作正在进行</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="896"/>
+        <location filename="../ui/views/settings_view.cpp" line="909"/>
         <source>FLAT-SCENE CORRECTION</source>
         <translation>平场标定</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="897"/>
+        <location filename="../ui/views/settings_view.cpp" line="910"/>
         <source>Cover the lens with a uniform surface before continuing.
 Incorrect setup may cause ghosting.</source>
         <translation>请用温度均匀的物体遮住镜头后继续。
 标定不当可能造成重影。</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="928"/>
+        <location filename="../ui/views/settings_view.cpp" line="946"/>
+        <source>REBOOT FAILED</source>
+        <translation>重启失败</translation>
+    </message>
+    <message>
+        <location filename="../ui/views/settings_view.cpp" line="950"/>
+        <source>REBOOT TO LOADER?</source>
+        <translation>重启进入 Loader？</translation>
+    </message>
+    <message>
+        <location filename="../ui/views/settings_view.cpp" line="951"/>
+        <source>The camera will restart in Loader mode.</source>
+        <translation>相机将重启并进入 Loader 模式。</translation>
+    </message>
+    <message>
+        <location filename="../ui/views/settings_view.cpp" line="959"/>
+        <source>INITIALIZE USERDATA?</source>
+        <translation>初始化 Userdata？</translation>
+    </message>
+    <message>
+        <location filename="../ui/views/settings_view.cpp" line="960"/>
+        <source>All internal data will be erased.
+The camera will restart when complete.</source>
+        <translation>所有内部数据都将被清除。
+完成后相机将自动重启。</translation>
+    </message>
+    <message>
+        <location filename="../ui/views/settings_view.cpp" line="968"/>
+        <source>USERDATA INITIALIZATION FAILED</source>
+        <translation>Userdata 初始化失败</translation>
+    </message>
+    <message>
+        <location filename="../ui/views/settings_view.cpp" line="981"/>
         <source>SETTINGS RESTORED</source>
         <translation>已恢复默认设置</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="932"/>
+        <location filename="../ui/views/settings_view.cpp" line="985"/>
         <source>RESTORE DEFAULTS?</source>
         <translation>恢复默认设置？</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="933"/>
+        <location filename="../ui/views/settings_view.cpp" line="986"/>
         <source>All settings will be reset.
 Media &amp; calibration unchanged.</source>
         <translation>所有设置将恢复为默认值。
 媒体文件和校准数据不受影响。</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="942"/>
+        <location filename="../ui/views/settings_view.cpp" line="995"/>
         <source>CLOSE</source>
         <translation>关闭</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="944"/>
+        <location filename="../ui/views/settings_view.cpp" line="997"/>
         <source>ABOUT</source>
         <translation>关于</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="954"/>
-        <location filename="../ui/views/settings_view.cpp" line="992"/>
+        <location filename="../ui/views/settings_view.cpp" line="1007"/>
+        <location filename="../ui/views/settings_view.cpp" line="1045"/>
         <source>SD Card</source>
         <translation>SD 卡</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="954"/>
-        <location filename="../ui/views/settings_view.cpp" line="992"/>
+        <location filename="../ui/views/settings_view.cpp" line="1007"/>
+        <location filename="../ui/views/settings_view.cpp" line="1045"/>
         <source>USB Disk</source>
         <translation>U 盘</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="961"/>
+        <location filename="../ui/views/settings_view.cpp" line="1014"/>
         <source>STORAGE UNAVAILABLE</source>
         <translation>存储设备不可用</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="974"/>
+        <location filename="../ui/views/settings_view.cpp" line="1027"/>
         <source>%1 ejection failed</source>
         <translation>无法安全移除 %1</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="977"/>
+        <location filename="../ui/views/settings_view.cpp" line="1030"/>
         <source>%1 can be removed</source>
         <translation>%1 已可安全移除</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="984"/>
+        <location filename="../ui/views/settings_view.cpp" line="1037"/>
         <source>EJECT %1?</source>
         <translation>安全移除 %1？</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="985"/>
+        <location filename="../ui/views/settings_view.cpp" line="1038"/>
         <source>Wait for confirmation before removing it.</source>
         <translation>请在收到确认提示后再拔出设备。</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="1000"/>
+        <location filename="../ui/views/settings_view.cpp" line="1053"/>
         <source>All files will be deleted.</source>
         <translation>所有文件将被删除。</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="1001"/>
+        <location filename="../ui/views/settings_view.cpp" line="1054"/>
         <source>All files will be deleted.
 It will be formatted as %1.</source>
         <translation>所有文件将被删除。
 设备将格式化为 %1。</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="1003"/>
+        <location filename="../ui/views/settings_view.cpp" line="1056"/>
         <source>FORMAT %1?</source>
         <translation>格式化 %1？</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="1011"/>
+        <location filename="../ui/views/settings_view.cpp" line="1064"/>
         <source>%1 formatting failed</source>
         <translation>格式化 %1 失败</translation>
     </message>
@@ -657,12 +709,12 @@ It will be formatted as %1.</source>
         <translation type="vanished">已格式化 %1</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="1399"/>
+        <location filename="../ui/views/settings_view.cpp" line="1464"/>
         <source>APPLY DEFERRED</source>
         <translation>设置已保存，将在稍后生效</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="1403"/>
+        <location filename="../ui/views/settings_view.cpp" line="1468"/>
         <source>SET FAILED</source>
         <translation>保存设置失败</translation>
     </message>

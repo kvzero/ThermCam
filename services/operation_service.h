@@ -9,7 +9,8 @@
 enum class OperationID : quint8 {
     FlatSceneCorrection,
     FormatSdCard,
-    FormatUsbDisk
+    FormatUsbDisk,
+    InitializeUserdata
 };
 
 enum class OperationStartCode : quint8 {
@@ -33,9 +34,11 @@ public:
 
     OperationStartCode startFlatSceneCorrection();
     OperationStartCode startFormatVolume(StorageVolume volume);
+    OperationStartCode startInitializeUserdata();
 
 signals:
     void operationStarted(OperationID operation);
+    void operationProgress(OperationID operation, int percent);
     void operationFinished(OperationID operation, bool success);
 
 private:

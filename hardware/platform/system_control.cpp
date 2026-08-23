@@ -19,6 +19,8 @@ const char* kBacklightMaxPath = "/sys/class/backlight/backlight/max_brightness";
 const char* kDacDigitalControlName = "DAC Digital";
 const char* kDateCommand = "/usr/bin/date";
 const char* kHwclockCommand = "/usr/sbin/hwclock";
+const char* kPoweroffCommand = "/usr/sbin/poweroff";
+const char* kRebootCommand = "/usr/sbin/reboot";
 constexpr int kClockCommandTimeoutMs = 5000;
 constexpr qint64 kRtcVerifyToleranceSecs = 10;
 
@@ -230,6 +232,20 @@ bool SystemControl::setSystemDateTime(const QDateTime& dateTime, QString* outErr
     return true;
 }
 
+bool SystemControl::powerOff(QString* outError) {
+    return startDetachedCommand(QString::fromLatin1(kPoweroffCommand), {}, outError);
+}
+
+bool SystemControl::reboot(QString* outError) {
+    return startDetachedCommand(QString::fromLatin1(kRebootCommand), {}, outError);
+}
+
+bool SystemControl::rebootToLoader(QString* outError) {
+    return startDetachedCommand(QString::fromLatin1(kRebootCommand),
+                                {QStringLiteral("loader")},
+                                outError);
+}
+
 bool SystemControl::initBacklight(QString* outError) {
     int maxBrightness = 0;
     if (!readIntFile(m_maxBrightnessPath, &maxBrightness, outError)) {
@@ -409,6 +425,20 @@ bool SystemControl::runCommand(const QString& program,
     }
 
     return true;
+}
+
+bool SystemControl::startDetachedCommand(const QString& program,
+                                         const QStringList& arguments,
+                                         QString* outError) const {
+    qint64 processId = 0;
+    if (QProcess::startDetached(program, arguments, QString(), &processId)) {
+        return true;
+    }
+
+    if (outError) {
+        *outError = QString("Failed to start %1").arg(program);
+    }
+    return false;
 }
 
 bool SystemControl::findPlaybackVolumeElementByName(const char* controlName,

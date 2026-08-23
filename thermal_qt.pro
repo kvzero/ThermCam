@@ -25,7 +25,7 @@ SOURCES     +=  main.cpp \
                 hardware/imaging/thermal_camera.cpp \
                 hardware/rga/rga_image.cpp \
                 hardware/hmi/haptic_provider.cpp \
-                hardware/hmi/system_control.cpp \
+                hardware/platform/system_control.cpp \
                 hardware/hmi/key_manager.cpp \
                 hardware/sensor/battery_monitor.cpp \
                 hardware/storage/storage_manager.cpp \
@@ -75,7 +75,7 @@ HEADERS     +=  core/global_context.h \
                 hardware/rga/rga_buffer.h \
                 hardware/rga/rga_image.h \
                 hardware/hmi/haptic_provider.h \
-                hardware/hmi/system_control.h \
+                hardware/platform/system_control.h \
                 hardware/hmi/key_manager.h \
                 hardware/sensor/battery_monitor.h \
                 hardware/storage/storage_manager.h \

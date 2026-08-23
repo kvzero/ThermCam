@@ -3,10 +3,12 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QProcess>
 #include <QPointer>
+#include <QRegularExpression>
 #include <QSocketNotifier>
 #include <QtConcurrent/QtConcurrentRun>
 
@@ -14,6 +16,7 @@
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
+#include <functional>
 #include <linux/netlink.h>
 #include <sys/socket.h>
 #include <sys/statvfs.h>
@@ -28,6 +31,9 @@ const QString StorageManager::kDcimSubdir       = "DCIM/ThermalCam";
 namespace {
 constexpr quint64 kFat32BoundaryMB = 32ull * 1024ull;
 constexpr int kFormatCommandTimeoutMs = 180000;
+constexpr int kUserdataCommandTimeoutMs = 300000;
+constexpr int kUserdataMtdNumber = 3;
+const QString kUbiClassPath = QStringLiteral("/sys/class/ubi");
 const QString kRemovableMountOptions = "noexec,nodev,noatime,nodiratime";
 
 struct FormatPlan {
@@ -89,6 +95,66 @@ bool runProcessCommand(const QString& program,
     return false;
 }
 
+bool runProcessWithPercentage(const QString& program,
+                              const QStringList& arguments,
+                              const std::function<void(int)>& progress,
+                              int timeoutMs) {
+    QProcess process;
+    process.setProcessChannelMode(QProcess::MergedChannels);
+    process.start(program, arguments, QIODevice::ReadOnly);
+    if (!process.waitForStarted(5000)) return false;
+
+    QByteArray output;
+    int lastPercent = -1;
+    const QRegularExpression percentagePattern(QStringLiteral("(\\d{1,3})\\s*%"));
+    QElapsedTimer elapsed;
+    elapsed.start();
+
+    auto consumeOutput = [&]() {
+        output.append(process.readAll());
+        auto matches = percentagePattern.globalMatch(QString::fromLocal8Bit(output));
+        while (matches.hasNext()) {
+            const int percent = matches.next().captured(1).toInt();
+            if (percent >= 0 && percent <= 100 && percent > lastPercent) {
+                lastPercent = percent;
+                progress(percent);
+            }
+        }
+    };
+
+    while (process.state() != QProcess::NotRunning && elapsed.elapsed() < timeoutMs) {
+        process.waitForReadyRead(100);
+        consumeOutput();
+    }
+    consumeOutput();
+
+    if (process.state() != QProcess::NotRunning) {
+        process.kill();
+        process.waitForFinished();
+        return false;
+    }
+    return process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0;
+}
+
+bool executeUserdataInitialization(const std::function<void(int)>& progress) {
+    if (!runProcessWithPercentage("/usr/sbin/ubiformat",
+                                  {"-y", "/dev/mtd3"},
+                                  progress,
+                                  kUserdataCommandTimeoutMs)) {
+        return false;
+    }
+    if (!runProcessCommand("/usr/sbin/ubiattach",
+                           {"/dev/ubi_ctrl", "-m", "3", "-d", "1"},
+                           nullptr,
+                           kUserdataCommandTimeoutMs)) {
+        return false;
+    }
+    return runProcessCommand("/usr/sbin/ubimkvol",
+                             {"/dev/ubi1", "-N", "userdata", "-m"},
+                             nullptr,
+                             kUserdataCommandTimeoutMs);
+}
+
 bool executeFormat(const FormatPlan& plan) {
     if (!runProcessCommand("/usr/bin/sync", {}, nullptr, kFormatCommandTimeoutMs)) {
         return false;
@@ -127,8 +193,8 @@ StorageManager::StorageManager(QObject* parent) : QObject(parent) {
 }
 
 StorageManager::~StorageManager() {
-    if (m_formatFuture.isRunning()) {
-        m_formatFuture.waitForFinished();
+    if (m_maintenanceFuture.isRunning()) {
+        m_maintenanceFuture.waitForFinished();
     }
     if (m_netlinkFd >= 0) {
         ::close(m_netlinkFd);
@@ -168,6 +234,22 @@ bool StorageManager::isUsbDiskReady() const {
     return m_usbDiskStatus.ready;
 }
 
+bool StorageManager::isUserdataUbiAttached() const {
+    const QDir ubiClass(kUbiClassPath);
+    const QStringList devices = ubiClass.entryList(
+        {QStringLiteral("ubi[0-9]*")}, QDir::Dirs | QDir::NoDotAndDotDot);
+
+    for (const QString& device : devices) {
+        QFile mtdNumberFile(ubiClass.filePath(device + QStringLiteral("/mtd_num")));
+        if (!mtdNumberFile.open(QIODevice::ReadOnly | QIODevice::Text)) continue;
+
+        bool ok = false;
+        const int mtdNumber = QString::fromLatin1(mtdNumberFile.readAll()).trimmed().toInt(&ok);
+        if (ok && mtdNumber == kUserdataMtdNumber) return true;
+    }
+    return false;
+}
+
 QString StorageManager::formatFileSystemName(StorageVolume volume) {
     if (volume == StorageVolume::Nand) return {};
 
@@ -189,7 +271,7 @@ QString StorageManager::formatFileSystemName(StorageVolume volume) {
 bool StorageManager::startFormatVolume(StorageVolume volume) {
     if (volume == StorageVolume::Nand) return false;
     if (m_recordingQuotaActive) return false;
-    if (m_formatVolume.has_value()) return false;
+    if (m_maintenanceFuture.isRunning()) return false;
 
     evaluateStorageState();
 
@@ -231,7 +313,7 @@ bool StorageManager::startFormatVolume(StorageVolume volume) {
     }
 
     const QPointer<StorageManager> self(this);
-    m_formatFuture = QtConcurrent::run([self, plan]() {
+    m_maintenanceFuture = QtConcurrent::run([self, plan]() {
         const bool success = executeFormat(plan);
         if (!self) return;
         QMetaObject::invokeMethod(self, [self, plan, success]() {
@@ -242,6 +324,25 @@ bool StorageManager::startFormatVolume(StorageVolume volume) {
         }, Qt::QueuedConnection);
     });
 
+    return true;
+}
+
+bool StorageManager::startInitializeUserdata() {
+    if (m_maintenanceFuture.isRunning()) return false;
+
+    const QPointer<StorageManager> self(this);
+    m_maintenanceFuture = QtConcurrent::run([self]() {
+        const bool success = executeUserdataInitialization([self](int percent) {
+            if (!self) return;
+            QMetaObject::invokeMethod(self, [self, percent]() {
+                if (self) emit self->userdataInitializationProgress(percent);
+            }, Qt::QueuedConnection);
+        });
+        if (!self) return;
+        QMetaObject::invokeMethod(self, [self, success]() {
+            if (self) emit self->userdataInitializationFinished(success);
+        }, Qt::QueuedConnection);
+    });
     return true;
 }
 

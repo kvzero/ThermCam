@@ -100,6 +100,7 @@ private:
     void handleHardwareKeyShortPress();
     void handleHardwareKeyLongPress();
     void handleOperationStarted(OperationID operation);
+    void handleOperationProgress(OperationID operation, int percent);
     void handleOperationFinished(OperationID operation, bool success);
 
     /* Layer 0: Business Views */

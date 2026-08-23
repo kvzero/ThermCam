@@ -29,6 +29,9 @@ public:
     /** @brief Shows one pinned, non-dismissible toast with indeterminate progress. */
     void showProgressToast(const QString& msg);
 
+    /** @brief Switches the active progress toast to determinate progress. */
+    void updateProgressToast(int percent);
+
     /** @brief Dismisses a progress toast, then presents a standard timed result toast. */
     void finishProgressToast(const QString& msg, ToastLevel level);
 

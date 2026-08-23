@@ -28,6 +28,16 @@ OperationService::OperationService(QObject* parent) : QObject(parent) {
                 [this](StorageVolume volume, bool success) {
                     complete(formatOperation(volume), success);
                 });
+        connect(storage, &StorageManager::userdataInitializationProgress, this,
+                [this](int percent) {
+                    if (m_currentOperation == OperationID::InitializeUserdata) {
+                        emit operationProgress(OperationID::InitializeUserdata, percent);
+                    }
+                });
+        connect(storage, &StorageManager::userdataInitializationFinished, this,
+                [this](bool success) {
+                    complete(OperationID::InitializeUserdata, success);
+                });
     }
     if (auto* camera = HardwareManager::instance().camera()) {
         connect(camera, &ThermalCamera::flatSceneCorrectionFinished, this,
@@ -66,6 +76,22 @@ OperationStartCode OperationService::startFormatVolume(StorageVolume volume) {
 
     const OperationID operation = formatOperation(volume);
     m_currentOperation = operation;
+    emit operationStarted(operation);
+    return OperationStartCode::Started;
+}
+
+OperationStartCode OperationService::startInitializeUserdata() {
+    if (isBusy()) return OperationStartCode::Busy;
+
+    auto* storage = HardwareManager::instance().storage();
+    if (!storage) return OperationStartCode::Rejected;
+
+    const OperationID operation = OperationID::InitializeUserdata;
+    m_currentOperation = operation;
+    if (!storage->startInitializeUserdata()) {
+        m_currentOperation.reset();
+        return OperationStartCode::Rejected;
+    }
     emit operationStarted(operation);
     return OperationStartCode::Started;
 }

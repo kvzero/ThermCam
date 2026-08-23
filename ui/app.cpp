@@ -13,6 +13,7 @@
 #include "ui/overlays/toast_manager.h"
 #include "ui/overlays/transition_layer.h"
 #include "hardware/hardware_manager.h"
+#include "hardware/platform/system_control.h"
 #include "hardware/sensor/battery_monitor.h"
 
 #include <QGraphicsOpacityEffect>
@@ -51,6 +52,10 @@ OperationMessages messagesForOperation(OperationID operation) {
         return {QT_TRANSLATE_NOOP("App", "FORMATTING USB DISK"),
                 QT_TRANSLATE_NOOP("App", "USB DISK FORMATTED"),
                 QT_TRANSLATE_NOOP("App", "USB DISK FORMATTING FAILED")};
+    case OperationID::InitializeUserdata:
+        return {QT_TRANSLATE_NOOP("App", "INITIALIZING USERDATA"),
+                QT_TRANSLATE_NOOP("App", "USERDATA INITIALIZED"),
+                QT_TRANSLATE_NOOP("App", "USERDATA INITIALIZATION FAILED")};
     }
     Q_UNREACHABLE();
 }
@@ -146,6 +151,8 @@ void App::initLayer_Overlays() {
     m_toastManager->hide();
     connect(&OperationService::instance(), &OperationService::operationStarted,
             this, &App::handleOperationStarted);
+    connect(&OperationService::instance(), &OperationService::operationProgress,
+            this, &App::handleOperationProgress);
     connect(&OperationService::instance(), &OperationService::operationFinished,
             this, &App::handleOperationFinished);
 
@@ -316,12 +323,27 @@ void App::handleOperationStarted(OperationID operation) {
     m_toastManager->showProgressToast(tr(messagesForOperation(operation).progress));
 }
 
+void App::handleOperationProgress(OperationID /*operation*/, int percent) {
+    if (!m_toastManager) return;
+    m_toastManager->updateProgressToast(percent);
+}
+
 void App::handleOperationFinished(OperationID operation, bool success) {
     if (!m_toastManager) return;
     const OperationMessages messages = messagesForOperation(operation);
     m_toastManager->finishProgressToast(
         tr(success ? messages.success : messages.failure),
         success ? ToastLevel::Success : ToastLevel::Error);
+
+    if (operation == OperationID::InitializeUserdata && success) {
+        if (auto* system = HardwareManager::instance().systemControl()) {
+            QString error;
+            if (!system->reboot(&error)) {
+                qWarning() << "[App] Reboot after userdata initialization failed:" << error;
+                showToast(tr("REBOOT FAILED"), ToastLevel::Error);
+            }
+        }
+    }
 }
 
 void App::showTextModal(const QString& title,

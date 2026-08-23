@@ -67,6 +67,7 @@ enum class SettingsItemVisibility {
     Always,
     RequiresSdCard,
     RequiresUsbDisk,
+    RequiresUnattachedUserdata,
     RequiresLegacyMode,
     RequiresLegacyLinearAgc
 };
@@ -129,7 +130,8 @@ public:
     static std::vector<SettingsItemData> visibleItems(SettingsSection section,
                                                        const SettingsSnapshot& snapshot,
                                                        bool sdCardReady,
-                                                       bool usbDiskReady);
+                                                       bool usbDiskReady,
+                                                       bool userdataUbiAttached);
 
     static SettingsNumberEditor numberEditor(SettingID item,
                                               const SettingsSnapshot& snapshot);

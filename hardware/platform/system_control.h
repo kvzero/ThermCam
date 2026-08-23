@@ -8,10 +8,10 @@
 #include <alsa/asoundlib.h>
 
 /**
- * @brief Unified runtime controller for screen backlight and audio playback volume.
+ * @brief Owns Linux platform controls used by the application runtime.
  *
- * Owns hardware-facing paths and ALSA mixer bindings used by SettingsService
- * runtime apply hooks. This class does not persist state.
+ * Owns hardware-facing paths, ALSA mixer bindings, clock control, and system
+ * power commands. This class does not persist state or own UI flow.
  */
 class SystemControl : public QObject {
     Q_OBJECT
@@ -57,6 +57,15 @@ public:
      */
     bool setSystemDateTime(const QDateTime& dateTime, QString* outError = nullptr);
 
+    /** @brief Starts an immediate system power-off command. */
+    bool powerOff(QString* outError = nullptr);
+
+    /** @brief Restarts the device normally. */
+    bool reboot(QString* outError = nullptr);
+
+    /** @brief Restarts the device in Rockchip Loader mode. */
+    bool rebootToLoader(QString* outError = nullptr);
+
 private:
     /* ========================= Domain Initialization ========================= */
     bool initBacklight(QString* outError);
@@ -70,6 +79,9 @@ private:
                     int timeoutMs,
                     QString* outError,
                     QString* outStdout = nullptr) const;
+    bool startDetachedCommand(const QString& program,
+                              const QStringList& arguments,
+                              QString* outError) const;
 
     /* ========================= ALSA Helpers ========================= */
     bool findPlaybackVolumeElementByName(const char* controlName,

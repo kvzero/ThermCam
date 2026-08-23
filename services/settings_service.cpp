@@ -1,7 +1,7 @@
 #include "services/settings_service.h"
 
 #include "hardware/hardware_manager.h"
-#include "hardware/hmi/system_control.h"
+#include "hardware/platform/system_control.h"
 #include "hardware/imaging/thermal_camera.h"
 #include "hardware/storage/storage_manager.h"
 #include "processing/thermal_palette.h"
