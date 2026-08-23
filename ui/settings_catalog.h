@@ -39,12 +39,12 @@ enum class SettingID {
     Language,
     Clock,
     SystemTools,
-    RestoreDefaults,
     About,
     InitializeUserdata,
     CalibrateHapticMotor,
     SoftwareUpdate,
     RebootToLoader,
+    RestoreDefaults,
     Count
 };
 
@@ -56,11 +56,11 @@ enum class SettingID {
  */
 enum class SettingsSection { Camera, View, Storage, System, SystemTools };
 
-/** @brief Render/action contract for secondary row trailing affordance. */
-enum class ActionType { Toggle, Value, Action };
+/** @brief Business role governing activation for one settings item. */
+enum class SettingsItemRole { Setting, Status, Command, Navigation };
 
-/** @brief Editor contract selected by SettingsView for one item. */
-enum class SettingsEditor { Toggle, Stepper, Slider, Choice, Action };
+/** @brief Presentation contract for an editable persisted setting. */
+enum class SettingsEditor { Toggle, Stepper, Slider, Choice, Palette };
 
 /** @brief Declarative visibility gate for one settings item. */
 enum class SettingsItemVisibility {
@@ -74,11 +74,11 @@ enum class SettingsItemVisibility {
 /** @brief Immutable descriptor for one settings item, independent of its page layout. */
 struct SettingsItemData {
     SettingID id;
+    SettingsItemRole role;
     std::optional<SettingKey> settingKey;
+    std::optional<SettingsEditor> editor;
     QString title;
     QColor titleColor = Qt::white;
-    ActionType type;
-    SettingsEditor editor;
     std::optional<SettingsSection> destinationSection;
 };
 

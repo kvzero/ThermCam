@@ -216,7 +216,10 @@ void SettingsItemRow::setValueText(const QString& valueText) {
 }
 
 void SettingsItemRow::toggleVisualState() {
-    if (m_data.type != ActionType::Toggle) return;
+    if (m_data.role != SettingsItemRole::Setting ||
+        m_data.editor != SettingsEditor::Toggle) {
+        return;
+    }
     m_toggleOn = !m_toggleOn;
     update();
 }
@@ -239,7 +242,10 @@ QRect SettingsItemRow::toggleHitRect() const {
 }
 
 bool SettingsItemRow::isActivationArmed(const QPoint& localPos) const {
-    if (m_data.type != ActionType::Toggle) return true;
+    if (m_data.role != SettingsItemRole::Setting ||
+        m_data.editor != SettingsEditor::Toggle) {
+        return true;
+    }
     return toggleHitRect().contains(localPos);
 }
 
@@ -265,19 +271,15 @@ void SettingsItemRow::paintEvent(QPaintEvent* /*event*/) {
     QString tail = m_valueText;
     bool useIconFont = false;
     bool drawToggle = false;
-    if (m_data.type == ActionType::Toggle) {
+    if (m_data.role == SettingsItemRole::Setting &&
+        m_data.editor == SettingsEditor::Toggle) {
         drawToggle = true;
     } else if (tail.isEmpty()) {
-        switch (m_data.type) {
-        case ActionType::Action:
+        if (m_data.role == SettingsItemRole::Status) {
+            tail = "--";
+        } else {
             tail = kExpandChevronIcon;
             useIconFont = true;
-            break;
-        case ActionType::Value:
-            tail = "--";
-            break;
-        case ActionType::Toggle:
-            break;
         }
     }
 

@@ -26,6 +26,12 @@ public:
      */
     void showToast(const QString& msg, ToastLevel level = ToastLevel::Info);
 
+    /** @brief Shows one pinned, non-dismissible toast with indeterminate progress. */
+    void showProgressToast(const QString& msg);
+
+    /** @brief Dismisses a progress toast, then presents a standard timed result toast. */
+    void finishProgressToast(const QString& msg, ToastLevel level);
+
 protected:
     bool eventFilter(QObject* watched, QEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
@@ -33,6 +39,7 @@ protected:
 private:
     struct ToastEntry;
 
+    ToastEntry* createEntry(const QString& msg, ToastLevel level, bool progress);
     void startEntry(ToastEntry* entry);
     void dismissEntry(ToastEntry* entry);
     void removeEntry(ToastEntry* entry);
@@ -44,6 +51,7 @@ private:
     int activeEntryCount() const;
 
     QList<ToastEntry*> m_entries;
+    ToastEntry* m_progressEntry = nullptr;
     ToastEntry* m_dragEntry = nullptr;
     int m_dragStartGlobalY = 0;
     qreal m_dragStartOffsetY = 0.0;

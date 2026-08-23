@@ -82,8 +82,8 @@ private:
 /**
  * @brief Settings-item row renderer owning title/trailing-affordance visual logic.
  *
- * Represents one actionable/value/toggle setting item, regardless of whether the
- * item is shown in the right panel or a full-screen settings page.
+ * Derives its trailing affordance from the item's business role and setting
+ * editor, regardless of whether it is shown in the right panel or a full-screen page.
  */
 class SettingsItemRow : public SettingsBaseRow {
     Q_OBJECT

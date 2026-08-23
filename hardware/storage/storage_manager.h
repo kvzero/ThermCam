@@ -2,10 +2,12 @@
 #define STORAGE_MANAGER_H
 
 #include <QObject>
+#include <QFuture>
 #include <QTimer>
 #include <QString>
 #include <QStringList>
 #include <QVector>
+#include <optional>
 #include "core/types.h"
 
 class QSocketNotifier;
@@ -74,7 +76,7 @@ public:
      * - <= 32 GiB  -> FAT32
      * - >  32 GiB  -> exFAT
      */
-    bool formatVolume(StorageVolume volume, QString* outError = nullptr);
+    bool startFormatVolume(StorageVolume volume);
 
     /**
      * @brief Returns the filesystem that @p volume will use after formatting.
@@ -159,6 +161,9 @@ signals:
      */
     void storageSpaceCritical();
 
+    /** @brief Reports completion of one asynchronously formatted removable volume. */
+    void formatVolumeFinished(StorageVolume volume, bool success);
+
 private slots:
     /**
      * @brief Handles kernel block-device UEVENTs from Netlink.
@@ -195,14 +200,6 @@ private:
      */
     QString mountedDeviceForPath(const QString& targetPath) const;
 
-    /**
-     * @brief Runs one external command and collects a concise error message on failure.
-     */
-    bool runCommand(const QString& program,
-                    const QStringList& args,
-                    QString* outError,
-                    int timeoutMs = 120000) const;
-
     bool flushMountedPath(const QString& mountPoint, QString* outError) const;
     QString mountedTargetForPath(const QString& absolutePath) const;
 
@@ -231,6 +228,8 @@ private:
     bool m_recordingQuotaActive = false;
     bool m_hasActiveRecordingVolume = false;
     StorageVolume m_activeRecordingVolume = StorageVolume::SdCard;
+    std::optional<StorageVolume> m_formatVolume;
+    QFuture<void> m_formatFuture;
 
     /* --- Canonical Mount Constants --- */
     static const QString kSdCardMountPoint;

@@ -1,6 +1,7 @@
 #include "app.h"
 #include "core/event_bus.h"
 #include "services/auto_shutdown_controller.h"
+#include "services/operation_service.h"
 #include "ui/views/base_view.h"
 #include "ui/views/camera_view.h"
 #include "ui/views/gallery_view.h"
@@ -29,6 +30,30 @@ namespace {
 constexpr int kLowBatteryWarningPercent = 10;
 constexpr int kBatteryDepletedPercent = 0;
 constexpr int kAutoShutdownCountdownMilliseconds = 30 * 1000;
+
+struct OperationMessages {
+    const char* progress;
+    const char* success;
+    const char* failure;
+};
+
+OperationMessages messagesForOperation(OperationID operation) {
+    switch (operation) {
+    case OperationID::FlatSceneCorrection:
+        return {QT_TRANSLATE_NOOP("App", "FLAT-SCENE CORRECTION IN PROGRESS"),
+                QT_TRANSLATE_NOOP("App", "FLAT-SCENE CORRECTION COMPLETED"),
+                QT_TRANSLATE_NOOP("App", "FLAT-SCENE CORRECTION FAILED")};
+    case OperationID::FormatSdCard:
+        return {QT_TRANSLATE_NOOP("App", "FORMATTING SD CARD"),
+                QT_TRANSLATE_NOOP("App", "SD CARD FORMATTED"),
+                QT_TRANSLATE_NOOP("App", "SD CARD FORMATTING FAILED")};
+    case OperationID::FormatUsbDisk:
+        return {QT_TRANSLATE_NOOP("App", "FORMATTING USB DISK"),
+                QT_TRANSLATE_NOOP("App", "USB DISK FORMATTED"),
+                QT_TRANSLATE_NOOP("App", "USB DISK FORMATTING FAILED")};
+    }
+    Q_UNREACHABLE();
+}
 
 QString autoShutdownCountdownText(int seconds) {
     return App::tr("Camera will turn off in %1:%2.")
@@ -119,6 +144,10 @@ void App::initLayer_Overlays() {
     // Toast Notifications
     m_toastManager = new ToastManager(this);
     m_toastManager->hide();
+    connect(&OperationService::instance(), &OperationService::operationStarted,
+            this, &App::handleOperationStarted);
+    connect(&OperationService::instance(), &OperationService::operationFinished,
+            this, &App::handleOperationFinished);
 
     m_poweroffOverlay = new PoweroffOverlay(HardwareManager::instance().systemControl(), this);
     m_autoShutdownController = new AutoShutdownController(this);
@@ -268,6 +297,10 @@ void App::handleHardwareKeyShortPress() {
 
 void App::handleHardwareKeyLongPress() {
     if (m_poweroffOverlay && m_poweroffOverlay->isVisible()) return;
+    if (OperationService::instance().isBusy()) {
+        showToast(tr("SYSTEM OPERATION IN PROGRESS"), ToastLevel::Info);
+        return;
+    }
 
     ModalSpec spec;
     spec.onPrimaryAction = [this]() {
@@ -276,6 +309,19 @@ void App::handleHardwareKeyLongPress() {
         }
     };
     showTextModal(tr("POWER OFF CAMERA?"), tr("The camera will turn off now."), spec);
+}
+
+void App::handleOperationStarted(OperationID operation) {
+    if (!m_toastManager) return;
+    m_toastManager->showProgressToast(tr(messagesForOperation(operation).progress));
+}
+
+void App::handleOperationFinished(OperationID operation, bool success) {
+    if (!m_toastManager) return;
+    const OperationMessages messages = messagesForOperation(operation);
+    m_toastManager->finishProgressToast(
+        tr(success ? messages.success : messages.failure),
+        success ? ToastLevel::Success : ToastLevel::Error);
 }
 
 void App::showTextModal(const QString& title,

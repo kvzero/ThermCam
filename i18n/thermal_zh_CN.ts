@@ -4,47 +4,98 @@
 <context>
     <name>App</name>
     <message>
-        <location filename="../ui/app.cpp" line="34"/>
+        <location filename="../ui/app.cpp" line="59"/>
         <source>Camera will turn off in %1:%2.</source>
         <translation>将在 %1:%2 后自动关机。</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="136"/>
+        <location filename="../ui/app.cpp" line="169"/>
         <source>CONTINUE USING</source>
         <translation>继续使用</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="145"/>
-        <location filename="../ui/app.cpp" line="153"/>
+        <location filename="../ui/app.cpp" line="178"/>
+        <location filename="../ui/app.cpp" line="186"/>
         <source>AUTO SHUTDOWN</source>
         <translation>自动关机</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="181"/>
+        <location filename="../ui/app.cpp" line="195"/>
+        <location filename="../ui/app.cpp" line="310"/>
+        <source>SYSTEM OPERATION IN PROGRESS</source>
+        <translation>系统操作正在进行</translation>
+    </message>
+    <message>
+        <location filename="../ui/app.cpp" line="219"/>
         <source>Battery low
 Please charge</source>
         <translation>电量不足
 请及时充电</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="278"/>
+        <location filename="../ui/app.cpp" line="320"/>
         <source>POWER OFF CAMERA?</source>
         <translation>要关闭相机吗？</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="278"/>
+        <location filename="../ui/app.cpp" line="320"/>
         <source>The camera will turn off now.</source>
         <translation>相机将立即关机。</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="300"/>
-        <location filename="../ui/app.cpp" line="319"/>
+        <location filename="../ui/app.cpp" line="43"/>
+        <source>FLAT-SCENE CORRECTION IN PROGRESS</source>
+        <translation>正在执行平场标定</translation>
+    </message>
+    <message>
+        <location filename="../ui/app.cpp" line="47"/>
+        <source>FORMATTING SD CARD</source>
+        <translation>正在格式化 SD 卡</translation>
+    </message>
+    <message>
+        <location filename="../ui/app.cpp" line="51"/>
+        <source>FORMATTING USB DISK</source>
+        <translation>正在格式化 USB 存储</translation>
+    </message>
+    <message>
+        <location filename="../ui/app.cpp" line="44"/>
+        <source>FLAT-SCENE CORRECTION COMPLETED</source>
+        <translation>平场标定完成</translation>
+    </message>
+    <message>
+        <location filename="../ui/app.cpp" line="48"/>
+        <source>SD CARD FORMATTED</source>
+        <translation>SD 卡格式化完成</translation>
+    </message>
+    <message>
+        <location filename="../ui/app.cpp" line="52"/>
+        <source>USB DISK FORMATTED</source>
+        <translation>USB 存储格式化完成</translation>
+    </message>
+    <message>
+        <location filename="../ui/app.cpp" line="45"/>
+        <source>FLAT-SCENE CORRECTION FAILED</source>
+        <translation>平场标定失败</translation>
+    </message>
+    <message>
+        <location filename="../ui/app.cpp" line="49"/>
+        <source>SD CARD FORMATTING FAILED</source>
+        <translation>SD 卡格式化失败</translation>
+    </message>
+    <message>
+        <location filename="../ui/app.cpp" line="53"/>
+        <source>USB DISK FORMATTING FAILED</source>
+        <translation>USB 存储格式化失败</translation>
+    </message>
+    <message>
+        <location filename="../ui/app.cpp" line="355"/>
+        <location filename="../ui/app.cpp" line="374"/>
         <source>CONFIRM</source>
         <translation>确定</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="301"/>
-        <location filename="../ui/app.cpp" line="320"/>
+        <location filename="../ui/app.cpp" line="356"/>
+        <location filename="../ui/app.cpp" line="375"/>
         <source>CANCEL</source>
         <translation>取消</translation>
     </message>
@@ -239,67 +290,67 @@ Please charge</source>
 <context>
     <name>SettingsCatalog</name>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="75"/>
+        <location filename="../ui/settings_catalog.cpp" line="77"/>
         <source>Auto (HistEQ AGC)</source>
         <translation>自动（直方图均衡）</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="77"/>
+        <location filename="../ui/settings_catalog.cpp" line="79"/>
         <source>Linear</source>
         <translation>线性</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="87"/>
+        <location filename="../ui/settings_catalog.cpp" line="89"/>
         <source>SD Card First</source>
         <translation>SD 卡</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="89"/>
+        <location filename="../ui/settings_catalog.cpp" line="91"/>
         <source>USB Disk First</source>
         <translation>USB 存储设备</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="94"/>
+        <location filename="../ui/settings_catalog.cpp" line="96"/>
         <source>Never</source>
         <translation>从不</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="96"/>
+        <location filename="../ui/settings_catalog.cpp" line="98"/>
         <source>5 Minutes</source>
         <translation>5 分钟</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="98"/>
+        <location filename="../ui/settings_catalog.cpp" line="100"/>
         <source>15 Minutes</source>
         <translation>15 分钟</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="100"/>
+        <location filename="../ui/settings_catalog.cpp" line="102"/>
         <source>30 Minutes</source>
         <translation>30 分钟</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="102"/>
+        <location filename="../ui/settings_catalog.cpp" line="104"/>
         <source>60 Minutes</source>
         <translation>60 分钟</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="107"/>
+        <location filename="../ui/settings_catalog.cpp" line="109"/>
         <source>English</source>
         <translation>English</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="109"/>
+        <location filename="../ui/settings_catalog.cpp" line="111"/>
         <source>Simplified Chinese</source>
         <translation>简体中文</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="115"/>
+        <location filename="../ui/settings_catalog.cpp" line="117"/>
         <source>Emissivity</source>
         <translation>发射率</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="120"/>
+        <location filename="../ui/settings_catalog.cpp" line="121"/>
         <source>Auto Shutter</source>
         <translation>自动快门</translation>
     </message>
@@ -309,172 +360,172 @@ Please charge</source>
         <translation>启用 SeekVision</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="126"/>
+        <location filename="../ui/settings_catalog.cpp" line="125"/>
         <source>Sharpen Filter</source>
         <translation>锐化滤镜</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="130"/>
+        <location filename="../ui/settings_catalog.cpp" line="128"/>
         <source>AGC Mode</source>
         <translation>AGC 模式</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="134"/>
+        <location filename="../ui/settings_catalog.cpp" line="131"/>
         <source>- Linear AGC Min</source>
         <translation>- 线性 AGC 下限</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="140"/>
+        <location filename="../ui/settings_catalog.cpp" line="136"/>
         <source>- Linear AGC Max</source>
         <translation>- 线性 AGC 上限</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="146"/>
+        <location filename="../ui/settings_catalog.cpp" line="141"/>
         <source>Temperature Offset</source>
         <translation>温度补偿</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="150"/>
+        <location filename="../ui/settings_catalog.cpp" line="145"/>
         <source>Flat-Scene Correction</source>
         <translation>平场标定</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="154"/>
+        <location filename="../ui/settings_catalog.cpp" line="148"/>
         <source>Palette</source>
         <translation>伪彩模式</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="157"/>
+        <location filename="../ui/settings_catalog.cpp" line="150"/>
         <source>Save Marker Overlay</source>
         <translation>保存测温标记</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="160"/>
+        <location filename="../ui/settings_catalog.cpp" line="153"/>
         <source>Hide Marker with HUD</source>
         <translation>随界面隐藏测温标记</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="163"/>
+        <location filename="../ui/settings_catalog.cpp" line="156"/>
         <source>Temperature Unit</source>
         <translation>温度单位</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="169"/>
+        <location filename="../ui/settings_catalog.cpp" line="161"/>
         <source>Priority</source>
         <translation>首选存储</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="174"/>
+        <location filename="../ui/settings_catalog.cpp" line="165"/>
         <source>Internal</source>
         <translation>内部存储</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="177"/>
+        <location filename="../ui/settings_catalog.cpp" line="167"/>
         <source>SD Card</source>
         <translation>SD 卡</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="181"/>
+        <location filename="../ui/settings_catalog.cpp" line="170"/>
         <source>Eject SD Card</source>
         <translation>安全移除 SD 卡</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="185"/>
+        <location filename="../ui/settings_catalog.cpp" line="173"/>
         <source>Format SD Card</source>
         <translation>格式化 SD 卡</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="189"/>
+        <location filename="../ui/settings_catalog.cpp" line="176"/>
         <source>USB Disk</source>
         <translation>U 盘</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="193"/>
+        <location filename="../ui/settings_catalog.cpp" line="179"/>
         <source>Eject USB Disk</source>
         <translation>安全移除 U 盘</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="197"/>
+        <location filename="../ui/settings_catalog.cpp" line="182"/>
         <source>Format USB Disk</source>
         <translation>格式化 U 盘</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="202"/>
+        <location filename="../ui/settings_catalog.cpp" line="186"/>
         <source>Auto Shutdown</source>
         <translation>自动关机</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="207"/>
+        <location filename="../ui/settings_catalog.cpp" line="190"/>
         <source>Screen Brightness</source>
         <translation>屏幕亮度</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="212"/>
+        <location filename="../ui/settings_catalog.cpp" line="195"/>
         <source>Audio Volume</source>
         <translation>音量</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="218"/>
+        <location filename="../ui/settings_catalog.cpp" line="204"/>
         <source>Date &amp; Time</source>
         <translation>日期与时间</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="221"/>
+        <location filename="../ui/settings_catalog.cpp" line="200"/>
         <source>Language</source>
         <translation>语言</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="225"/>
+        <location filename="../ui/settings_catalog.cpp" line="220"/>
         <source>Restore Defaults</source>
         <translation>恢复默认设置</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="228"/>
+        <location filename="../ui/settings_catalog.cpp" line="210"/>
         <source>About</source>
         <translation>关于</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="239"/>
+        <location filename="../ui/settings_catalog.cpp" line="206"/>
         <source>System Tools</source>
         <translation>系统工具</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="243"/>
+        <location filename="../ui/settings_catalog.cpp" line="212"/>
         <source>Initialize Userdata</source>
         <translation>初始化用户数据</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="247"/>
+        <location filename="../ui/settings_catalog.cpp" line="214"/>
         <source>Haptic Motor Calibration</source>
         <translation>线性马达校准</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="251"/>
+        <location filename="../ui/settings_catalog.cpp" line="216"/>
         <source>Software Update</source>
         <translation>软件更新</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="255"/>
+        <location filename="../ui/settings_catalog.cpp" line="218"/>
         <source>Reboot to Loader</source>
         <translation>重启至 Loader</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="233"/>
+        <location filename="../ui/settings_catalog.cpp" line="250"/>
         <source>Camera</source>
         <translation>相机</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="234"/>
+        <location filename="../ui/settings_catalog.cpp" line="251"/>
         <source>View</source>
         <translation>显示</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="235"/>
+        <location filename="../ui/settings_catalog.cpp" line="252"/>
         <source>Storage</source>
         <translation>存储</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="236"/>
+        <location filename="../ui/settings_catalog.cpp" line="253"/>
         <source>System</source>
         <translation>系统</translation>
     </message>
@@ -482,133 +533,136 @@ Please charge</source>
 <context>
     <name>SettingsView</name>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="236"/>
-        <location filename="../ui/views/settings_view.cpp" line="1050"/>
-        <location filename="../ui/views/settings_view.cpp" line="1160"/>
+        <location filename="../ui/views/settings_view.cpp" line="260"/>
+        <location filename="../ui/views/settings_view.cpp" line="306"/>
+        <location filename="../ui/views/settings_view.cpp" line="1208"/>
+        <location filename="../ui/views/settings_view.cpp" line="1363"/>
         <source>Settings</source>
         <translation>设置</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="748"/>
+        <location filename="../ui/views/settings_view.cpp" line="893"/>
         <source>FLAT-SCENE CORRECTION FAILED</source>
         <translation>平场标定失败</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="751"/>
         <source>FLAT-SCENE CORRECTION TRIGGERED</source>
-        <translation>平场标定已完成</translation>
+        <translation type="vanished">平场标定已完成</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="754"/>
+        <location filename="../ui/views/settings_view.cpp" line="45"/>
+        <source>SYSTEM OPERATION IN PROGRESS</source>
+        <translation>系统操作正在进行</translation>
+    </message>
+    <message>
+        <location filename="../ui/views/settings_view.cpp" line="896"/>
         <source>FLAT-SCENE CORRECTION</source>
         <translation>平场标定</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="755"/>
+        <location filename="../ui/views/settings_view.cpp" line="897"/>
         <source>Cover the lens with a uniform surface before continuing.
 Incorrect setup may cause ghosting.</source>
         <translation>请用温度均匀的物体遮住镜头后继续。
 标定不当可能造成重影。</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="786"/>
+        <location filename="../ui/views/settings_view.cpp" line="928"/>
         <source>SETTINGS RESTORED</source>
         <translation>已恢复默认设置</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="790"/>
+        <location filename="../ui/views/settings_view.cpp" line="932"/>
         <source>RESTORE DEFAULTS?</source>
         <translation>恢复默认设置？</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="791"/>
+        <location filename="../ui/views/settings_view.cpp" line="933"/>
         <source>All settings will be reset.
 Media &amp; calibration unchanged.</source>
         <translation>所有设置将恢复为默认值。
 媒体文件和校准数据不受影响。</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="800"/>
+        <location filename="../ui/views/settings_view.cpp" line="942"/>
         <source>CLOSE</source>
         <translation>关闭</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="802"/>
+        <location filename="../ui/views/settings_view.cpp" line="944"/>
         <source>ABOUT</source>
         <translation>关于</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="817"/>
-        <location filename="../ui/views/settings_view.cpp" line="855"/>
+        <location filename="../ui/views/settings_view.cpp" line="954"/>
+        <location filename="../ui/views/settings_view.cpp" line="992"/>
         <source>SD Card</source>
         <translation>SD 卡</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="817"/>
-        <location filename="../ui/views/settings_view.cpp" line="855"/>
+        <location filename="../ui/views/settings_view.cpp" line="954"/>
+        <location filename="../ui/views/settings_view.cpp" line="992"/>
         <source>USB Disk</source>
         <translation>U 盘</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="824"/>
-        <location filename="../ui/views/settings_view.cpp" line="871"/>
+        <location filename="../ui/views/settings_view.cpp" line="961"/>
         <source>STORAGE UNAVAILABLE</source>
         <translation>存储设备不可用</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="837"/>
+        <location filename="../ui/views/settings_view.cpp" line="974"/>
         <source>%1 ejection failed</source>
         <translation>无法安全移除 %1</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="840"/>
+        <location filename="../ui/views/settings_view.cpp" line="977"/>
         <source>%1 can be removed</source>
         <translation>%1 已可安全移除</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="847"/>
+        <location filename="../ui/views/settings_view.cpp" line="984"/>
         <source>EJECT %1?</source>
         <translation>安全移除 %1？</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="848"/>
+        <location filename="../ui/views/settings_view.cpp" line="985"/>
         <source>Wait for confirmation before removing it.</source>
         <translation>请在收到确认提示后再拔出设备。</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="863"/>
+        <location filename="../ui/views/settings_view.cpp" line="1000"/>
         <source>All files will be deleted.</source>
         <translation>所有文件将被删除。</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="864"/>
+        <location filename="../ui/views/settings_view.cpp" line="1001"/>
         <source>All files will be deleted.
 It will be formatted as %1.</source>
         <translation>所有文件将被删除。
 设备将格式化为 %1。</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="866"/>
+        <location filename="../ui/views/settings_view.cpp" line="1003"/>
         <source>FORMAT %1?</source>
         <translation>格式化 %1？</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="883"/>
+        <location filename="../ui/views/settings_view.cpp" line="1011"/>
         <source>%1 formatting failed</source>
         <translation>格式化 %1 失败</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="886"/>
         <source>%1 formatted</source>
-        <translation>已格式化 %1</translation>
+        <translation type="vanished">已格式化 %1</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="1197"/>
+        <location filename="../ui/views/settings_view.cpp" line="1399"/>
         <source>APPLY DEFERRED</source>
         <translation>设置已保存，将在稍后生效</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="1201"/>
+        <location filename="../ui/views/settings_view.cpp" line="1403"/>
         <source>SET FAILED</source>
         <translation>保存设置失败</translation>
     </message>

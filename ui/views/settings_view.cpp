@@ -6,8 +6,8 @@
 #include "core/settings_store.h"
 #include "hardware/hardware_manager.h"
 #include "hardware/hmi/system_control.h"
-#include "hardware/imaging/thermal_camera.h"
 #include "hardware/storage/storage_manager.h"
+#include "services/operation_service.h"
 #include "ui/app.h"
 #include "ui/settings_catalog.h"
 
@@ -35,6 +35,18 @@ QString formatStorageCapacity(const StorageVolumeStatus& status) {
     return QString("%1 / %2")
         .arg(formatStorageCapacityValue(status.usedMB))
         .arg(formatStorageCapacityValue(status.totalMB));
+}
+
+void showOperationStartFeedback(App* app,
+                                OperationStartCode result,
+                                const QString& failureText) {
+    if (!app || result == OperationStartCode::Started) return;
+    app->showToast(result == OperationStartCode::Busy
+                       ? SettingsView::tr("SYSTEM OPERATION IN PROGRESS")
+                       : failureText,
+                   result == OperationStartCode::Busy
+                       ? ToastLevel::Info
+                       : ToastLevel::Error);
 }
 
 } // namespace
@@ -190,7 +202,7 @@ void SettingsTopBar::paintEvent(QPaintEvent* /*event*/) {
 }
 
 // ============================================================
-// SettingsView
+// SettingsView: Lifecycle and Composition
 // ============================================================
 
 SettingsView::SettingsView(QWidget* parent) : BaseView(parent) {
@@ -271,7 +283,6 @@ SettingsView::SettingsView(QWidget* parent) : BaseView(parent) {
         connect(storage, &StorageManager::usbDiskStateChanged, this,
                 [this](bool /*ready*/) { refreshStorageRowsIfVisible(); });
     }
-
     buildPrimaryRows();
     rebuildSectionItems(0);
 }
@@ -326,6 +337,10 @@ void SettingsView::onExit() {
     m_splitAnim->stop();
     resetPageImmediately();
 }
+
+// ============================================================
+// SettingsView: Input and Gesture Handling
+// ============================================================
 
 void SettingsView::mousePressEvent(QMouseEvent* event) {
     if (event->button() != Qt::LeftButton) {
@@ -530,6 +545,10 @@ void SettingsView::cancelPointerSession() {
     m_swipeAxis = SwipeAxis::None;
 }
 
+// ============================================================
+// SettingsView: Animated Properties and Painting
+// ============================================================
+
 void SettingsView::setLeftScroll(qreal v) {
     if (qFuzzyCompare(m_leftScroll, v)) return;
     m_leftScroll = v;
@@ -620,6 +639,10 @@ void SettingsView::paintEvent(QPaintEvent* /*event*/) {
     }
 
 }
+
+// ============================================================
+// SettingsView: Bubble Editor Flow
+// ============================================================
 
 void SettingsView::initBubbles() {
     m_radioListBubble = new RadioListBubble(this);
@@ -730,6 +753,10 @@ void SettingsView::onBubbleOutsideDragCanceled() {
     cancelPointerSession();
 }
 
+// ============================================================
+// SettingsView: Item Activation and Commands
+// ============================================================
+
 void SettingsView::onPrimaryRowActivated() {
     auto* row = qobject_cast<SettingsPrimaryRow*>(sender());
     const int index = m_primaryRows.indexOf(row);
@@ -747,11 +774,23 @@ void SettingsView::onItemRowActivated() {
     if (!row) return;
     const SettingsItemData item = row->data();
 
-    if (item.destinationSection.has_value()) {
+    switch (item.role) {
+    case SettingsItemRole::Setting:
+        activateSettingItem(row, item);
+        return;
+    case SettingsItemRole::Status:
+        return;
+    case SettingsItemRole::Command:
+        activateCommandItem(item);
+        return;
+    case SettingsItemRole::Navigation:
         openPage(*item.destinationSection, item.title);
         return;
     }
+}
 
+void SettingsView::activateSettingItem(SettingsItemRow* row,
+                                       const SettingsItemData& item) {
     auto buildAnchor = [this, row]() {
         BubbleAnchorContext anchor;
         anchor.pressPosGlobal = row->mapToGlobal(row->rect().center());
@@ -769,10 +808,8 @@ void SettingsView::onItemRowActivated() {
         return anchor;
     };
 
-    auto* app = qobject_cast<App*>(window());
-
     const SettingsSnapshot snapshot = SettingsStore::instance().current();
-    switch (item.editor) {
+    switch (*item.editor) {
     case SettingsEditor::Toggle: {
         const bool current = snapshot.values.value(*item.settingKey).toBool();
         SettingsPatch patch;
@@ -849,21 +886,24 @@ void SettingsView::onItemRowActivated() {
         showRadioListBubble(spec, buildAnchor());
         return;
     }
-    case SettingsEditor::Action:
-        break;
+    case SettingsEditor::Palette:
+        emit EventBus::instance().cameraRequested(QRect(), TransitionMode::Instant);
+        emit EventBus::instance().paletteSelectorRequested(true);
+        return;
     }
+}
+
+void SettingsView::activateCommandItem(const SettingsItemData& item) {
+    auto* app = qobject_cast<App*>(window());
 
     if (item.id == SettingID::TriggerFlatSceneCorrection) {
         if (!app) return;
         ModalSpec spec;
         spec.onPrimaryAction = [app]() {
-            QString error;
-            if (!SettingsService::instance().triggerFlatSceneCorrection(&error)) {
-                qWarning() << "[Settings] Flat-scene correction failed:" << error;
-                app->showToast(tr("FLAT-SCENE CORRECTION FAILED"), ToastLevel::Error);
-                return;
-            }
-            app->showToast(tr("FLAT-SCENE CORRECTION TRIGGERED"), ToastLevel::Success);
+            const OperationStartCode result =
+                OperationService::instance().startFlatSceneCorrection();
+            showOperationStartFeedback(
+                app, result, SettingsView::tr("FLAT-SCENE CORRECTION FAILED"));
         };
         app->showTextModal(
             tr("FLAT-SCENE CORRECTION"),
@@ -922,11 +962,6 @@ void SettingsView::onItemRowActivated() {
                            TextModalSize::Large);
         return;
     }
-    if (item.id == SettingID::Palette) {
-        emit EventBus::instance().cameraRequested(QRect(), TransitionMode::Instant);
-        emit EventBus::instance().paletteSelectorRequested(true);
-        return;
-    }
     if (item.id == SettingID::SdCardSafeEject || item.id == SettingID::UsbDiskSafeEject) {
         const bool sdCard = (item.id == SettingID::SdCardSafeEject);
         const QString targetName = sdCard ? tr("SD Card") : tr("USB Disk");
@@ -980,35 +1015,14 @@ void SettingsView::onItemRowActivated() {
                   .arg(fileSystem);
         app->showWarningModal(tr("FORMAT %1?").arg(targetName.toUpper()),
                               warningBody,
-                              [this, app, targetName, targetVolume]() {
-                               auto* storage = HardwareManager::instance().storage();
-                               if (!storage) {
-                                   app->showToast(SettingsView::tr("STORAGE UNAVAILABLE"),
-                                                  ToastLevel::Error);
-                                   return;
-                               }
-
-                               QString error;
-                               const bool ok = storage->formatVolume(targetVolume, &error);
-
-                               if (!ok) {
-                                   qWarning() << "[Settings] Format failed:" << targetName
-                                              << "reason:" << error;
-                                   app->showToast(
-                                       SettingsView::tr("%1 formatting failed").arg(targetName),
-                                       ToastLevel::Error);
-                               } else {
-                                   app->showToast(SettingsView::tr("%1 formatted").arg(targetName),
-                                                  ToastLevel::Success);
-                               }
-
-                                  refreshStorageRowsIfVisible();
+                              [app, targetName, targetVolume]() {
+                                  const OperationStartCode result =
+                                      OperationService::instance().startFormatVolume(targetVolume);
+                                  showOperationStartFeedback(
+                                      app,
+                                      result,
+                                      SettingsView::tr("%1 formatting failed").arg(targetName));
                               });
-        return;
-    }
-    if (item.id == SettingID::InternalStorageCapacity ||
-        item.id == SettingID::SdCardCapacity ||
-        item.id == SettingID::UsbDiskCapacity) {
         return;
     }
 }
@@ -1026,6 +1040,10 @@ void SettingsView::onTopBarBackTriggered() {
 void SettingsView::onTopBarCloseTriggered() {
     triggerExitToCamera();
 }
+
+// ============================================================
+// SettingsView: Row Construction and Layout
+// ============================================================
 
 void SettingsView::buildPrimaryRows() {
     cancelActiveRowPress();
@@ -1199,6 +1217,10 @@ void SettingsView::settleScroll(bool leftPanel, float velocity) {
     anim->start();
 }
 
+// ============================================================
+// SettingsView: Navigation and Transitions
+// ============================================================
+
 void SettingsView::collapseToSingle() {
     if (m_mode == PanelMode::Single && m_splitProgress < 0.01) return;
 
@@ -1284,6 +1306,10 @@ void SettingsView::resetPageImmediately() {
     m_rootRetreatProgress = 0.0;
     m_pageEntranceProgress = 0.0;
 }
+
+// ============================================================
+// SettingsView: Data Refresh and Apply Feedback
+// ============================================================
 
 void SettingsView::refreshItemRowsFromSnapshot(QVector<SettingsItemRow*>& rows,
                                                const SettingsSnapshot& snapshot) {

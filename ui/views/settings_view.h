@@ -175,6 +175,8 @@ private:
     void refreshStorageRowsIfVisible();
     void refreshLanguage();
     void applyPatchFromUi(const SettingsPatch& patch);
+    void activateSettingItem(SettingsItemRow* row, const SettingsItemData& item);
+    void activateCommandItem(const SettingsItemData& item);
 
     /* --- Layout & Scroll Math --- */
     int topBarHeight() const;

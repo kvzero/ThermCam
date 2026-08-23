@@ -26,6 +26,7 @@ class TextModal;
 class WarningModal;
 class ClockModal;
 class AutoShutdownController;
+enum class OperationID : quint8;
 
 /**
  * @brief The Root UI Container (Body).
@@ -98,6 +99,8 @@ private:
     void handleHardwareKeyPressed();
     void handleHardwareKeyShortPress();
     void handleHardwareKeyLongPress();
+    void handleOperationStarted(OperationID operation);
+    void handleOperationFinished(OperationID operation, bool success);
 
     /* Layer 0: Business Views */
     QStackedWidget* m_viewStack = nullptr;

@@ -217,21 +217,6 @@ SettingsService::PreviewResult SettingsService::preview(const SettingsPatch& pat
     return result;
 }
 
-bool SettingsService::triggerFlatSceneCorrection(QString* outError) {
-    if (!m_isInitialized) {
-        if (outError) *outError = "SettingsService is not initialized";
-        return false;
-    }
-
-    auto* camera = HardwareManager::instance().camera();
-    if (!camera) {
-        if (outError) *outError = "ThermalCamera is unavailable";
-        return false;
-    }
-
-    return camera->triggerFlatSceneCorrection(outError);
-}
-
 bool SettingsService::normalizePatch(const SettingsPatch& input,
                                      SettingsPatch* outPatch,
                                      QString* outError) const {

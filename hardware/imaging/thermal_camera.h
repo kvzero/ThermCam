@@ -1,6 +1,7 @@
 #ifndef THERMAL_CAMERA_H
 #define THERMAL_CAMERA_H
 
+#include <QFuture>
 #include <QObject>
 #include <QtGlobal>
 #include <QString>
@@ -84,15 +85,17 @@ public:
                                         QString* outError = nullptr);
 
     void triggerShutter();
-    bool triggerFlatSceneCorrection(QString* outError = nullptr);
+    bool startFlatSceneCorrection();
 
 signals:
     void cameraConnected(const QString& serial);
     void cameraDisconnected(const QString& reason);
     void rawFrameReady(const RawFrame& frame);
+    void flatSceneCorrectionFinished(bool success);
 
 private:
     std::unique_ptr<ThermalCameraBackend> m_backend;
+    QFuture<void> m_flatSceneCorrectionFuture;
 };
 
 #endif // THERMAL_CAMERA_H

@@ -39,31 +39,31 @@ struct ChoiceSpec {
 
 struct ItemSpec {
     SettingsSection section;
+    SettingsItemRole role;
     std::optional<SettingsSection> destinationSection;
     std::optional<SettingKey> settingKey;
+    std::optional<SettingsEditor> editor;
     const char* title;
     QRgb titleColor;
-    ActionType type;
-    SettingsEditor editor;
     SettingsItemVisibility visibility = SettingsItemVisibility::Always;
     NumberSpec number;
     const ChoiceSpec* choices = nullptr;
     int choiceCount = 0;
 
     constexpr ItemSpec(SettingsSection section,
+                       SettingsItemRole role,
                        std::optional<SettingKey> settingKey,
+                       std::optional<SettingsEditor> editor,
                        const char* title,
                        QRgb titleColor,
-                       ActionType type,
-                       SettingsEditor editor,
                        SettingsItemVisibility visibility = SettingsItemVisibility::Always,
                        NumberSpec number = {},
                        const ChoiceSpec* choices = nullptr,
                        int choiceCount = 0,
                        std::optional<SettingsSection> destinationSection = std::nullopt)
-        : section(section), destinationSection(destinationSection), settingKey(settingKey),
-          title(title),
-          titleColor(titleColor), type(type), editor(editor), visibility(visibility),
+        : section(section), role(role), destinationSection(destinationSection),
+          settingKey(settingKey), editor(editor), title(title), titleColor(titleColor),
+          visibility(visibility),
           number(number), choices(choices), choiceCount(choiceCount) {}
 };
 
@@ -113,139 +113,138 @@ constexpr ChoiceSpec kAppLanguageChoices[] = {
 };
 
 constexpr std::array<ItemSpec, static_cast<size_t>(SettingID::Count)> kItems = {{
-    {SettingsSection::Camera, SettingKey::Emissivity,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "Emissivity"), 0xffffffff,
-     ActionType::Action, SettingsEditor::Stepper,
+    {SettingsSection::Camera, SettingsItemRole::Setting, SettingKey::Emissivity,
+     SettingsEditor::Stepper, QT_TRANSLATE_NOOP("SettingsCatalog", "Emissivity"), 0xffffffff,
      SettingsItemVisibility::Always,
      {0.01, NumberFormat::Fixed2}},
-    {SettingsSection::Camera, SettingKey::ShutterAutoEnabled,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "Auto Shutter"), 0xffffffff,
-     ActionType::Toggle, SettingsEditor::Toggle},
-    {SettingsSection::Camera, SettingKey::SeekVisionEnabled,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "Auto SeekVision"), 0xffffffff,
-     ActionType::Toggle, SettingsEditor::Toggle},
-    {SettingsSection::Camera, SettingKey::LegacySharpenEnabled,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "Sharpen Filter"), 0xffffffff,
-     ActionType::Toggle, SettingsEditor::Toggle,
+    {SettingsSection::Camera, SettingsItemRole::Setting, SettingKey::ShutterAutoEnabled,
+     SettingsEditor::Toggle, QT_TRANSLATE_NOOP("SettingsCatalog", "Auto Shutter"), 0xffffffff},
+    {SettingsSection::Camera, SettingsItemRole::Setting, SettingKey::SeekVisionEnabled,
+     SettingsEditor::Toggle, QT_TRANSLATE_NOOP("SettingsCatalog", "Auto SeekVision"), 0xffffffff},
+    {SettingsSection::Camera, SettingsItemRole::Setting, SettingKey::LegacySharpenEnabled,
+     SettingsEditor::Toggle, QT_TRANSLATE_NOOP("SettingsCatalog", "Sharpen Filter"), 0xffffffff,
      SettingsItemVisibility::RequiresLegacyMode},
-    {SettingsSection::Camera, SettingKey::AgcMode,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "AGC Mode"), 0xffffffff,
-     ActionType::Action, SettingsEditor::Choice,
+    {SettingsSection::Camera, SettingsItemRole::Setting, SettingKey::AgcMode,
+     SettingsEditor::Choice, QT_TRANSLATE_NOOP("SettingsCatalog", "AGC Mode"), 0xffffffff,
      SettingsItemVisibility::RequiresLegacyMode, {}, kAgcChoices, int(std::size(kAgcChoices))},
-    {SettingsSection::Camera, SettingKey::LinearAgcMinCelsius,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "- Linear AGC Min"), 0xffffffff,
-     ActionType::Action, SettingsEditor::Stepper,
+    {SettingsSection::Camera, SettingsItemRole::Setting, SettingKey::LinearAgcMinCelsius,
+     SettingsEditor::Stepper, QT_TRANSLATE_NOOP("SettingsCatalog", "- Linear AGC Min"), 0xffffffff,
      SettingsItemVisibility::RequiresLegacyLinearAgc,
      {1.0, NumberFormat::SignedCelsius0, PeerBound::BelowPeer,
       SettingKey::LinearAgcMaxCelsius}},
-    {SettingsSection::Camera, SettingKey::LinearAgcMaxCelsius,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "- Linear AGC Max"), 0xffffffff,
-     ActionType::Action, SettingsEditor::Stepper,
+    {SettingsSection::Camera, SettingsItemRole::Setting, SettingKey::LinearAgcMaxCelsius,
+     SettingsEditor::Stepper, QT_TRANSLATE_NOOP("SettingsCatalog", "- Linear AGC Max"), 0xffffffff,
      SettingsItemVisibility::RequiresLegacyLinearAgc,
      {1.0, NumberFormat::SignedCelsius0, PeerBound::AbovePeer,
       SettingKey::LinearAgcMinCelsius}},
-    {SettingsSection::Camera, SettingKey::ThermographyOffsetCelsius,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "Temperature Offset"), 0xffffffff,
-     ActionType::Action, SettingsEditor::Stepper, SettingsItemVisibility::Always,
+    {SettingsSection::Camera, SettingsItemRole::Setting, SettingKey::ThermographyOffsetCelsius,
+     SettingsEditor::Stepper, QT_TRANSLATE_NOOP("SettingsCatalog", "Temperature Offset"),
+     0xffffffff, SettingsItemVisibility::Always,
      {0.1, NumberFormat::SignedCelsius1}},
-    {SettingsSection::Camera, std::nullopt,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "Flat-Scene Correction"), 0xffe44848,
-     ActionType::Action, SettingsEditor::Action},
+    {SettingsSection::Camera, SettingsItemRole::Command, std::nullopt, std::nullopt,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Flat-Scene Correction"), 0xffe44848},
 
-    {SettingsSection::View, SettingKey::Palette,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "Palette"), 0xffffffff,
-     ActionType::Action, SettingsEditor::Action},
-    {SettingsSection::View, SettingKey::SaveMarkerInMedia,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "Save Marker Overlay"), 0xffffffff,
-     ActionType::Toggle, SettingsEditor::Toggle},
-    {SettingsSection::View, SettingKey::HideMarkerWhenHudHidden,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "Hide Marker with HUD"), 0xffffffff,
-     ActionType::Toggle, SettingsEditor::Toggle},
-    {SettingsSection::View, SettingKey::TemperatureUnit,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "Temperature Unit"), 0xffffffff,
-     ActionType::Action, SettingsEditor::Choice,
+    {SettingsSection::View, SettingsItemRole::Setting, SettingKey::Palette,
+     SettingsEditor::Palette, QT_TRANSLATE_NOOP("SettingsCatalog", "Palette"), 0xffffffff},
+    {SettingsSection::View, SettingsItemRole::Setting, SettingKey::SaveMarkerInMedia,
+     SettingsEditor::Toggle, QT_TRANSLATE_NOOP("SettingsCatalog", "Save Marker Overlay"),
+     0xffffffff},
+    {SettingsSection::View, SettingsItemRole::Setting, SettingKey::HideMarkerWhenHudHidden,
+     SettingsEditor::Toggle, QT_TRANSLATE_NOOP("SettingsCatalog", "Hide Marker with HUD"),
+     0xffffffff},
+    {SettingsSection::View, SettingsItemRole::Setting, SettingKey::TemperatureUnit,
+     SettingsEditor::Choice, QT_TRANSLATE_NOOP("SettingsCatalog", "Temperature Unit"), 0xffffffff,
      SettingsItemVisibility::Always, {}, kTemperatureUnitChoices,
      int(std::size(kTemperatureUnitChoices))},
 
-    {SettingsSection::Storage, SettingKey::StoragePriority,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "Priority"), 0xffffffff,
-     ActionType::Action, SettingsEditor::Choice,
+    {SettingsSection::Storage, SettingsItemRole::Setting, SettingKey::StoragePriority,
+     SettingsEditor::Choice, QT_TRANSLATE_NOOP("SettingsCatalog", "Priority"), 0xffffffff,
      SettingsItemVisibility::Always, {}, kStoragePriorityChoices,
      int(std::size(kStoragePriorityChoices))},
-    {SettingsSection::Storage, std::nullopt,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "Internal"), 0xffffffff,
-     ActionType::Value, SettingsEditor::Action},
-    {SettingsSection::Storage, std::nullopt,
+    {SettingsSection::Storage, SettingsItemRole::Status, std::nullopt, std::nullopt,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Internal"), 0xffffffff},
+    {SettingsSection::Storage, SettingsItemRole::Status, std::nullopt, std::nullopt,
      QT_TRANSLATE_NOOP("SettingsCatalog", "SD Card"), 0xffffffff,
-     ActionType::Value, SettingsEditor::Action,
      SettingsItemVisibility::RequiresSdCard},
-    {SettingsSection::Storage, std::nullopt,
+    {SettingsSection::Storage, SettingsItemRole::Command, std::nullopt, std::nullopt,
      QT_TRANSLATE_NOOP("SettingsCatalog", "Eject SD Card"), 0xffffd278,
-     ActionType::Action, SettingsEditor::Action,
      SettingsItemVisibility::RequiresSdCard},
-    {SettingsSection::Storage, std::nullopt,
+    {SettingsSection::Storage, SettingsItemRole::Command, std::nullopt, std::nullopt,
      QT_TRANSLATE_NOOP("SettingsCatalog", "Format SD Card"), 0xffe44848,
-     ActionType::Action, SettingsEditor::Action,
      SettingsItemVisibility::RequiresSdCard},
-    {SettingsSection::Storage, std::nullopt,
+    {SettingsSection::Storage, SettingsItemRole::Status, std::nullopt, std::nullopt,
      QT_TRANSLATE_NOOP("SettingsCatalog", "USB Disk"), 0xffffffff,
-     ActionType::Value, SettingsEditor::Action,
      SettingsItemVisibility::RequiresUsbDisk},
-    {SettingsSection::Storage, std::nullopt,
+    {SettingsSection::Storage, SettingsItemRole::Command, std::nullopt, std::nullopt,
      QT_TRANSLATE_NOOP("SettingsCatalog", "Eject USB Disk"), 0xffffd278,
-     ActionType::Action, SettingsEditor::Action,
      SettingsItemVisibility::RequiresUsbDisk},
-    {SettingsSection::Storage, std::nullopt,
+    {SettingsSection::Storage, SettingsItemRole::Command, std::nullopt, std::nullopt,
      QT_TRANSLATE_NOOP("SettingsCatalog", "Format USB Disk"), 0xffe44848,
-     ActionType::Action, SettingsEditor::Action,
      SettingsItemVisibility::RequiresUsbDisk},
 
-    {SettingsSection::System, SettingKey::AutoShutdownTimeout,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "Auto Shutdown"), 0xffffffff,
-     ActionType::Action, SettingsEditor::Choice,
+    {SettingsSection::System, SettingsItemRole::Setting, SettingKey::AutoShutdownTimeout,
+     SettingsEditor::Choice, QT_TRANSLATE_NOOP("SettingsCatalog", "Auto Shutdown"), 0xffffffff,
      SettingsItemVisibility::Always, {}, kAutoShutdownChoices,
      int(std::size(kAutoShutdownChoices))},
-    {SettingsSection::System, SettingKey::ScreenBrightnessPercent,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "Screen Brightness"), 0xffffffff,
-     ActionType::Value, SettingsEditor::Slider, SettingsItemVisibility::Always,
+    {SettingsSection::System, SettingsItemRole::Setting, SettingKey::ScreenBrightnessPercent,
+     SettingsEditor::Slider, QT_TRANSLATE_NOOP("SettingsCatalog", "Screen Brightness"),
+     0xffffffff, SettingsItemVisibility::Always,
      {1.0, NumberFormat::Percent, PeerBound::None,
       std::nullopt, 0x10108, 50, true}},
-    {SettingsSection::System, SettingKey::AudioVolumePercent,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "Audio Volume"), 0xffffffff,
-     ActionType::Value, SettingsEditor::Slider,
+    {SettingsSection::System, SettingsItemRole::Setting, SettingKey::AudioVolumePercent,
+     SettingsEditor::Slider, QT_TRANSLATE_NOOP("SettingsCatalog", "Audio Volume"), 0xffffffff,
      SettingsItemVisibility::Always,
      {1.0, NumberFormat::Percent, PeerBound::None,
       std::nullopt, 0xeb51, 50, true}},
-    {SettingsSection::System, SettingKey::AppLanguage,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "Language"), 0xffffffff,
-     ActionType::Action, SettingsEditor::Choice, SettingsItemVisibility::Always, {},
+    {SettingsSection::System, SettingsItemRole::Setting, SettingKey::AppLanguage,
+     SettingsEditor::Choice, QT_TRANSLATE_NOOP("SettingsCatalog", "Language"), 0xffffffff,
+     SettingsItemVisibility::Always, {},
      kAppLanguageChoices, int(std::size(kAppLanguageChoices))},
-    {SettingsSection::System, std::nullopt,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "Date & Time"), 0xffffffff,
-     ActionType::Action, SettingsEditor::Action},
-    {SettingsSection::System, std::nullopt,
+    {SettingsSection::System, SettingsItemRole::Command, std::nullopt, std::nullopt,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Date & Time"), 0xffffffff},
+    {SettingsSection::System, SettingsItemRole::Navigation, std::nullopt, std::nullopt,
      QT_TRANSLATE_NOOP("SettingsCatalog", "System Tools"), 0xffffd278,
-     ActionType::Action, SettingsEditor::Action, SettingsItemVisibility::Always,
+     SettingsItemVisibility::Always,
      {}, nullptr, 0, SettingsSection::SystemTools},
-    {SettingsSection::System, std::nullopt,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "Restore Defaults"), 0xffe44848,
-     ActionType::Action, SettingsEditor::Action},
-    {SettingsSection::System, std::nullopt,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "About"), 0xffffffff,
-     ActionType::Action, SettingsEditor::Action},
-    {SettingsSection::SystemTools, std::nullopt,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "Initialize Userdata"), 0xffe44848,
-     ActionType::Action, SettingsEditor::Action},
-    {SettingsSection::SystemTools, std::nullopt,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "Haptic Motor Calibration"), 0xffffffff,
-     ActionType::Action, SettingsEditor::Action},
-    {SettingsSection::SystemTools, std::nullopt,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "Software Update"), 0xffffffff,
-     ActionType::Action, SettingsEditor::Action},
-    {SettingsSection::SystemTools, std::nullopt,
-     QT_TRANSLATE_NOOP("SettingsCatalog", "Reboot to Loader"), 0xffffffff,
-     ActionType::Action, SettingsEditor::Action},
+    {SettingsSection::System, SettingsItemRole::Command, std::nullopt, std::nullopt,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "About"), 0xffffffff},
+    {SettingsSection::SystemTools, SettingsItemRole::Command, std::nullopt, std::nullopt,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Initialize Userdata"), 0xffe44848},
+    {SettingsSection::SystemTools, SettingsItemRole::Command, std::nullopt, std::nullopt,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Haptic Motor Calibration"), 0xffffffff},
+    {SettingsSection::SystemTools, SettingsItemRole::Command, std::nullopt, std::nullopt,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Software Update"), 0xffffffff},
+    {SettingsSection::SystemTools, SettingsItemRole::Command, std::nullopt, std::nullopt,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Reboot to Loader"), 0xffffffff},
+    {SettingsSection::SystemTools, SettingsItemRole::Command, std::nullopt, std::nullopt,
+     QT_TRANSLATE_NOOP("SettingsCatalog", "Restore Defaults"), 0xffe44848},
 }};
+
+constexpr bool itemContractsAreValid() {
+    for (const ItemSpec& item : kItems) {
+        const bool hasSettingContract = item.settingKey.has_value() && item.editor.has_value();
+        const bool hasDestination = item.destinationSection.has_value();
+        switch (item.role) {
+        case SettingsItemRole::Setting:
+            if (!hasSettingContract || hasDestination) return false;
+            break;
+        case SettingsItemRole::Status:
+        case SettingsItemRole::Command:
+            if (item.settingKey.has_value() || item.editor.has_value() || hasDestination) {
+                return false;
+            }
+            break;
+        case SettingsItemRole::Navigation:
+            if (item.settingKey.has_value() || item.editor.has_value() || !hasDestination) {
+                return false;
+            }
+            break;
+        }
+    }
+    return true;
+}
+
+static_assert(itemContractsAreValid(), "Settings catalog contains an invalid item contract");
 
 constexpr SectionSpec kSections[] = {
     {0xf837, 0xff4868ff, QT_TRANSLATE_NOOP("SettingsCatalog", "Camera")},
@@ -332,8 +331,8 @@ int SettingsCatalog::sectionIndexForItem(SettingID item) {
 namespace {
 
 SettingsItemData displayData(SettingID id, const ItemSpec& item) {
-    return {id, item.settingKey, catalogText(item.title), QColor::fromRgba(item.titleColor),
-            item.type, item.editor, item.destinationSection};
+    return {id, item.role, item.settingKey, item.editor, catalogText(item.title),
+            QColor::fromRgba(item.titleColor), item.destinationSection};
 }
 
 } // namespace

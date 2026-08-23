@@ -82,8 +82,8 @@ void drawToastIcon(QPainter& painter, const QRectF& rect, ToastLevel level, cons
 
 class ToastCard final : public QWidget {
 public:
-    ToastCard(const QString& message, ToastLevel level, QWidget* parent)
-        : QWidget(parent), m_message(message), m_level(level) {
+    ToastCard(const QString& message, ToastLevel level, bool progress, QWidget* parent)
+        : QWidget(parent), m_message(message), m_level(level), m_progress(progress) {
         setAttribute(Qt::WA_TranslucentBackground);
     }
 
@@ -110,6 +110,12 @@ public:
         if (qFuzzyCompare(m_opacity, opacity) && qFuzzyCompare(m_scale, scale)) return;
         m_opacity = opacity;
         m_scale = scale;
+        update();
+    }
+
+    void setProgressPhase(qreal phase) {
+        if (qFuzzyCompare(m_progressPhase, phase)) return;
+        m_progressPhase = phase;
         update();
     }
 
@@ -169,11 +175,34 @@ protected:
                               cardRect.height());
         painter.drawText(textRect.toRect(), Qt::AlignLeft | Qt::AlignVCenter | Qt::TextWordWrap,
                          m_message);
+
+        if (m_progress) {
+            const qreal trackHeight = qMax<qreal>(3.0, metricHeight * 0.07);
+            const QRectF track(cardRect.left() + horizontalPadding,
+                               cardRect.bottom() - trackHeight - 5.0,
+                               cardRect.width() - horizontalPadding * 2,
+                               trackHeight);
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(QColor(255, 255, 255, 35));
+            painter.drawRoundedRect(track, trackHeight / 2.0, trackHeight / 2.0);
+
+            const qreal segmentWidth = track.width() * 0.32;
+            const qreal travel = track.width() + segmentWidth;
+            const qreal segmentX = track.left() - segmentWidth + travel * m_progressPhase;
+            painter.save();
+            painter.setClipRect(track);
+            painter.setBrush(accent);
+            painter.drawRoundedRect(QRectF(segmentX, track.top(), segmentWidth, track.height()),
+                                    trackHeight / 2.0, trackHeight / 2.0);
+            painter.restore();
+        }
     }
 
 private:
     QString m_message;
     ToastLevel m_level = ToastLevel::Info;
+    bool m_progress = false;
+    qreal m_progressPhase = 0.0;
     qreal m_opacity = 0.0;
     qreal m_scale = 0.8;
 };
@@ -187,9 +216,11 @@ struct ToastManager::ToastEntry {
     qreal visualProgress = 0.0;
     qreal dragOffsetY = 0.0;
     bool isDismissing = false;
+    bool isProgress = false;
     QVariantAnimation* heightAnimation = nullptr;
     QVariantAnimation* visualAnimation = nullptr;
     QVariantAnimation* dragAnimation = nullptr;
+    QVariantAnimation* progressAnimation = nullptr;
     QTimer* dismissTimer = nullptr;
 };
 
@@ -208,17 +239,41 @@ ToastManager::~ToastManager() {
 }
 
 void ToastManager::showToast(const QString& msg, ToastLevel level) {
-    if (msg.isEmpty()) return;
+    createEntry(msg, level, false);
+}
+
+void ToastManager::showProgressToast(const QString& msg) {
+    Q_ASSERT(!m_progressEntry);
+    m_progressEntry = createEntry(msg, ToastLevel::Info, true);
+}
+
+void ToastManager::finishProgressToast(const QString& msg,
+                                       ToastLevel level) {
+    Q_ASSERT(m_progressEntry);
+    if (!m_progressEntry) return;
+    ToastEntry* const progressEntry = m_progressEntry;
+    m_progressEntry = nullptr;
+    dismissEntry(progressEntry);
+    QTimer::singleShot(220, this, [this, msg, level]() { showToast(msg, level); });
+}
+
+ToastManager::ToastEntry* ToastManager::createEntry(const QString& msg,
+                                                    ToastLevel level,
+                                                    bool progress) {
+    if (msg.isEmpty()) return nullptr;
 
     while (activeEntryCount() >= 3) {
         auto it = std::find_if(m_entries.cbegin(), m_entries.cend(),
-                               [](const ToastEntry* entry) { return !entry->isDismissing; });
+                               [](const ToastEntry* entry) {
+                                   return !entry->isDismissing && !entry->isProgress;
+                               });
         if (it == m_entries.cend()) break;
         dismissEntry(*it);
     }
 
     auto* entry = new ToastEntry;
-    entry->card = new ToastCard(msg, level, this);
+    entry->isProgress = progress;
+    entry->card = new ToastCard(msg, level, progress, this);
 
     entry->heightAnimation = new QVariantAnimation(this);
     entry->heightAnimation->setDuration(200);
@@ -250,6 +305,18 @@ void ToastManager::showToast(const QString& msg, ToastLevel level) {
                 relayoutEntries();
             });
 
+    if (progress) {
+        entry->progressAnimation = new QVariantAnimation(this);
+        entry->progressAnimation->setDuration(1100);
+        entry->progressAnimation->setStartValue(0.0);
+        entry->progressAnimation->setEndValue(1.0);
+        entry->progressAnimation->setLoopCount(-1);
+        connect(entry->progressAnimation, &QVariantAnimation::valueChanged,
+                entry->card, [card = entry->card](const QVariant& value) {
+                    card->setProgressPhase(value.toReal());
+                });
+    }
+
     entry->dismissTimer = new QTimer(this);
     entry->dismissTimer->setSingleShot(true);
     connect(entry->dismissTimer, &QTimer::timeout, this,
@@ -259,6 +326,7 @@ void ToastManager::showToast(const QString& msg, ToastLevel level) {
     show();
     raise();
     startEntry(entry);
+    return entry;
 }
 
 void ToastManager::startEntry(ToastEntry* entry) {
@@ -269,7 +337,11 @@ void ToastManager::startEntry(ToastEntry* entry) {
     entry->visualAnimation->setStartValue(0.0);
     entry->visualAnimation->setEndValue(1.0);
     entry->visualAnimation->start();
-    entry->dismissTimer->start(3000);
+    if (entry->isProgress) {
+        entry->progressAnimation->start();
+    } else {
+        entry->dismissTimer->start(3000);
+    }
 }
 
 void ToastManager::dismissEntry(ToastEntry* entry) {
@@ -278,6 +350,7 @@ void ToastManager::dismissEntry(ToastEntry* entry) {
     entry->isDismissing = true;
     entry->dismissTimer->stop();
     entry->dragAnimation->stop();
+    if (entry->progressAnimation) entry->progressAnimation->stop();
 
     entry->heightAnimation->stop();
     entry->heightAnimation->setStartValue(entry->heightProgress);
@@ -295,6 +368,9 @@ void ToastManager::dismissEntry(ToastEntry* entry) {
 void ToastManager::removeEntry(ToastEntry* entry) {
     if (!entry || !m_entries.removeOne(entry)) return;
 
+    if (m_progressEntry == entry) {
+        m_progressEntry = nullptr;
+    }
     if (m_dragEntry == entry) {
         m_dragEntry = nullptr;
     }
@@ -302,10 +378,12 @@ void ToastManager::removeEntry(ToastEntry* entry) {
     entry->heightAnimation->stop();
     entry->visualAnimation->stop();
     entry->dragAnimation->stop();
+    if (entry->progressAnimation) entry->progressAnimation->stop();
     entry->dismissTimer->stop();
     entry->heightAnimation->deleteLater();
     entry->visualAnimation->deleteLater();
     entry->dragAnimation->deleteLater();
+    if (entry->progressAnimation) entry->progressAnimation->deleteLater();
     entry->dismissTimer->deleteLater();
     entry->card->deleteLater();
     delete entry;
@@ -381,7 +459,8 @@ void ToastManager::finishDrag() {
     const int screenHeight = parentWidget() ? parentWidget()->height() : height();
     const int toastWidth = qRound(width() * kToastWidthRatio);
     const int cardHeight = entry->card->preferredHeight(toastWidth, screenHeight);
-    if (entry->dragOffsetY - m_dragStartOffsetY < -cardHeight * 0.40) {
+    if (!entry->isProgress &&
+        entry->dragOffsetY - m_dragStartOffsetY < -cardHeight * 0.40) {
         dismissEntry(entry);
         return;
     }
@@ -389,7 +468,9 @@ void ToastManager::finishDrag() {
     entry->dragAnimation->setStartValue(entry->dragOffsetY);
     entry->dragAnimation->setEndValue(0.0);
     entry->dragAnimation->start();
-    entry->dismissTimer->start(2000);
+    if (!entry->isProgress) {
+        entry->dismissTimer->start(2000);
+    }
 }
 
 int ToastManager::activeEntryCount() const {

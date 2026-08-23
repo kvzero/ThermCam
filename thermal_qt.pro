@@ -1,4 +1,4 @@
-QT       += core gui
+QT       += core gui concurrent
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -40,6 +40,7 @@ SOURCES     +=  main.cpp \
                 services/gallery_service.cpp \
                 services/gallery_worker.cpp \
                 services/settings_service.cpp \
+                services/operation_service.cpp \
                 services/auto_shutdown_controller.cpp \
                 ui/app.cpp \
                 ui/settings_catalog.cpp \
@@ -90,6 +91,7 @@ HEADERS     +=  core/global_context.h \
                 services/gallery_service.h \
                 services/gallery_worker.h \
                 services/settings_service.h \
+                services/operation_service.h \
                 services/auto_shutdown_controller.h \
                 ui/app.h \
                 ui/settings_catalog.h \
