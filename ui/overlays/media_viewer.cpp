@@ -257,6 +257,7 @@ void MediaViewer::onSlideFinished() {
 
         forceStopPlayback();
         MediaFileInfo info = GalleryService::instance().getMediaInfo(m_currentIndex);
+        m_topBar->updateInfo(info);
         if (info.type == CaptureMode::Video) {
             m_player->open(info.filePath);
             syncVideoBarState();
