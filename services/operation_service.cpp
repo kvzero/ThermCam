@@ -1,6 +1,7 @@
 #include "services/operation_service.h"
 
 #include "hardware/hardware_manager.h"
+#include "hardware/hmi/haptic_provider.h"
 #include "hardware/imaging/thermal_camera.h"
 
 namespace {
@@ -43,6 +44,12 @@ OperationService::OperationService(QObject* parent) : QObject(parent) {
         connect(camera, &ThermalCamera::flatSceneCorrectionFinished, this,
                 [this](bool success) {
                     complete(OperationID::FlatSceneCorrection, success);
+                });
+    }
+    if (auto* haptic = HardwareManager::instance().haptic()) {
+        connect(haptic, &HapticProvider::calibrationFinished, this,
+                [this](bool success) {
+                    complete(OperationID::CalibrateHapticMotor, success);
                 });
     }
 }
@@ -89,6 +96,22 @@ OperationStartCode OperationService::startInitializeUserdata() {
     const OperationID operation = OperationID::InitializeUserdata;
     m_currentOperation = operation;
     if (!storage->startInitializeUserdata()) {
+        m_currentOperation.reset();
+        return OperationStartCode::Rejected;
+    }
+    emit operationStarted(operation);
+    return OperationStartCode::Started;
+}
+
+OperationStartCode OperationService::startHapticCalibration() {
+    if (isBusy()) return OperationStartCode::Busy;
+
+    auto* haptic = HardwareManager::instance().haptic();
+    if (!haptic) return OperationStartCode::Rejected;
+
+    const OperationID operation = OperationID::CalibrateHapticMotor;
+    m_currentOperation = operation;
+    if (!haptic->startCalibration()) {
         m_currentOperation.reset();
         return OperationStartCode::Rejected;
     }

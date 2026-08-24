@@ -4,40 +4,40 @@
 <context>
     <name>App</name>
     <message>
-        <location filename="../ui/app.cpp" line="64"/>
+        <location filename="../ui/app.cpp" line="68"/>
         <source>Camera will turn off in %1:%2.</source>
         <translation>将在 %1:%2 后自动关机。</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="172"/>
+        <location filename="../ui/app.cpp" line="176"/>
         <source>CONTINUE USING</source>
         <translation>继续使用</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="181"/>
-        <location filename="../ui/app.cpp" line="189"/>
+        <location filename="../ui/app.cpp" line="185"/>
+        <location filename="../ui/app.cpp" line="193"/>
         <source>AUTO SHUTDOWN</source>
         <translation>自动关机</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="308"/>
+        <location filename="../ui/app.cpp" line="312"/>
         <source>SYSTEM OPERATION IN PROGRESS</source>
         <translation>系统操作正在进行</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="217"/>
+        <location filename="../ui/app.cpp" line="221"/>
         <source>Battery low
 Please charge</source>
         <translation>电量不足
 请及时充电</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="318"/>
+        <location filename="../ui/app.cpp" line="322"/>
         <source>POWER OFF CAMERA?</source>
         <translation>要关闭相机吗？</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="318"/>
+        <location filename="../ui/app.cpp" line="322"/>
         <source>The camera will turn off now.</source>
         <translation>相机将立即关机。</translation>
     </message>
@@ -102,19 +102,34 @@ Please charge</source>
         <translation>Userdata 初始化失败</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="343"/>
+        <location filename="../ui/app.cpp" line="60"/>
+        <source>CALIBRATING HAPTIC MOTOR</source>
+        <translation>正在校准触觉马达</translation>
+    </message>
+    <message>
+        <location filename="../ui/app.cpp" line="61"/>
+        <source>HAPTIC MOTOR CALIBRATED</source>
+        <translation>触觉马达校准完成</translation>
+    </message>
+    <message>
+        <location filename="../ui/app.cpp" line="62"/>
+        <source>HAPTIC MOTOR CALIBRATION FAILED</source>
+        <translation>触觉马达校准失败</translation>
+    </message>
+    <message>
+        <location filename="../ui/app.cpp" line="347"/>
         <source>REBOOT FAILED</source>
         <translation>重启失败</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="368"/>
-        <location filename="../ui/app.cpp" line="387"/>
+        <location filename="../ui/app.cpp" line="372"/>
+        <location filename="../ui/app.cpp" line="391"/>
         <source>CONFIRM</source>
         <translation>确定</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="369"/>
-        <location filename="../ui/app.cpp" line="388"/>
+        <location filename="../ui/app.cpp" line="373"/>
+        <location filename="../ui/app.cpp" line="392"/>
         <source>CANCEL</source>
         <translation>取消</translation>
     </message>
@@ -494,7 +509,7 @@ Please charge</source>
         <translation>语言</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="220"/>
+        <location filename="../ui/settings_catalog.cpp" line="221"/>
         <source>Restore Defaults</source>
         <translation>恢复默认设置</translation>
     </message>
@@ -514,37 +529,37 @@ Please charge</source>
         <translation>初始化用户数据</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="214"/>
+        <location filename="../ui/settings_catalog.cpp" line="215"/>
         <source>Haptic Motor Calibration</source>
         <translation>线性马达校准</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="216"/>
+        <location filename="../ui/settings_catalog.cpp" line="217"/>
         <source>Software Update</source>
         <translation>软件更新</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="218"/>
+        <location filename="../ui/settings_catalog.cpp" line="219"/>
         <source>Reboot to Loader</source>
         <translation>重启至 Loader</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="250"/>
+        <location filename="../ui/settings_catalog.cpp" line="251"/>
         <source>Camera</source>
         <translation>相机</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="251"/>
+        <location filename="../ui/settings_catalog.cpp" line="252"/>
         <source>View</source>
         <translation>显示</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="252"/>
+        <location filename="../ui/settings_catalog.cpp" line="253"/>
         <source>Storage</source>
         <translation>存储</translation>
     </message>
     <message>
-        <location filename="../ui/settings_catalog.cpp" line="253"/>
+        <location filename="../ui/settings_catalog.cpp" line="254"/>
         <source>System</source>
         <translation>系统</translation>
     </message>
@@ -554,8 +569,8 @@ Please charge</source>
     <message>
         <location filename="../ui/views/settings_view.cpp" line="260"/>
         <location filename="../ui/views/settings_view.cpp" line="306"/>
-        <location filename="../ui/views/settings_view.cpp" line="1269"/>
-        <location filename="../ui/views/settings_view.cpp" line="1428"/>
+        <location filename="../ui/views/settings_view.cpp" line="1291"/>
+        <location filename="../ui/views/settings_view.cpp" line="1450"/>
         <source>Settings</source>
         <translation>设置</translation>
     </message>
@@ -620,87 +635,102 @@ The camera will restart when complete.</source>
     </message>
     <message>
         <location filename="../ui/views/settings_view.cpp" line="981"/>
+        <source>HAPTIC MOTOR CALIBRATION FAILED</source>
+        <translation>触觉马达校准失败</translation>
+    </message>
+    <message>
+        <location filename="../ui/views/settings_view.cpp" line="984"/>
+        <source>CALIBRATE HAPTIC MOTOR?</source>
+        <translation>校准触觉马达？</translation>
+    </message>
+    <message>
+        <location filename="../ui/views/settings_view.cpp" line="985"/>
+        <source>The motor will vibrate briefly during calibration.</source>
+        <translation>校准过程中马达会短暂振动。</translation>
+    </message>
+    <message>
+        <location filename="../ui/views/settings_view.cpp" line="999"/>
         <source>SETTINGS RESTORED</source>
         <translation>已恢复默认设置</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="985"/>
+        <location filename="../ui/views/settings_view.cpp" line="1003"/>
         <source>RESTORE DEFAULTS?</source>
         <translation>恢复默认设置？</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="986"/>
+        <location filename="../ui/views/settings_view.cpp" line="1004"/>
         <source>All settings will be reset.
 Media &amp; calibration unchanged.</source>
         <translation>所有设置将恢复为默认值。
 媒体文件和校准数据不受影响。</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="995"/>
+        <location filename="../ui/views/settings_view.cpp" line="1013"/>
         <source>CLOSE</source>
         <translation>关闭</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="997"/>
+        <location filename="../ui/views/settings_view.cpp" line="1015"/>
         <source>ABOUT</source>
         <translation>关于</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="1007"/>
-        <location filename="../ui/views/settings_view.cpp" line="1045"/>
+        <location filename="../ui/views/settings_view.cpp" line="1025"/>
+        <location filename="../ui/views/settings_view.cpp" line="1063"/>
         <source>SD Card</source>
         <translation>SD 卡</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="1007"/>
-        <location filename="../ui/views/settings_view.cpp" line="1045"/>
+        <location filename="../ui/views/settings_view.cpp" line="1025"/>
+        <location filename="../ui/views/settings_view.cpp" line="1063"/>
         <source>USB Disk</source>
         <translation>U 盘</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="1014"/>
+        <location filename="../ui/views/settings_view.cpp" line="1032"/>
         <source>STORAGE UNAVAILABLE</source>
         <translation>存储设备不可用</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="1027"/>
+        <location filename="../ui/views/settings_view.cpp" line="1045"/>
         <source>%1 ejection failed</source>
         <translation>无法安全移除 %1</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="1030"/>
+        <location filename="../ui/views/settings_view.cpp" line="1048"/>
         <source>%1 can be removed</source>
         <translation>%1 已可安全移除</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="1037"/>
+        <location filename="../ui/views/settings_view.cpp" line="1055"/>
         <source>EJECT %1?</source>
         <translation>安全移除 %1？</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="1038"/>
+        <location filename="../ui/views/settings_view.cpp" line="1056"/>
         <source>Wait for confirmation before removing it.</source>
         <translation>请在收到确认提示后再拔出设备。</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="1053"/>
+        <location filename="../ui/views/settings_view.cpp" line="1071"/>
         <source>All files will be deleted.</source>
         <translation>所有文件将被删除。</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="1054"/>
+        <location filename="../ui/views/settings_view.cpp" line="1072"/>
         <source>All files will be deleted.
 It will be formatted as %1.</source>
         <translation>所有文件将被删除。
 设备将格式化为 %1。</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="1056"/>
+        <location filename="../ui/views/settings_view.cpp" line="1074"/>
         <source>FORMAT %1?</source>
         <translation>格式化 %1？</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="1064"/>
+        <location filename="../ui/views/settings_view.cpp" line="1082"/>
         <source>%1 formatting failed</source>
         <translation>格式化 %1 失败</translation>
     </message>
@@ -709,12 +739,12 @@ It will be formatted as %1.</source>
         <translation type="vanished">已格式化 %1</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="1464"/>
+        <location filename="../ui/views/settings_view.cpp" line="1486"/>
         <source>APPLY DEFERRED</source>
         <translation>设置已保存，将在稍后生效</translation>
     </message>
     <message>
-        <location filename="../ui/views/settings_view.cpp" line="1468"/>
+        <location filename="../ui/views/settings_view.cpp" line="1490"/>
         <source>SET FAILED</source>
         <translation>保存设置失败</translation>
     </message>

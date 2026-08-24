@@ -10,7 +10,8 @@ enum class OperationID : quint8 {
     FlatSceneCorrection,
     FormatSdCard,
     FormatUsbDisk,
-    InitializeUserdata
+    InitializeUserdata,
+    CalibrateHapticMotor
 };
 
 enum class OperationStartCode : quint8 {
@@ -35,6 +36,7 @@ public:
     OperationStartCode startFlatSceneCorrection();
     OperationStartCode startFormatVolume(StorageVolume volume);
     OperationStartCode startInitializeUserdata();
+    OperationStartCode startHapticCalibration();
 
 signals:
     void operationStarted(OperationID operation);

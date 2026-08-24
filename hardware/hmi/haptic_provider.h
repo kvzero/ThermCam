@@ -2,6 +2,7 @@
 #define HAPTIC_PROVIDER_H
 
 #include <QObject>
+#include <QFuture>
 #include <vector>
 
 /**
@@ -22,6 +23,9 @@ public:
      */
     bool init();
 
+    /** @brief Starts one asynchronous LRA calibration and persists its result. */
+    bool startCalibration();
+
     /**
      * @brief Play a sequence of pre-stored waveforms (1 to 4 IDs).
      * @param ids Vector of Waveform IDs (Valid range: 1-123).
@@ -39,6 +43,10 @@ public:
      */
     void playEffect(int id);
 
+signals:
+    /** @brief Reports completion of the calibration and persistence sequence. */
+    void calibrationFinished(bool success);
+
 private:
     explicit HapticProvider(QObject* parent = nullptr);
     ~HapticProvider();
@@ -46,8 +54,12 @@ private:
     HapticProvider(const HapticProvider&) = delete;
     HapticProvider& operator=(const HapticProvider&) = delete;
 
+    bool restoreSavedCalibration();
+
     int m_fd = -1;
     int m_effectId = -1;
+    bool m_calibrationRunning = false;
+    QFuture<void> m_calibrationFuture;
 };
 
 #endif // HAPTIC_PROVIDER_H

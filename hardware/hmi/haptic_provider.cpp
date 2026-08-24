@@ -1,5 +1,9 @@
 #include "haptic_provider.h"
 #include <QDebug>
+#include <QMetaObject>
+#include <QPointer>
+#include <QSaveFile>
+#include <QtConcurrent/QtConcurrentRun>
 #include <linux/input.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -10,6 +14,33 @@
 #include <QFile>
 
 namespace {
+const QString kCalibratePath =
+    QStringLiteral("/sys/bus/i2c/devices/1-005a/calibrate");
+const QString kCalibrationPath =
+    QStringLiteral("/sys/bus/i2c/devices/1-005a/calibration");
+const QString kSavedCalibrationPath =
+    QStringLiteral("/userdata/thermal_qt/haptic_calibration");
+
+bool writeFile(const QString& path, const QByteArray& data) {
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) return false;
+    return file.write(data) == data.size();
+}
+
+bool performCalibration() {
+    if (!writeFile(kCalibratePath, QByteArrayLiteral("1"))) return false;
+
+    QFile calibration(kCalibrationPath);
+    if (!calibration.open(QIODevice::ReadOnly)) return false;
+    const QByteArray data = calibration.readAll();
+    if (data.isEmpty()) return false;
+
+    QSaveFile saved(kSavedCalibrationPath);
+    if (!saved.open(QIODevice::WriteOnly)) return false;
+    if (saved.write(data) != data.size()) return false;
+    return saved.commit();
+}
+
 /**
  * @brief Dynamically locates the input event device path by its sysfs name.
  *
@@ -47,6 +78,9 @@ HapticProvider& HapticProvider::instance() {
 HapticProvider::HapticProvider(QObject* parent) : QObject(parent) {}
 
 HapticProvider::~HapticProvider() {
+    if (m_calibrationFuture.isRunning()) {
+        m_calibrationFuture.waitForFinished();
+    }
     if (m_fd >= 0) ::close(m_fd);
 }
 
@@ -65,7 +99,28 @@ bool HapticProvider::init() {
         return false;
     }
 
+    if (!restoreSavedCalibration()) {
+        qWarning() << "[HapticProvider] Failed to restore saved calibration.";
+    }
+
     qInfo() << "[HapticProvider] Successfully bound to device:" << hapticPath;
+    return true;
+}
+
+bool HapticProvider::startCalibration() {
+    if (m_fd < 0 || m_calibrationRunning || m_calibrationFuture.isRunning()) return false;
+
+    m_calibrationRunning = true;
+    const QPointer<HapticProvider> self(this);
+    m_calibrationFuture = QtConcurrent::run([self]() {
+        const bool success = performCalibration();
+        if (!self) return;
+        QMetaObject::invokeMethod(self, [self, success]() {
+            if (!self) return;
+            self->m_calibrationRunning = false;
+            emit self->calibrationFinished(success);
+        }, Qt::QueuedConnection);
+    });
     return true;
 }
 
@@ -74,7 +129,7 @@ void HapticProvider::playEffect(int id) {
 }
 
 void HapticProvider::playSequence(const std::vector<int>& ids) {
-    if (m_fd < 0 || ids.empty()) return;
+    if (m_fd < 0 || m_calibrationRunning || ids.empty()) return;
 
     struct ff_effect effect;
     std::memset(&effect, 0, sizeof(effect));
@@ -117,4 +172,13 @@ void HapticProvider::playSequence(const std::vector<int>& ids) {
     if (::write(m_fd, &play, sizeof(play)) < 0) {
         qWarning() << "HapticProvider: Trigger failed (write EV_FF)";
     }
+}
+
+bool HapticProvider::restoreSavedCalibration() {
+    QFile saved(kSavedCalibrationPath);
+    if (!saved.exists()) return true;
+    if (!saved.open(QIODevice::ReadOnly)) return false;
+
+    const QByteArray data = saved.readAll();
+    return !data.isEmpty() && writeFile(kCalibrationPath, data);
 }

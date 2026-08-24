@@ -56,6 +56,10 @@ OperationMessages messagesForOperation(OperationID operation) {
         return {QT_TRANSLATE_NOOP("App", "INITIALIZING USERDATA"),
                 QT_TRANSLATE_NOOP("App", "USERDATA INITIALIZED"),
                 QT_TRANSLATE_NOOP("App", "USERDATA INITIALIZATION FAILED")};
+    case OperationID::CalibrateHapticMotor:
+        return {QT_TRANSLATE_NOOP("App", "CALIBRATING HAPTIC MOTOR"),
+                QT_TRANSLATE_NOOP("App", "HAPTIC MOTOR CALIBRATED"),
+                QT_TRANSLATE_NOOP("App", "HAPTIC MOTOR CALIBRATION FAILED")};
     }
     Q_UNREACHABLE();
 }

@@ -969,6 +969,24 @@ void SettingsView::activateCommandItem(const SettingsItemData& item) {
             });
         return;
     }
+    if (item.id == SettingID::CalibrateHapticMotor) {
+        if (!app) return;
+        ModalSpec spec;
+        spec.onPrimaryAction = [app]() {
+            const OperationStartCode result =
+                OperationService::instance().startHapticCalibration();
+            showOperationStartFeedback(
+                app,
+                result,
+                SettingsView::tr("HAPTIC MOTOR CALIBRATION FAILED"));
+        };
+        app->showTextModal(
+            tr("CALIBRATE HAPTIC MOTOR?"),
+            tr("The motor will vibrate briefly during calibration."),
+            spec,
+            TextModalSize::Normal);
+        return;
+    }
     if (item.id == SettingID::RestoreDefaults) {
         if (!app) return;
         ModalSpec spec;
