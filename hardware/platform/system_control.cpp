@@ -8,11 +8,14 @@
 #include <QProcess>
 #include <QtGlobal>
 
+#include <cmath>
 #include <cstring>
 
 namespace {
 constexpr int kPercentMin = 0;
 constexpr int kPercentMax = 100;
+constexpr double kDacVolumeDbPerStep = 0.375;
+constexpr double kVolumeCurveExponent = 2.0;
 
 const char* kBacklightBrightnessPath = "/sys/class/backlight/backlight/brightness";
 const char* kBacklightMaxPath = "/sys/class/backlight/backlight/max_brightness";
@@ -26,6 +29,33 @@ constexpr qint64 kRtcVerifyToleranceSecs = 10;
 
 QString alsaErrorText(int code) {
     return QString::fromLocal8Bit(snd_strerror(code));
+}
+
+long dacUnityVolume(long volumeMin, long volumeMax) {
+    return volumeMin + ((volumeMax - volumeMin) / 2);
+}
+
+long audioPercentToRawVolume(int percent, long volumeMin, long volumeMax) {
+    if (percent <= kPercentMin) return volumeMin;
+
+    const long unityVolume = dacUnityVolume(volumeMin, volumeMax);
+    const double normalized = static_cast<double>(percent) /
+                              static_cast<double>(kPercentMax);
+    const double attenuationDb = 20.0 * kVolumeCurveExponent * std::log10(normalized);
+    const long rawVolume = unityVolume + qRound(attenuationDb / kDacVolumeDbPerStep);
+    return qBound(volumeMin, rawVolume, unityVolume);
+}
+
+int rawVolumeToAudioPercent(long rawVolume, long volumeMin, long volumeMax) {
+    const long unityVolume = dacUnityVolume(volumeMin, volumeMax);
+    const long safeRawVolume = qBound(volumeMin, rawVolume, unityVolume);
+    const double attenuationDb =
+        static_cast<double>(safeRawVolume - unityVolume) * kDacVolumeDbPerStep;
+    const double normalized =
+        std::pow(10.0, attenuationDb / (20.0 * kVolumeCurveExponent));
+    return qBound(kPercentMin,
+                  qRound(normalized * static_cast<double>(kPercentMax)),
+                  kPercentMax);
 }
 
 bool parseHwclockOutput(const QString& output, QDateTime* outDateTime) {
@@ -145,12 +175,7 @@ bool SystemControl::audioVolumePercent(int* outPercent, QString* outError) const
         return false;
     }
 
-    rawVolume = qBound(m_volumeMin, rawVolume, m_volumeMax);
-    const double ratio =
-        static_cast<double>(rawVolume - m_volumeMin) /
-        static_cast<double>(m_volumeMax - m_volumeMin);
-    const int percent = qRound(ratio * 100.0);
-    *outPercent = clampPercent(percent);
+    *outPercent = rawVolumeToAudioPercent(rawVolume, m_volumeMin, m_volumeMax);
     return true;
 }
 
@@ -161,12 +186,8 @@ bool SystemControl::setAudioVolumePercent(int percent, QString* outError) {
     }
 
     const int clampedPercent = clampPercent(percent);
-    const long range = m_volumeMax - m_volumeMin;
-    const long rawVolume = qBound(
-        m_volumeMin,
-        m_volumeMin + qRound((static_cast<double>(clampedPercent) / 100.0) *
-                             static_cast<double>(range)),
-        m_volumeMax);
+    const long rawVolume =
+        audioPercentToRawVolume(clampedPercent, m_volumeMin, m_volumeMax);
 
     const int rc = snd_mixer_selem_set_playback_volume_all(m_dacDigitalElem, rawVolume);
     if (rc < 0) {
