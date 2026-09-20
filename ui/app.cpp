@@ -33,7 +33,7 @@ constexpr int kBatteryDepletedPercent = 0;
 constexpr int kAutoShutdownCountdownMilliseconds = 30 * 1000;
 
 struct OperationMessages {
-    const char* progress;
+    const char* progress; // Null for operations that only show their result.
     const char* success;
     const char* failure;
 };
@@ -57,7 +57,7 @@ OperationMessages messagesForOperation(OperationID operation) {
                 QT_TRANSLATE_NOOP("App", "USERDATA INITIALIZED"),
                 QT_TRANSLATE_NOOP("App", "USERDATA INITIALIZATION FAILED")};
     case OperationID::CalibrateHapticMotor:
-        return {QT_TRANSLATE_NOOP("App", "CALIBRATING HAPTIC MOTOR"),
+        return {nullptr,
                 QT_TRANSLATE_NOOP("App", "HAPTIC MOTOR CALIBRATED"),
                 QT_TRANSLATE_NOOP("App", "HAPTIC MOTOR CALIBRATION FAILED")};
     }
@@ -324,7 +324,10 @@ void App::handleHardwareKeyLongPress() {
 
 void App::handleOperationStarted(OperationID operation) {
     if (!m_toastManager) return;
-    m_toastManager->showProgressToast(tr(messagesForOperation(operation).progress));
+    const char* progress = messagesForOperation(operation).progress;
+    if (progress) {
+        m_toastManager->showProgressToast(tr(progress));
+    }
 }
 
 void App::handleOperationProgress(OperationID /*operation*/, int percent) {
@@ -335,9 +338,13 @@ void App::handleOperationProgress(OperationID /*operation*/, int percent) {
 void App::handleOperationFinished(OperationID operation, bool success) {
     if (!m_toastManager) return;
     const OperationMessages messages = messagesForOperation(operation);
-    m_toastManager->finishProgressToast(
-        tr(success ? messages.success : messages.failure),
-        success ? ToastLevel::Success : ToastLevel::Error);
+    const QString text = tr(success ? messages.success : messages.failure);
+    const ToastLevel level = success ? ToastLevel::Success : ToastLevel::Error;
+    if (messages.progress) {
+        m_toastManager->finishProgressToast(text, level);
+    } else {
+        m_toastManager->showToast(text, level);
+    }
 
     if (operation == OperationID::InitializeUserdata && success) {
         if (auto* system = HardwareManager::instance().systemControl()) {

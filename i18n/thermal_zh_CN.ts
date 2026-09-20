@@ -102,11 +102,6 @@ Please charge</source>
         <translation>Userdata 初始化失败</translation>
     </message>
     <message>
-        <location filename="../ui/app.cpp" line="60"/>
-        <source>CALIBRATING HAPTIC MOTOR</source>
-        <translation>正在校准触觉马达</translation>
-    </message>
-    <message>
         <location filename="../ui/app.cpp" line="61"/>
         <source>HAPTIC MOTOR CALIBRATED</source>
         <translation>触觉马达校准完成</translation>
