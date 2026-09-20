@@ -43,21 +43,9 @@ private:
     void initUdcMonitoring();
     void refreshPcConnection();
 
-    // --- Modular Drawing Actors ---
-    /** @return Left edge of the right cluster's painted bounds. */
-    qreal drawRightStatusItems(QPainter& p, const QRect& barRect, qreal rightEdge);
-    void drawTime(QPainter& p, const QRect& rect);
-    void drawEmissivity(QPainter& p, const QRect& rect);
-
-    /** @brief Draws the self-sized battery with its painted right edge aligned. */
-    void drawBattery(QPainter& p, qreal visualRightX, const QRect& barRect);
-
-    /** @brief Draws a status glyph with its ink right edge aligned. */
-    void drawStatusIcon(QPainter& p, QChar icon, qreal visualRightX, const QRect& barRect);
-
-    /** @brief Helper for high-contrast outlined text. */
-    void drawOutlinedText(QPainter& p, const QRect& rect, int flags, const QString& text,
-                          const QColor& textColor = Qt::white);
+    /** @return Left painted edge, including the outline, for right-to-left layout. */
+    qreal drawBattery(QPainter& p, qreal visualRightX, const QRect& barRect);
+    qreal drawStatusIcon(QPainter& p, QChar icon, qreal visualRightX, const QRect& barRect);
 
     // --- Cached State ---
     QString m_timeText;
@@ -72,29 +60,6 @@ private:
     QList<int> m_udcStateFds;
     QList<QSocketNotifier*> m_udcStateNotifiers;
 
-    // --- UI Constants ---
-    static constexpr int LOW_BATTERY_THRESHOLD = 20;
-
-    // --- Visual Configuration Ratios ---
-    const qreal kHorizontalInsetWidthRatio = 0.03;    // Left/right content inset, relative to bar width
-    const qreal kLeftClusterGapWidthRatio  = 0.045;    // Gap between Time and Emissivity, relative to bar width
-    const qreal kRightVisualGapWidthRatio  = 0.031;    // Gap between adjacent right-side visual bounds
-    const qreal kContentYOffsetRatio       = 0.08;     // Global downward shift of all status bar content
-    const qreal kTextSizeRatio             = 0.6;      // Font size relative to bar height
-
-    // --- Semantic Color Palette ---
-    const QColor BATT_SURFACE  = QColor("#7A8088");
-    const QColor BATT_FILL_CHG = QColor("#34C759");
-    const QColor BATT_FILL_STD = QColor("#FFFFFF");
-    const QColor BATT_FILL_LOW = QColor("#FF3B30");
-    const QColor BATT_TEXT_CHG = QColor("#FFFFFF");
-    const QColor BATT_TEXT_STD = QColor("#2B2B2B");
-    const QColor BATT_MARK_ERR = QColor("#FF3B30");
-    const QColor EMISSIVITY_TEXT_COLOR = QColor("#FFC84A");
-
-    static constexpr ushort ICON_SD_CARD = 0xf384;
-    static constexpr ushort ICON_USB_DISK = 0xfc59;
-    static constexpr ushort ICON_PC_CONNECTION = 0xf00c;
 };
 
 #endif // STATUS_BAR_H
