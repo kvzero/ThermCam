@@ -81,6 +81,7 @@ void drawOutlinedPath(QPainter& p, const QPainterPath& path, const QColor& color
 struct BatteryGeometry {
     QRectF bodyRect;
     QRectF fillRect;
+    qreal fillRadius;
     QPainterPath border;
     QPainterPath fillArea;
     QPainterPath terminal;
@@ -161,7 +162,7 @@ BatteryGeometry batteryGeometry(qreal visualRightX, const QRect& barRect, bool c
     constexpr qreal kNippleChordCut = 0.30;
     QPainterPath nippleClip;
     nippleClip.addRect(nippleRect.adjusted(nippleW * kNippleChordCut, -1, 1, 1));
-    return {bodyRect, fillRect, borderPath, fillAreaPath,
+    return {bodyRect, fillRect, fillRadius, borderPath, fillAreaPath,
             nipplePath.intersected(nippleClip), boltPath, boltClearance};
 }
 
@@ -322,23 +323,63 @@ void StatusBar::paintEvent(QPaintEvent*) {
         }
     }
 
-    int leftCursor = horizontalInset;
-    const QString texts[] = {m_timeText, QString("ε: %1").arg(m_emissivity, 0, 'f', 2)};
-    const QColor colors[] = {Qt::white, kEmissivityColor};
-    for (int i = 0; i < 2; ++i) {
-        QPainterPath path = statusTextPath(texts[i], h, kLeftTextSizeRatio);
-        const QRectF bounds = path.boundingRect();
-        const int textWidth = qCeil(bounds.width() + 2.0 * kHudOutlinePx);
-        const int availableWidth = i == 0 ? textWidth : qMax(0, qRound(rightCursor) - leftCursor);
-        path.translate(leftCursor + kHudOutlinePx - bounds.left(),
-                       h / 2.0 - bounds.center().y());
-        // Preserve the right cluster when the emissivity text runs out of space.
-        p.save();
-        p.setClipRect(QRect(leftCursor, 0, availableWidth, h), Qt::IntersectClip);
-        drawOutlinedPath(p, path, colors[i]);
-        p.restore();
-        leftCursor += textWidth + leftGap;
+    QPainterPath timePath = statusTextPath(m_timeText, h, kLeftTextSizeRatio);
+    const QRectF timeBounds = timePath.boundingRect();
+    timePath.translate(horizontalInset + kHudOutlinePx - timeBounds.left(),
+                       h / 2.0 - timeBounds.center().y());
+    drawOutlinedPath(p, timePath, Qt::white);
+
+    const qreal emissivityLeft = horizontalInset
+        + qCeil(timeBounds.width() + 2.0 * kHudOutlinePx) + leftGap;
+    constexpr qreal kEmissivityBadgeHeightRatio = 0.55;
+    constexpr qreal kEmissivityBadgeAspectRatio = 0.88;
+    constexpr qreal kEmissivityBadgeRadiusRatio = 0.22;
+    constexpr qreal kEmissivityGlyphHeightRatio = 0.68;
+    constexpr qreal kEmissivityValueGapRatio = 0.16;
+    const qreal badgeHeight = h * kEmissivityBadgeHeightRatio;
+    const QRectF badgeRect(emissivityLeft + kHudOutlinePx, (h - badgeHeight) / 2.0,
+                           badgeHeight * kEmissivityBadgeAspectRatio, badgeHeight);
+    QPainterPath badgePath;
+    const qreal radius = badgeHeight * kEmissivityBadgeRadiusRatio;
+    badgePath.addRoundedRect(badgeRect, radius, radius);
+
+    const QPainterPath epsilon = statusTextPath(QString(QChar(0x03b5)), h, kLeftTextSizeRatio);
+    const QRectF epsilonBounds = epsilon.boundingRect();
+    QPainterPath cutout;
+    if (!epsilonBounds.isEmpty()) {
+        const qreal scale = qMin(badgeRect.width() * kEmissivityGlyphHeightRatio / epsilonBounds.width(),
+                                badgeHeight * kEmissivityGlyphHeightRatio / epsilonBounds.height());
+        QTransform transform;
+        transform.translate(badgeRect.center().x(), badgeRect.center().y());
+        transform.scale(scale, scale);
+        transform.translate(-epsilonBounds.center().x(), -epsilonBounds.center().y());
+        cutout = transform.map(epsilon);
     }
+
+    QPainterPath valuePath = statusTextPath(QString::number(m_emissivity, 'f', 2), h, kLeftTextSizeRatio);
+    const QRectF valueBounds = valuePath.boundingRect();
+    valuePath.translate(badgeRect.right() + 2.0 * kHudOutlinePx
+                            + h * kEmissivityValueGapRatio - valueBounds.left(),
+                        h / 2.0 - valueBounds.center().y());
+
+    // Keep the right cluster clear and leave the epsilon's interior transparent.
+    p.save();
+    p.setClipRect(QRectF(emissivityLeft, 0, qMax<qreal>(0, rightCursor - rightGap - emissivityLeft), h),
+                  Qt::IntersectClip);
+    drawOutlinedPath(p, badgePath.subtracted(cutout), kEmissivityColor, cutout);
+    if (p.opacity() > 0.1 && !cutout.isEmpty()) {
+        QPainterPathStroker stroker;
+        stroker.setWidth(2.0 * kHudOutlinePx);
+        stroker.setJoinStyle(Qt::RoundJoin);
+        // Place the black edge inside the cutout, preserving the yellow badge.
+        const QPainterPath glyphOutline = stroker.createStroke(cutout)
+            .intersected(cutout);
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(0, 0, 0, qRound(255 * p.opacity() * p.opacity())));
+        p.drawPath(glyphOutline);
+    }
+    drawOutlinedPath(p, valuePath, kEmissivityColor);
+    p.restore();
 }
 
 qreal StatusBar::drawStatusIcon(QPainter& p, QChar icon, qreal visualRightX, const QRect& barRect) {
@@ -422,7 +463,10 @@ qreal StatusBar::drawBattery(QPainter& p, qreal visualRightX, const QRect& barRe
     fillWidth = qMin(fillWidth, geometry.fillRect.width());
     if (fillWidth > 0) {
         QPainterPath fillClip;
-        fillClip.addRect(QRectF(geometry.fillRect.x(), geometry.fillRect.y(), fillWidth, geometry.fillRect.height()));
+        const QRectF currentFillRect(geometry.fillRect.x(), geometry.fillRect.y(),
+                                     fillWidth, geometry.fillRect.height());
+        const qreal radius = qMin(geometry.fillRadius, fillWidth / 2.0);
+        fillClip.addRoundedRect(currentFillRect, radius, radius);
         p.setBrush(fillColor);
         p.drawPath(geometry.fillArea.intersected(fillClip));
     }
